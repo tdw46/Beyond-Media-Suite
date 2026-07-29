@@ -48,6 +48,8 @@ video-to-animation, and every video output format exposed by xPic:
   two-pass VP9 with alpha support; AVI and WMV use iterative native encoders;
 - video bitrate is recalibrated against the actual encoded byte size until the
   result fits the requested ceiling, with a small audio and container budget;
+- Merge Frames can create WebP, GIF, or alpha-capable WebM and remembers a
+  separate target size for each of those formats;
 - video input accepts GIF, animated WebP, and APNG, and WebM is available as an
   output format;
 - fork builds do not download upstream app updates over the patch.

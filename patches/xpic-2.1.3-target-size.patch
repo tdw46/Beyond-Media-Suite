@@ -506,7 +506,15 @@
      compressionLevel: 6,
      palette: true,
      lossless: false,
-@@ -22855,12 +22856,14 @@
+@@ -22844,6 +22845,7 @@
+     m: 4,
+     lossless: true,
+     ext: "webp",
++    targetFileSizes: {},
+   },
+ });
+ const v2ImageSlice = createConfigSlice({
+@@ -22855,12 +22857,14 @@
      quality: 1,
      loop: 0,
      toFormat: "gif",
@@ -521,7 +529,7 @@
    },
  });
  const vCompressSlice = createConfigSlice({
-@@ -23415,6 +23418,8 @@
+@@ -23415,6 +23419,8 @@
    "flow.cropLock": "锁定比例",
    "flow.cropTarget": "目标大小(KB)",
    "flow.cropTargetHint": "通过调整质量逼近目标体积，PNG 格式效果有限。",
@@ -530,7 +538,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23799,6 +23804,9 @@
+@@ -23799,6 +23805,9 @@
    "flow.cropLock": "Lock ratio",
    "flow.cropTarget": "Target (KB)",
    "flow.cropTargetHint": "Approximated by adjusting quality; limited for PNG.",
@@ -540,7 +548,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -25935,13 +25943,16 @@
+@@ -25935,13 +25944,16 @@
    ".rm",
    ".roq",
    ".swf",
@@ -558,10 +566,21 @@
    ".flv",
    ".ts",
    ".wmv",
-@@ -39253,6 +39264,94 @@
-     outPath,
-   });
+@@ -38237,6 +38249,8 @@
+     q: cfg?.q ?? 80,
+     m: cfg?.m ?? 4,
+     lossless: cfg?.lossless ?? true,
++    ext: cfg?.ext ?? "webp",
++    targetFileSizes: cfg?.targetFileSizes ?? {},
+   };
  }
+ function makeStep(type) {
+@@ -39251,8 +39265,96 @@
+     ...recipe,
+     inputPath: item.path,
+     outPath,
++  });
++}
 +const targetSizeFor = (config, format) =>
 +  Math.max(0, Number(config.targetFileSizes?.[format] || 0));
 +const updateTargetSizeFor = (config, format, value) => ({
@@ -579,12 +598,12 @@
 +  const result = await window.x("sharpToFile", {
 +    inputBuffer: buffer,
 +    outPath: destination,
-+  });
+   });
 +  if (destination !== outPath) {
 +    await window.x("moveFile", destination, outPath);
 +  }
 +  return result?.size || buffer.length;
-+}
+ }
 +async function writeSharpToTarget({
 +  recipe,
 +  item,
@@ -653,7 +672,7 @@
  const compress = {
    key: "compress",
    labelKey: "nav.compress",
-@@ -39366,6 +39465,23 @@
+@@ -39366,6 +39468,23 @@
            options: convertFormatOptions,
            onChange: (v2) => update({ toFormat: v2 }),
          }),
@@ -677,11 +696,10 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.quality"),
            value: config.quality,
-@@ -39488,6 +39604,18 @@
-         fromFormat: fmt,
+@@ -39489,6 +39608,18 @@
        });
        return { outName, outPath, outSize: r22.size };
-+    }
+     }
 +    const targetKb = targetSizeFor(config, toFormat);
 +    if (targetKb > 0) {
 +      const outSize = await writeSharpToTarget({
@@ -693,10 +711,11 @@
 +        targetKb,
 +      });
 +      return { outName, outPath, outSize };
-     }
++    }
      const r2 = await writeOut(recipe, item, outPath, pureName, toFormat);
      return { outName, outPath, outSize: r2.size };
-@@ -39513,11 +39641,30 @@
+   },
+@@ -39513,11 +39644,30 @@
    updateConfig: updateVConvertConfig,
    showSaving: true,
    renderParams: ({ config, update, t: t2 }) =>
@@ -732,7 +751,7 @@
      }),
    panelSub: (config, n2, t2) =>
      n2
-@@ -39537,6 +39684,7 @@
+@@ -39537,6 +39687,7 @@
        inputPath: item.path,
        toFormat: config.toFormat,
        outPath,
@@ -740,21 +759,21 @@
      });
      const info = await window.x("getFileInfo", outPath);
      return {
-@@ -39608,9 +39756,21 @@
+@@ -39608,9 +39759,21 @@
            options: [
              { label: "GIF", value: "gif" },
              { label: "WebP", value: "webp" },
 +            { label: "APNG", value: "apng" },
            ],
            onChange: (v2) => update({ toFormat: v2 }),
-         }),
++        }),
 +        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
 +          label: t2("flow.targetSize"),
 +          value: targetSizeFor(config, config.toFormat),
 +          min: 0,
 +          onChange: (v2) =>
 +            update(updateTargetSizeFor(config, config.toFormat, v2)),
-+        }),
+         }),
 +        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
 +          className: "x-cfg-note",
 +          children: t2("flow.targetSizeHint"),
@@ -762,7 +781,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.animQuality"),
            value: config.quality,
-@@ -39669,6 +39829,7 @@
+@@ -39669,6 +39832,7 @@
        scale: config.scale,
        ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
        loop: config.loop,
@@ -770,3 +789,128 @@
      });
      const info = await window.x("getFileInfo", outPath);
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
+@@ -39766,6 +39930,7 @@
+ const FORMAT_SEG = [
+   { label: "WebP", value: "webp" },
+   { label: "GIF", value: "gif" },
++  { label: "WebM", value: "webm" },
+ ];
+ const merge$1 = {
+   key: "merge",
+@@ -39796,14 +39961,27 @@
+           options: FORMAT_SEG,
+           onChange: (v2) => update({ ext: v2 }),
+         }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+-          label: t2("flow.quality"),
+-          value: config.q,
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.targetSize"),
++          value: targetSizeFor(config, config.ext || "webp"),
+           min: 0,
+-          max: 100,
+-          step: 5,
+-          onChange: (v2) => update({ q: v2 }),
++          onChange: (v2) =>
++            update(updateTargetSizeFor(config, config.ext || "webp", v2)),
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.targetSizeHint"),
++        }),
++        config.ext !== "webm"
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++              label: t2("flow.quality"),
++              value: config.q,
++              min: 0,
++              max: 100,
++              step: 5,
++              onChange: (v2) => update({ q: v2 }),
++            })
++          : null,
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+           label: t2("flow.fps"),
+           value: zl,
+@@ -39839,7 +40017,12 @@
+       outputDir,
+       `__xpic_temp_${stamp}_temp_xpic__.webp`,
+     );
++    const bridgePath = window.pj(
++      outputDir,
++      `__xpic_temp_${stamp}_temp_xpic__.gif`,
++    );
+     const outputPath = window.pj(outputDir, `${name}.${ext}`);
++    const targetKb = targetSizeFor(config, ext);
+     const cmdArr = ["img2webp", "-loop", loop];
+     for (const item of files) {
+       cmdArr.push(item.path);
+@@ -39851,15 +40034,48 @@
+     setProgress2(25);
+     await window.x("exec", cmdArr);
+     setProgress2(70);
+-    const info = await window.x("sharpToFile", {
+-      inputPath: fakePath,
+-      inputOptions: { animated: true },
+-      toFormat: ext,
+-      formatOptions: { quality: config.q, nearLossless: true },
+-      outPath: outputPath,
+-    });
+-    await window.x("removeFile", fakePath);
+-    const meta = await window.x("sharpMetadata", { path: outputPath });
++    let info;
++    try {
++      if (ext === "webm" || targetKb > 0) {
++        await window.x("sharpToFile", {
++          inputPath: fakePath,
++          inputOptions: { animated: true },
++          toFormat: "gif",
++          formatOptions: {
++            quality: 100,
++            colors: 256,
++            effort: 10,
++            dither: 0,
++          },
++          outPath: bridgePath,
++        });
++        await window.x("vConvert", {
++          inputPath: bridgePath,
++          toFormat: ext,
++          outPath: outputPath,
++          fps: config.zl || 10,
++          scale: files[0]?.meta?.width,
++          loop,
++          targetFileSizeKb: targetKb,
++        });
++        info = await window.x("getFileInfo", outputPath);
++      } else {
++        info = await window.x("sharpToFile", {
++          inputPath: fakePath,
++          inputOptions: { animated: true },
++          toFormat: ext,
++          formatOptions: { quality: config.q, nearLossless: true },
++          outPath: outputPath,
++        });
++      }
++    } finally {
++      await window.x("removeFile", fakePath);
++      await window.x("removeFile", bridgePath);
++    }
++    const meta =
++      ext === "webm"
++        ? files[0]?.meta
++        : await window.x("sharpMetadata", { path: outputPath });
+     setProgress2(100);
+     const totalFrom = files.reduce((a, f2) => a + (f2.size || 0), 0);
+     const outSize = info.size;
+@@ -39874,7 +40090,10 @@
+         name: `${name}.${ext}`,
+         path: outputPath,
+         size: outSize,
+-        url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(outputPath)}`,
++        url:
++          ext === "webm"
++            ? files[0]?.url
++            : `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(outputPath)}`,
+         dim: meta?.width && meta?.height ? `${meta.width}×${meta.height}` : "",
+       },
+     };

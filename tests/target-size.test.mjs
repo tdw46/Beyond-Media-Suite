@@ -58,3 +58,19 @@ test("target-size video support covers every xPic output container", async () =>
   }
   assert.match(patch, /encodeTargetVideo/);
 });
+
+test("Merge Frames exposes WebM with a per-format target size", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-target-size.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(
+    patch,
+    /\+\s*\{ label: "WebM", value: "webm" \},/,
+  );
+  assert.match(patch, /targetSizeFor\(config, config\.ext \|\| "webp"\)/);
+  assert.match(patch, /ext === "webm" \|\| targetKb > 0/);
+  assert.match(patch, /inputPath: bridgePath/);
+});
