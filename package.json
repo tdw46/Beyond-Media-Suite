@@ -1,7 +1,7 @@
 {
   "name": "xpic-target-size-fork",
   "private": true,
-  "version": "2.1.3-3",
+  "version": "2.1.3-4",
   "description": "Reproducible xPic 2.1.3 fork build with per-format target output sizes.",
   "type": "module",
   "scripts": {

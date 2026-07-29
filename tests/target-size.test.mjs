@@ -101,3 +101,61 @@ test("large Merge Frames jobs avoid eager full-image buffers", async () => {
   assert.match(patch, /mergeFramesIntermediate/);
   assert.match(patch, /"-c:v",\s*\n\+\s*"ffv1"/);
 });
+
+test("media batches are cancellable and clean up their process trees", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-cancellable-media.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /cancelMediaJob/);
+  assert.match(patch, /process\.kill\(-child\.pid, signal\)/);
+  assert.match(patch, /terminateMediaProcess\(child, "SIGKILL"\)/);
+  assert.match(patch, /window\.x\("cancelMediaJob", `flow-\$\{runId\}`\)/);
+  assert.match(patch, /finishMediaJob/);
+  assert.match(patch, /execMedia/);
+});
+
+test("target-sized WebP starts at a frame-count-aware scale", async () => {
+  const targetBytes = 750_000;
+  const frames = 336;
+  const aspect = 16 / 9;
+  const width = Math.floor(
+    Math.sqrt((targetBytes / frames / 0.004) * aspect),
+  );
+  assert.equal(width, 996);
+
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-cancellable-media.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /estimatedFrames/);
+  assert.match(patch, /targetBytes \/ estimatedFrames \/ 0\.004/);
+  assert.match(patch, /Math\.min\(maxScale, targetAwareWidth \|\| maxScale\)/);
+});
+
+test("Merge Frames previews use bounded thumbnails", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-cancellable-media.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /THUMBNAIL_DOMAIN/);
+  assert.match(patch, /resize\(256, 256/);
+  assert.match(patch, /thumbnailActive < 4/);
+  assert.match(patch, /thumbnailCache\.size > 1024/);
+  assert.match(patch, /src: f2\.poster \|\| f2\.thumb \|\| f2\.url/);
+});

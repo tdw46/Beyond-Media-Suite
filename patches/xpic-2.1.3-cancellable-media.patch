@@ -1,0 +1,840 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -950,6 +950,7 @@
+   return hash.digest("hex");
+ };
+ const PICTURE_DOMAIN = "show-me-picture-plz";
++const THUMBNAIL_DOMAIN = "show-me-thumbnail-plz";
+ const VIDEO_DOMAIN = "show-me-video-plz";
+ const fromFileExtension = (ext) => {
+   ext = ext.toLowerCase();
+@@ -1517,6 +1518,125 @@
+         },
+       );
+     });
++  const mediaJobs = app2.__xpicMediaJobs || new Map();
++  const mediaTemps = app2.__xpicMediaTemps || new Map();
++  app2.__xpicMediaJobs = mediaJobs;
++  app2.__xpicMediaTemps = mediaTemps;
++  const normalizeJobId = (jobId) =>
++    typeof jobId === "string" && jobId ? jobId : null;
++  const trackMediaTemp = (jobId, filePath) => {
++    const id2 = normalizeJobId(jobId);
++    if (!id2 || !filePath) return;
++    if (!mediaTemps.has(id2)) mediaTemps.set(id2, new Set());
++    mediaTemps.get(id2).add(filePath);
++  };
++  const cleanupMediaTemps = (jobId) => {
++    const id2 = normalizeJobId(jobId);
++    const paths = id2 ? mediaTemps.get(id2) : null;
++    if (!paths) return;
++    for (const filePath of paths) {
++      safeUnlink(filePath);
++      if (filePath.endsWith(".pass")) {
++        try {
++          for (const name of fs.readdirSync(path.dirname(filePath))) {
++            if (name.startsWith(path.basename(filePath))) {
++              safeUnlink(path.join(path.dirname(filePath), name));
++            }
++          }
++        } catch {}
++      }
++    }
++    mediaTemps.delete(id2);
++  };
++  const terminateMediaProcess = (child, signal = "SIGTERM") => {
++    if (!child?.pid || child.exitCode !== null) return;
++    try {
++      if (isWin2) {
++        node_child_process.spawn(
++          "taskkill",
++          ["/PID", String(child.pid), "/T", "/F"],
++          { windowsHide: true, stdio: "ignore" },
++        );
++      } else {
++        process.kill(-child.pid, signal);
++      }
++    } catch {
++      try {
++        child.kill(signal);
++      } catch {}
++    }
++  };
++  const cancelMediaJob = (jobId) => {
++    const id2 = normalizeJobId(jobId);
++    const children = id2 ? mediaJobs.get(id2) : null;
++    if (children) {
++      for (const child of children) {
++        terminateMediaProcess(child);
++        const timer = setTimeout(() => {
++          terminateMediaProcess(child, "SIGKILL");
++        }, 1200);
++        timer.unref?.();
++      }
++      mediaJobs.delete(id2);
++    }
++    const cleanupTimer = setTimeout(() => cleanupMediaTemps(id2), 1400);
++    cleanupTimer.unref?.();
++    return children?.size || 0;
++  };
++  const runMediaProcess = (file, args, opts = {}) =>
++    new Promise((resolve, reject) => {
++      const jobId = normalizeJobId(opts.jobId);
++      const child = node_child_process.spawn(file, args, {
++        cwd: opts.cwd,
++        env: opts.env,
++        windowsHide: true,
++        detached: !isWin2,
++        stdio: ["ignore", "pipe", "pipe"],
++      });
++      if (jobId) {
++        if (!mediaJobs.has(jobId)) mediaJobs.set(jobId, new Set());
++        mediaJobs.get(jobId).add(child);
++      }
++      const limit = 128 * 1024;
++      let stdout = "";
++      let stderr = "";
++      const appendBounded = (current, chunk) =>
++        (current + chunk.toString()).slice(-limit);
++      child.stdout?.on("data", (chunk) => {
++        stdout = appendBounded(stdout, chunk);
++      });
++      child.stderr?.on("data", (chunk) => {
++        stderr = appendBounded(stderr, chunk);
++      });
++      const unregister = () => {
++        if (!jobId) return;
++        const children = mediaJobs.get(jobId);
++        children?.delete(child);
++        if (children?.size === 0) mediaJobs.delete(jobId);
++      };
++      child.once("error", (error) => {
++        unregister();
++        reject(error);
++      });
++      child.once("close", (code, signal) => {
++        const cancelled =
++          Boolean(signal) ||
++          Boolean(jobId && !mediaJobs.get(jobId)?.has(child));
++        unregister();
++        if (code === 0) {
++          resolve({ stdout, stderr });
++          return;
++        }
++        const error = new Error(
++          cancelled
++            ? "Media job cancelled."
++            : stderr || `${path.basename(file)} exited with code ${code}.`,
++        );
++        error.code = code;
++        error.signal = signal;
++        reject(error);
++      });
++    });
+   const ensureExecPerm = (dir) =>
+     isWin2
+       ? Promise.resolve()
+@@ -1528,19 +1648,23 @@
+       console.log("Failed to remove temporary file:", filePath, e);
+     }
+   };
+-  const probeMediaInfo = async (ffmpeg, inputPath) => {
+-    const { stderr } = await execFileP(ffmpeg, [
+-      "-hide_banner",
+-      "-i",
+-      inputPath,
+-      "-map",
+-      "0:v:0",
+-      "-frames:v",
+-      "1",
+-      "-f",
+-      "null",
+-      "-",
+-    ]);
++  const probeMediaInfo = async (ffmpeg, inputPath, jobId) => {
++    const { stderr } = await runMediaProcess(
++      ffmpeg,
++      [
++        "-hide_banner",
++        "-i",
++        inputPath,
++        "-map",
++        "0:v:0",
++        "-frames:v",
++        "1",
++        "-f",
++        "null",
++        "-",
++      ],
++      { jobId },
++    );
+     const match = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(stderr);
+     if (!match) throw new Error("Could not determine source duration.");
+     const dimensions = /Video:.*?(\d{2,5})x(\d{2,5})/.exec(stderr);
+@@ -1549,6 +1673,7 @@
+         Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]),
+       hasAudio: /Stream\s+#\S+.*Audio:/.test(stderr),
+       width: dimensions ? Number(dimensions[1]) : null,
++      height: dimensions ? Number(dimensions[2]) : null,
+     };
+   };
+   const changeMenu = (opt) => {
+@@ -1801,7 +1926,7 @@
+       return p.toBuffer();
+     },
+     mergeFramesIntermediate: async (_, opt) => {
+-      const { files, fps, outPath } = opt;
++      const { files, fps, outPath, jobId } = opt;
+       if (!Array.isArray(files) || files.length < 2) {
+         throw new Error("Merge Frames requires at least two source images.");
+       }
+@@ -1821,32 +1946,64 @@
+       }
+       lines.push(`file '${escapePath(files[files.length - 1])}'`);
+       fs.writeFileSync(listPath, `${lines.join("\n")}\n`);
++      trackMediaTemp(jobId, listPath);
++      trackMediaTemp(jobId, outPath);
+       try {
+         await ensureExecPerm(cwd);
+-        await execFileP(ffmpeg, [
+-          "-hide_banner",
+-          "-y",
+-          "-f",
+-          "concat",
+-          "-safe",
+-          "0",
+-          "-i",
+-          listPath,
+-          "-fps_mode",
+-          "vfr",
+-          "-c:v",
+-          "ffv1",
+-          "-level",
+-          "3",
+-          "-pix_fmt",
+-          "bgra",
+-          "-an",
+-          outPath,
+-        ]);
++        await runMediaProcess(
++          ffmpeg,
++          [
++            "-hide_banner",
++            "-y",
++            "-f",
++            "concat",
++            "-safe",
++            "0",
++            "-i",
++            listPath,
++            "-fps_mode",
++            "vfr",
++            "-c:v",
++            "ffv1",
++            "-level",
++            "3",
++            "-pix_fmt",
++            "bgra",
++            "-an",
++            outPath,
++          ],
++          { jobId },
++        );
+         return fs.statSync(outPath).size;
+       } finally {
+         safeUnlink(listPath);
+       }
++    },
++    execMedia: async (_, opt) => {
++      const { cmd, jobId, tempPaths = [] } = opt || {};
++      if (!Array.isArray(cmd) || !cmd.length) {
++        throw new Error("Missing media command.");
++      }
++      if (/[\\/]/.test(cmd[0] || "") || (cmd[0] || "").includes("..")) {
++        throw new Error(`非法的可执行文件名: ${cmd[0]}`);
++      }
++      const cwd = binDir();
++      const executablePath = path.join(cwd, `${cmd[0]}${isWin2 ? ".exe" : ""}`);
++      if (!fs.existsSync(executablePath)) {
++        throw new Error(`可执行文件不存在: ${executablePath}`);
++      }
++      for (const filePath of tempPaths) trackMediaTemp(jobId, filePath);
++      await ensureExecPerm(cwd);
++      const { stdout } = await runMediaProcess(executablePath, cmd.slice(1), {
++        jobId,
++      });
++      return stdout;
++    },
++    cancelMediaJob: (_, jobId) => cancelMediaJob(jobId),
++    finishMediaJob: (_, jobId) => {
++      cancelMediaJob(jobId);
++      cleanupMediaTemps(jobId);
++      return true;
+     },
+     // sharp 元数据（merge / workflow 用；getMeta 带平台兜底，这个是纯 sharp）
+     sharpMetadata: (_, opt) => {
+@@ -2200,15 +2357,19 @@
+         loop,
+         loseless,
+         targetFileSizeKb,
++        jobId,
+       } = opt;
+       const cwd = binDir();
+       const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
+       const filter = `fps=${fps || 10},scale=${scale || 320}:-1:flags=lanczos`;
+-      const vtemp = (ext) =>
+-        path.join(
++      const vtemp = (ext) => {
++        const tempPath = path.join(
+           app2.getPath("temp"),
+           `xpic_vtmp_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`,
+         );
++        trackMediaTemp(jobId, tempPath);
++        return tempPath;
++      };
+       const moveInto = (tempPath) => {
+         const destDir = path.dirname(outPath);
+         if (!fs.existsSync(destDir)) {
+@@ -2301,7 +2462,7 @@
+           10 * 1e3,
+           Math.floor(Number(targetFileSizeKb) * 1e3),
+         );
+-        const media = await probeMediaInfo(ffmpeg, inputPath);
++        const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
+         const reserve = Math.max(4096, Math.floor(targetBytes * 0.02));
+         const audioBitrate = media.hasAudio ? 64 : 0;
+         const audioBytes = (audioBitrate * 1e3 * media.duration) / 8;
+@@ -2349,17 +2510,21 @@
+               ...profile.videoArgs,
+             ];
+             if (profile.twoPass) {
+-              await execFileP(ffmpeg, [
+-                ...video,
+-                "-an",
+-                "-pass",
+-                "1",
+-                "-passlogfile",
+-                passlog,
+-                "-f",
+-                "null",
+-                nullOutput,
+-              ]);
++              await runMediaProcess(
++                ffmpeg,
++                [
++                  ...video,
++                  "-an",
++                  "-pass",
++                  "1",
++                  "-passlogfile",
++                  passlog,
++                  "-f",
++                  "null",
++                  nullOutput,
++                ],
++                { jobId },
++              );
+             }
+             const finalArgs = [...video];
+             if (media.hasAudio) {
+@@ -2378,7 +2543,7 @@
+               finalArgs.push("-pass", "2", "-passlogfile", passlog);
+             }
+             finalArgs.push(...profile.outputArgs, tempPath);
+-            await execFileP(ffmpeg, finalArgs);
++            await runMediaProcess(ffmpeg, finalArgs, { jobId });
+             const size = fs.statSync(tempPath).size;
+             for (const name of fs.readdirSync(path.dirname(passlog))) {
+               if (name.startsWith(path.basename(passlog))) {
+@@ -2428,7 +2593,7 @@
+         }
+       };
+       const encodeVideo = async (profile) => {
+-        const media = await probeMediaInfo(ffmpeg, inputPath);
++        const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
+         const tempPath = vtemp(`.${toFormat}`);
+         const requestedFps = Math.max(0, Number(fps) || 0);
+         const requestedScale = Math.max(0, Number(scale) || 0);
+@@ -2468,7 +2633,7 @@
+           args.push("-an");
+         }
+         args.push(...profile.outputArgs, tempPath);
+-        await execFileP(ffmpeg, args);
++        await runMediaProcess(ffmpeg, args, { jobId });
+         moveInto(tempPath);
+       };
+       const encodeAnimationTarget = async () => {
+@@ -2478,6 +2643,24 @@
+         );
+         const maxScale = Math.max(20, Number(scale) || 320);
+         let currentScale = maxScale;
++        if (toFormat === "webp") {
++          const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
++          const outputFps = Math.max(1, Number(fps) || 10);
++          const estimatedFrames = Math.max(
++            1,
++            Math.ceil(media.duration * outputFps),
++          );
++          const aspect =
++            media.width && media.height ? media.width / media.height : 16 / 9;
++          const targetPixelsPerFrame = targetBytes / estimatedFrames / 0.004;
++          const targetAwareWidth = Math.floor(
++            Math.sqrt(targetPixelsPerFrame * aspect),
++          );
++          currentScale = Math.max(
++            20,
++            Math.min(maxScale, targetAwareWidth || maxScale),
++          );
++        }
+         let fallbackPath = null;
+         let fallbackSize = Number.POSITIVE_INFINITY;
+         const runCandidate = async (tuning) => {
+@@ -2536,7 +2719,7 @@
+               candidate,
+             ];
+           }
+-          await execFileP(ffmpeg, args);
++          await runMediaProcess(ffmpeg, args, { jobId });
+           return { path: candidate, size: fs.statSync(candidate).size };
+         };
+         try {
+@@ -2612,59 +2795,71 @@
+             }
+             if (toFormat === "webp") {
+               const q = { 2: 100, 1: 80, 0: 50 }[quality];
+-              return execFileP(ffmpeg, [
+-                "-hide_banner",
+-                "-y",
+-                "-i",
+-                inputPath,
+-                "-vf",
+-                filter,
+-                "-c:v",
+-                "libwebp",
+-                "-lossless",
+-                String(loseless ? 1 : 0),
+-                "-q:v",
+-                String(q),
+-                "-loop",
+-                String(loop ?? 0),
+-                "-preset",
+-                "picture",
+-                "-an",
+-                "-vsync",
+-                "0",
+-                outPath,
+-              ]).then(() => resolve(true));
++              return runMediaProcess(
++                ffmpeg,
++                [
++                  "-hide_banner",
++                  "-y",
++                  "-i",
++                  inputPath,
++                  "-vf",
++                  filter,
++                  "-c:v",
++                  "libwebp",
++                  "-lossless",
++                  String(loseless ? 1 : 0),
++                  "-q:v",
++                  String(q),
++                  "-loop",
++                  String(loop ?? 0),
++                  "-preset",
++                  "picture",
++                  "-an",
++                  "-vsync",
++                  "0",
++                  outPath,
++                ],
++                { jobId },
++              ).then(() => resolve(true));
+             }
+             if (toFormat === "gif") {
+               const q = { 2: 256, 1: 128, 0: 64 }[quality];
+-              return execFileP(ffmpeg, [
+-                "-hide_banner",
+-                "-y",
+-                "-i",
+-                inputPath,
+-                "-vf",
+-                `${filter},split[s0][s1];[s0]palettegen=max_colors=${q}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+-                "-loop",
+-                String(loop ?? 0),
+-                outPath,
+-              ]).then(() => resolve(true));
++              return runMediaProcess(
++                ffmpeg,
++                [
++                  "-hide_banner",
++                  "-y",
++                  "-i",
++                  inputPath,
++                  "-vf",
++                  `${filter},split[s0][s1];[s0]palettegen=max_colors=${q}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
++                  "-loop",
++                  String(loop ?? 0),
++                  outPath,
++                ],
++                { jobId },
++              ).then(() => resolve(true));
+             }
+             if (toFormat === "apng") {
+-              return execFileP(ffmpeg, [
+-                "-hide_banner",
+-                "-y",
+-                "-i",
+-                inputPath,
+-                "-vf",
+-                filter,
+-                "-plays",
+-                String(loop ?? 0),
+-                "-compression_level",
+-                String(quality),
+-                "-f",
+-                "apng",
+-                outPath,
+-              ]).then(() => resolve(true));
++              return runMediaProcess(
++                ffmpeg,
++                [
++                  "-hide_banner",
++                  "-y",
++                  "-i",
++                  inputPath,
++                  "-vf",
++                  filter,
++                  "-plays",
++                  String(loop ?? 0),
++                  "-compression_level",
++                  String(quality),
++                  "-f",
++                  "apng",
++                  outPath,
++                ],
++                { jobId },
++              ).then(() => resolve(true));
+             }
+             if (videoProfiles[toFormat]) {
+               if (Number(targetFileSizeKb) > 0) {
+@@ -2678,23 +2873,27 @@
+             }
+             const crf = { 0: 18, 1: 30, 2: 40 }[quality];
+             const tempPath = vtemp(path.extname(outPath));
+-            return execFileP(ffmpeg, [
+-              "-hide_banner",
+-              "-y",
+-              "-i",
+-              inputPath,
+-              "-c:v",
+-              "libx264",
+-              "-tag:v",
+-              "avc1",
+-              "-movflags",
+-              "faststart",
+-              "-crf",
+-              String(crf),
+-              "-preset",
+-              "superfast",
+-              tempPath,
+-            ]).then(() => {
++            return runMediaProcess(
++              ffmpeg,
++              [
++                "-hide_banner",
++                "-y",
++                "-i",
++                inputPath,
++                "-c:v",
++                "libx264",
++                "-tag:v",
++                "avc1",
++                "-movflags",
++                "faststart",
++                "-crf",
++                String(crf),
++                "-preset",
++                "superfast",
++                tempPath,
++              ],
++              { jobId },
++            ).then(() => {
+               moveInto(tempPath);
+               resolve(true);
+             });
+@@ -3385,7 +3584,52 @@
+       "Content-Length": `${stat2.size}`,
+       "Cache-Control": "no-store",
+     },
++  });
++};
++const thumbnailCache = new Map();
++const thumbnailPending = new Map();
++const thumbnailQueue = [];
++let thumbnailActive = 0;
++const runThumbnailTask = (task) =>
++  new Promise((resolve, reject) => {
++    const start = () => {
++      thumbnailActive += 1;
++      Promise.resolve()
++        .then(task)
++        .then(resolve, reject)
++        .finally(() => {
++          thumbnailActive -= 1;
++          thumbnailQueue.shift()?.();
++        });
++    };
++    if (thumbnailActive < 4) start();
++    else thumbnailQueue.push(start);
+   });
++const getThumbnail = async (targetPath) => {
++  const stat2 = await fs__namespace.stat(targetPath);
++  const cacheKey = `${targetPath}:${stat2.size}:${stat2.mtimeMs}`;
++  if (thumbnailCache.has(cacheKey)) return thumbnailCache.get(cacheKey);
++  if (thumbnailPending.has(cacheKey)) return thumbnailPending.get(cacheKey);
++  const pending = runThumbnailTask(() =>
++    sharp(targetPath)
++      .rotate()
++      .resize(256, 256, {
++        fit: "inside",
++        withoutEnlargement: true,
++      })
++      .webp({ quality: 72, effort: 3 })
++      .toBuffer(),
++  )
++    .then((buffer) => {
++      thumbnailCache.set(cacheKey, buffer);
++      while (thumbnailCache.size > 1024) {
++        thumbnailCache.delete(thumbnailCache.keys().next().value);
++      }
++      return buffer;
++    })
++    .finally(() => thumbnailPending.delete(cacheKey));
++  thumbnailPending.set(cacheKey, pending);
++  return pending;
+ };
+ const createWindow = () => {
+   const mainWindowState = windowStateKeeper({
+@@ -3607,6 +3851,19 @@
+       let { host, pathname } = new URL(request.url);
+       pathname = decodeURIComponent(pathname).slice(1);
+       host = decodeURIComponent(host);
++      if (host === THUMBNAIL_DOMAIN) {
++        return getThumbnail(pathname)
++          .then(
++            (buffer) =>
++              new Response(new Uint8Array(buffer), {
++                headers: {
++                  "Content-Type": "image/webp",
++                  "Cache-Control": "public, max-age=3600",
++                },
++              }),
++          )
++          .catch(() => streamFileResponse(pathname));
++      }
+       if (host === PICTURE_DOMAIN) {
+         const ext = path.extname(pathname).toLocaleLowerCase();
+         const browserNative = new Set([
+@@ -3710,6 +3967,24 @@
+   });
+   app.on("before-quit", () => {
+     console.log("before-quit");
++    for (const jobId of app.__xpicMediaJobs?.keys?.() || []) {
++      const children = app.__xpicMediaJobs.get(jobId);
++      for (const child of children || []) {
++        try {
++          if (process.platform === "win32") child.kill("SIGKILL");
++          else process.kill(-child.pid, "SIGKILL");
++        } catch {}
++      }
++    }
++    for (const paths of app.__xpicMediaTemps?.values?.() || []) {
++      for (const filePath of paths || []) {
++        try {
++          if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
++        } catch {}
++      }
++    }
++    app.__xpicMediaJobs?.clear?.();
++    app.__xpicMediaTemps?.clear?.();
+     app.__win__ = null;
+     app.exit();
+   });
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -28410,6 +28410,7 @@
+   return filesize$1(n2, { standard: "jedec" });
+ };
+ const PICTURE_DOMAIN = "show-me-picture-plz";
++const THUMBNAIL_DOMAIN = "show-me-thumbnail-plz";
+ const VIDEO_DOMAIN = "show-me-video-plz";
+ const SVGA_DOMAIN = "show-me-svga-plz";
+ const getImageSizeFromBase64Data = (data) => {
+@@ -39676,7 +39677,7 @@
+           fmt: String(config.toFormat || "").toUpperCase(),
+         })
+       : t2("flow.sub.idle"),
+-  async processFile(item, config, _globalConfig, outputDir) {
++  async processFile(item, config, _globalConfig, outputDir, jobId) {
+     const { pureName, outPath } = await resolveVideoOut(
+       item,
+       config.toFormat,
+@@ -39688,6 +39689,7 @@
+       toFormat: config.toFormat,
+       outPath,
+       targetFileSizeKb: targetSizeFor(config, config.toFormat),
++      jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+     return {
+@@ -39722,7 +39724,7 @@
+     n2
+       ? t2("flow.sub.rate", { n: n2, q: Number(config.quality) || 0 })
+       : t2("flow.sub.idle"),
+-  async processFile(item, config, _globalConfig, outputDir) {
++  async processFile(item, config, _globalConfig, outputDir, jobId) {
+     const fmt = (item.ext || "").slice(1);
+     const { pureName, outPath } = await resolveVideoOut(
+       item,
+@@ -39734,6 +39736,7 @@
+       quality: config.quality,
+       inputPath: item.path,
+       outPath,
++      jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+     return { outName: `${pureName}.${fmt}`, outPath, outSize: info.size };
+@@ -39816,7 +39819,7 @@
+           fmt: String(config.toFormat || "").toUpperCase(),
+         })
+       : t2("flow.sub.idle"),
+-  async processFile(item, config, _globalConfig, outputDir) {
++  async processFile(item, config, _globalConfig, outputDir, jobId) {
+     const toFormat = config.toFormat;
+     const { pureName, outPath } = await resolveVideoOut(
+       item,
+@@ -39834,6 +39837,7 @@
+       ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
+       loop: config.loop,
+       targetFileSizeKb: targetSizeFor(config, toFormat),
++      jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+     return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
+@@ -39909,6 +39913,7 @@
+           ext,
+           dir: _dir,
+           url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
++          thumb: `xpic://${THUMBNAIL_DOMAIN}/${encodeURIComponent(path)}`,
+           size: file.size,
+           meta: removeUnSerializable(meta),
+         };
+@@ -40021,7 +40026,13 @@
+           fmt: String(config.ext || "webp").toUpperCase(),
+         })
+       : t2("flow.sub.idle"),
+-  async processBatch({ files, config, outputDir, setProgress: setProgress2 }) {
++  async processBatch({
++    files,
++    config,
++    outputDir,
++    setProgress: setProgress2,
++    jobId,
++  }) {
+     const ext = config.ext || "webp";
+     const loop = config.loop ?? 0;
+     const d = config.d || Math.max(1, Math.round(1e3 / (config.zl || 10)));
+@@ -40047,6 +40058,7 @@
+           files: files.map((item) => item.path),
+           fps: config.zl || 10,
+           outPath: bridgePath,
++          jobId,
+         });
+         setProgress2(60);
+         await window.x("vConvert", {
+@@ -40057,6 +40069,7 @@
+           scale: files[0]?.meta?.width,
+           loop,
+           targetFileSizeKb: targetKb,
++          jobId,
+         });
+         info = await window.x("getFileInfo", outputPath);
+       } else {
+@@ -40069,7 +40082,11 @@
+         cmdArr.push("-o");
+         cmdArr.push(fakePath);
+         setProgress2(25);
+-        await window.x("exec", cmdArr);
++        await window.x("execMedia", {
++          cmd: cmdArr,
++          jobId,
++          tempPaths: [fakePath],
++        });
+         setProgress2(70);
+         info = await window.x("sharpToFile", {
+           inputPath: fakePath,
+@@ -40082,6 +40099,7 @@
+     } finally {
+       await window.x("removeFile", fakePath);
+       await window.x("removeFile", bridgePath);
++      await window.x("finishMediaJob", jobId);
+     }
+     const meta =
+       ext === "webm"
+@@ -40745,6 +40763,7 @@
+             config,
+             globalConfig,
+             outputDir,
++            `flow-${runId}`,
+           );
+           if (!alive()) return;
+           store.dispatch(
+@@ -40819,6 +40838,7 @@
+       window.pj(files[0].dir || "", globalConfig.defaultOutputDir);
+     store.dispatch(startProcessing());
+     const runId = store.getState().session.runId;
++    const jobId = `flow-${runId}`;
+     const alive = () => store.getState().session.runId === runId;
+     if (mod2.processBatch) {
+       files.forEach((f2) =>
+@@ -40830,6 +40850,7 @@
+           config,
+           globalConfig,
+           outputDir,
++          jobId,
+           setProgress: (p2) => {
+             if (alive()) store.dispatch(setSessionProgress(p2));
+           },
+@@ -40847,6 +40868,7 @@
+       return;
+     }
+     await processList(files, config, globalConfig, outputDir, runId);
++    await window.x("finishMediaJob", `flow-${runId}`);
+     finishAndReport(outputDir, runId);
+   }, [mod2, processList, finishAndReport]);
+   const retryFailed = reactExports.useCallback(async () => {
+@@ -40865,11 +40887,14 @@
+     store.dispatch(retryStart(failed.map((f2) => f2.id)));
+     const runId = store.getState().session.runId;
+     await processList(failed, config, globalConfig, outputDir, runId);
++    await window.x("finishMediaJob", `flow-${runId}`);
+     finishAndReport(outputDir, runId);
+   }, [mod2, processList, finishAndReport]);
+   retryFailedRef.current = retryFailed;
+   const cancel = reactExports.useCallback(() => {
++    const runId = store.getState().session.runId;
+     store.dispatch(cancelProcessing());
++    void window.x("cancelMediaJob", `flow-${runId}`).catch(() => {});
+   }, []);
+   const reveal = reactExports.useCallback(() => {
+     const session = store.getState().session;
+@@ -40907,7 +40932,7 @@
+ const Thumb = ({ f: f2, className }) =>
+   /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
+     className,
+-    src: f2.poster || f2.url,
++    src: f2.poster || f2.thumb || f2.url,
+     draggable: false,
+     loading: "lazy",
+     decoding: "async",
