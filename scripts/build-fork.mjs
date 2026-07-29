@@ -45,7 +45,8 @@ async function formatBundle(filePath) {
 
 try {
   const info = await fs.stat(sourceAsar);
-  if (!info.isFile()) throw new Error(`Missing base app archive: ${sourceAsar}`);
+  if (!info.isFile())
+    throw new Error(`Missing base app archive: ${sourceAsar}`);
 
   asar.extractAll(sourceAsar, extracted);
   const packagedJsonPath = path.join(extracted, "package.json");
@@ -70,9 +71,32 @@ try {
   ]);
   run("patch", ["-p1", "-d", extracted, "-i", patchPath]);
 
+  const rendererHtml = path.join(extracted, "out", "renderer", "index.html");
+  const rendererName = path.basename(rendererBundle);
+  const rendererSource = await fs.readFile(rendererBundle);
+  const rendererHash = createHash("sha256")
+    .update(rendererSource)
+    .digest("hex")
+    .slice(0, 12);
+  const cacheBustedName = `index-fork-${rendererHash}.js`;
+  const cacheBustedBundle = path.join(rendererAssets, cacheBustedName);
+  const html = await fs.readFile(rendererHtml, "utf8");
+  const rendererReference = `./assets/${rendererName}`;
+  if (!html.includes(rendererReference)) {
+    throw new Error(`Renderer reference was not found: ${rendererReference}`);
+  }
+  await fs.rename(rendererBundle, cacheBustedBundle);
+  await fs.writeFile(
+    rendererHtml,
+    html.replaceAll(rendererReference, `./assets/${cacheBustedName}`),
+  );
+
   packagedJson.productName = "xPic Fork";
-  packagedJson.version = "2.1.3-fork.1";
-  await fs.writeFile(packagedJsonPath, `${JSON.stringify(packagedJson, null, 2)}\n`);
+  packagedJson.version = "2.1.3-fork.2";
+  await fs.writeFile(
+    packagedJsonPath,
+    `${JSON.stringify(packagedJson, null, 2)}\n`,
+  );
 
   await asar.createPackageWithOptions(extracted, packedAsar, {
     unpackDir:
@@ -81,12 +105,7 @@ try {
   await fs.mkdir(path.dirname(outputApp), { recursive: true });
   await fs.rm(outputApp, { recursive: true, force: true });
   run("ditto", [baseApp, outputApp]);
-  const outputAsar = path.join(
-    outputApp,
-    "Contents",
-    "Resources",
-    "app.asar",
-  );
+  const outputAsar = path.join(outputApp, "Contents", "Resources", "app.asar");
   await fs.copyFile(packedAsar, outputAsar);
   const outputUnpacked = `${outputAsar}.unpacked`;
   await fs.rm(outputUnpacked, { recursive: true, force: true });
@@ -98,6 +117,7 @@ try {
         fork: "tdw46/xPic",
         baseVersion: "2.1.3",
         feature: "per-format-target-output-size",
+        rendererAsset: cacheBustedName,
       },
       null,
       2,
@@ -127,13 +147,7 @@ try {
     "com.tdw46.xpic.fork",
     plist,
   ]);
-  run("plutil", [
-    "-replace",
-    "CFBundleVersion",
-    "-string",
-    "2.1.3.1",
-    plist,
-  ]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.2", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

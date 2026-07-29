@@ -68,7 +68,7 @@
        } = opt;
        const cwd = binDir();
        const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
-@@ -2126,11 +2166,387 @@
+@@ -2126,11 +2166,402 @@
          if (!fs.existsSync(destDir)) {
            fs.mkdirSync(destDir, { recursive: true });
          }
@@ -79,7 +79,7 @@
 +          fs.copyFileSync(tempPath, outPath);
 +          safeUnlink(tempPath);
 +        }
-       };
++      };
 +      const videoProfiles = {
 +        mp4: {
 +          videoCodec: "libx264",
@@ -178,11 +178,19 @@
 +          for (let attempt = 0; attempt < 7; attempt += 1) {
 +            const tempPath = vtemp(`.${toFormat}`);
 +            const passlog = vtemp(".pass");
-+            const videoFilter = scaleWidth
-+              ? ["-vf", `scale=${scaleWidth}:-2:flags=lanczos`]
-+              : profile.pixelFormat === "yuv420p"
-+                ? ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
-+                : [];
++            const requestedFps = Math.max(0, Number(fps) || 0);
++            const requestedScale =
++              scaleWidth || Math.max(0, Number(scale) || 0);
++            const filters = [];
++            if (requestedFps) filters.push(`fps=${requestedFps}`);
++            if (requestedScale) {
++              filters.push(`scale=${requestedScale}:-2:flags=lanczos`);
++            } else if (profile.pixelFormat === "yuv420p") {
++              filters.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
++            }
++            const videoFilter = filters.length
++              ? ["-vf", filters.join(",")]
++              : [];
 +            const video = [
 +              "-hide_banner",
 +              "-y",
@@ -281,10 +289,16 @@
 +      const encodeVideo = async (profile) => {
 +        const media = await probeMediaInfo(ffmpeg, inputPath);
 +        const tempPath = vtemp(`.${toFormat}`);
-+        const videoFilter =
-+          profile.pixelFormat === "yuv420p"
-+            ? ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
-+            : [];
++        const requestedFps = Math.max(0, Number(fps) || 0);
++        const requestedScale = Math.max(0, Number(scale) || 0);
++        const filters = [];
++        if (requestedFps) filters.push(`fps=${requestedFps}`);
++        if (requestedScale) {
++          filters.push(`scale=${requestedScale}:-2:flags=lanczos`);
++        } else if (profile.pixelFormat === "yuv420p") {
++          filters.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
++        }
++        const videoFilter = filters.length ? ["-vf", filters.join(",")] : [];
 +        const args = [
 +          "-hide_banner",
 +          "-y",
@@ -302,7 +316,8 @@
 +        if (profile.videoCodec === "libx264") {
 +          args.push("-crf", "23");
 +        } else if (profile.videoCodec === "libvpx-vp9") {
-+          args.push("-crf", "30", "-b:v", "0");
++          const webmCrf = { 0: 20, 1: 30, 2: 40 }[Number(quality)] ?? 30;
++          args.push("-crf", String(webmCrf), "-b:v", "0");
 +        } else {
 +          args.push("-q:v", "4");
 +        }
@@ -444,7 +459,7 @@
 +        } finally {
 +          safeUnlink(fallbackPath);
 +        }
-+      };
+       };
        return new Promise((resolve, reject) => {
          ensureExecPerm(cwd)
            .then(() => {
@@ -457,7 +472,7 @@
              if (toFormat === "webp") {
                const q = { 2: 100, 1: 80, 0: 50 }[quality];
                return execFileP(ffmpeg, [
-@@ -2143,7 +2559,7 @@
+@@ -2143,7 +2574,7 @@
                  "-c:v",
                  "libwebp",
                  "-lossless",
@@ -466,7 +481,7 @@
                  "-q:v",
                  String(q),
                  "-loop",
-@@ -2187,20 +2603,15 @@
+@@ -2187,20 +2618,15 @@
                  outPath,
                ]).then(() => resolve(true));
              }
@@ -575,11 +590,10 @@
    };
  }
  function makeStep(type) {
-@@ -39251,8 +39265,96 @@
-     ...recipe,
+@@ -39252,6 +39266,94 @@
      inputPath: item.path,
      outPath,
-+  });
+   });
 +}
 +const targetSizeFor = (config, format) =>
 +  Math.max(0, Number(config.targetFileSizes?.[format] || 0));
@@ -598,12 +612,12 @@
 +  const result = await window.x("sharpToFile", {
 +    inputBuffer: buffer,
 +    outPath: destination,
-   });
++  });
 +  if (destination !== outPath) {
 +    await window.x("moveFile", destination, outPath);
 +  }
 +  return result?.size || buffer.length;
- }
++}
 +async function writeSharpToTarget({
 +  recipe,
 +  item,
@@ -668,10 +682,9 @@
 +    width = Math.max(20, Math.floor(width * ratio));
 +  }
 +  return await writeBufferOut(lastSmallest, item, outPath, pureName, outFormat);
-+}
+ }
  const compress = {
    key: "compress",
-   labelKey: "nav.compress",
 @@ -39366,6 +39468,23 @@
            options: convertFormatOptions,
            onChange: (v2) => update({ toFormat: v2 }),
@@ -759,11 +772,12 @@
      });
      const info = await window.x("getFileInfo", outPath);
      return {
-@@ -39608,9 +39759,21 @@
+@@ -39608,9 +39759,22 @@
            options: [
              { label: "GIF", value: "gif" },
              { label: "WebP", value: "webp" },
 +            { label: "APNG", value: "apng" },
++            { label: "WebM", value: "webm" },
            ],
            onChange: (v2) => update({ toFormat: v2 }),
 +        }),
@@ -781,7 +795,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.animQuality"),
            value: config.quality,
-@@ -39669,6 +39832,7 @@
+@@ -39669,6 +39833,7 @@
        scale: config.scale,
        ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
        loop: config.loop,
@@ -789,7 +803,7 @@
      });
      const info = await window.x("getFileInfo", outPath);
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
-@@ -39766,6 +39930,7 @@
+@@ -39766,6 +39931,7 @@
  const FORMAT_SEG = [
    { label: "WebP", value: "webp" },
    { label: "GIF", value: "gif" },
@@ -797,7 +811,7 @@
  ];
  const merge$1 = {
    key: "merge",
-@@ -39796,14 +39961,27 @@
+@@ -39796,14 +39962,27 @@
            options: FORMAT_SEG,
            onChange: (v2) => update({ ext: v2 }),
          }),
@@ -831,7 +845,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
            label: t2("flow.fps"),
            value: zl,
-@@ -39839,7 +40017,12 @@
+@@ -39839,7 +40018,12 @@
        outputDir,
        `__xpic_temp_${stamp}_temp_xpic__.webp`,
      );
@@ -844,7 +858,7 @@
      const cmdArr = ["img2webp", "-loop", loop];
      for (const item of files) {
        cmdArr.push(item.path);
-@@ -39851,15 +40034,48 @@
+@@ -39851,15 +40035,48 @@
      setProgress2(25);
      await window.x("exec", cmdArr);
      setProgress2(70);
@@ -902,7 +916,7 @@
      setProgress2(100);
      const totalFrom = files.reduce((a, f2) => a + (f2.size || 0), 0);
      const outSize = info.size;
-@@ -39874,7 +40090,10 @@
+@@ -39874,7 +40091,10 @@
          name: `${name}.${ext}`,
          path: outputPath,
          size: outSize,

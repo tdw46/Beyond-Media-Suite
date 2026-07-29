@@ -50,8 +50,12 @@ video-to-animation, and every video output format exposed by xPic:
   result fits the requested ceiling, with a small audio and container budget;
 - Merge Frames can create WebP, GIF, or alpha-capable WebM and remembers a
   separate target size for each of those formats;
+- Video → To Animation can output GIF, WebP, APNG, or WebM, including its own
+  remembered target size, FPS, and output width;
 - video input accepts GIF, animated WebP, and APNG, and WebM is available as an
   output format;
+- fork builds use a content-hashed renderer filename so an older Chromium cache
+  cannot hide newly installed controls;
 - fork builds do not download upstream app updates over the patch.
 
 The upstream repository publishes the website and releases, but not the
