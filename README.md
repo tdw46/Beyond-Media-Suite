@@ -36,6 +36,36 @@
 
 Light & dark themes, multiple accent colors, English & Chinese interface. Updates are checked automatically inside the app.
 
+## Tyler's target-size fork
+
+This fork adds a **Target output size (KB)** control to image conversion,
+video-to-animation, and every video output format exposed by xPic:
+
+- target values are remembered independently for each output format;
+- still and animated images use a quality-first binary search, then reduce
+  dimensions proportionally only when quality alone cannot meet the ceiling;
+- MP4, MKV, MOV, FLV, and TS use measured two-pass H.264; WebM uses measured
+  two-pass VP9 with alpha support; AVI and WMV use iterative native encoders;
+- video bitrate is recalibrated against the actual encoded byte size until the
+  result fits the requested ceiling, with a small audio and container budget;
+- video input accepts GIF, animated WebP, and APNG, and WebM is available as an
+  output format;
+- fork builds do not download upstream app updates over the patch.
+
+The upstream repository publishes the website and releases, but not the
+unbundled Electron application source. To keep this change reviewable and
+repeatable, the fork stores a narrow patch against the formatted xPic 2.1.3
+application bundle plus a build script.
+
+```sh
+npm install
+npm test
+npm run build:fork -- ./official-xPic-2.1.3.app ./dist/xPic.app
+```
+
+The first argument must be an unmodified xPic 2.1.3 application bundle. The
+build is ad-hoc signed for local macOS use.
+
 ## Download
 
 Grab the installer for your platform from the [latest release](https://github.com/Xheldon/xPic/releases/latest), or from the [website](https://xpic.xheldon.com) — it always points to the newest version.

@@ -1,0 +1,772 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1279,6 +1279,12 @@
+     },
+     checkUpdate: (_, isAuto = false) => {
+       app2._isAuto = isAuto;
++      if (fs.existsSync(path.join(process.resourcesPath, "xpic-fork.json"))) {
++        if (!isAuto) {
++          jsNotify("info", "Fork builds are updated from your GitHub fork.");
++        }
++        return;
++      }
+       if (!app2.isPackaged) {
+         lg("开发模式跳过更新检查");
+         if (!isAuto) {
+@@ -1306,6 +1312,9 @@
+     // 设置页「检查更新」：同步返回状态，供设置窗口内联显示。
+     // 返回：'dev' | 'downloaded' | 'downloading' | 'latest' | 'error'
+     checkUpdateNow: async (_) => {
++      if (fs.existsSync(path.join(process.resourcesPath, "xpic-fork.json"))) {
++        return "dev";
++      }
+       if (!app2.isPackaged) return "dev";
+       const config = store2.get("xpic-config") || {};
+       if (config?.app?.updateDownloaded) return "downloaded";
+@@ -1512,6 +1521,36 @@
+     isWin2
+       ? Promise.resolve()
+       : execFileP("chmod", ["-R", "+x", dir]).then(() => void 0);
++  const safeUnlink = (filePath) => {
++    try {
++      if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
++    } catch (e) {
++      console.log("Failed to remove temporary file:", filePath, e);
++    }
++  };
++  const probeMediaInfo = async (ffmpeg, inputPath) => {
++    const { stderr } = await execFileP(ffmpeg, [
++      "-hide_banner",
++      "-i",
++      inputPath,
++      "-map",
++      "0:v:0",
++      "-frames:v",
++      "1",
++      "-f",
++      "null",
++      "-",
++    ]);
++    const match = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(stderr);
++    if (!match) throw new Error("Could not determine source duration.");
++    const dimensions = /Video:.*?(\d{2,5})x(\d{2,5})/.exec(stderr);
++    return {
++      duration:
++        Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]),
++      hasAudio: /Stream\s+#\S+.*Audio:/.test(stderr),
++      width: dimensions ? Number(dimensions[1]) : null,
++    };
++  };
+   const changeMenu = (opt) => {
+     const { id, email, newId } = opt;
+     const menu22 = electron.Menu.getApplicationMenu();
+@@ -2112,6 +2151,7 @@
+         scale,
+         loop,
+         loseless,
++        targetFileSizeKb,
+       } = opt;
+       const cwd = binDir();
+       const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
+@@ -2126,11 +2166,387 @@
+         if (!fs.existsSync(destDir)) {
+           fs.mkdirSync(destDir, { recursive: true });
+         }
+-        fs.renameSync(tempPath, outPath);
++        try {
++          fs.renameSync(tempPath, outPath);
++        } catch (e) {
++          fs.copyFileSync(tempPath, outPath);
++          safeUnlink(tempPath);
++        }
+       };
++      const videoProfiles = {
++        mp4: {
++          videoCodec: "libx264",
++          pixelFormat: "yuv420p",
++          audioCodec: "aac",
++          twoPass: true,
++          videoArgs: ["-preset", "slow"],
++          outputArgs: ["-movflags", "+faststart"],
++        },
++        mkv: {
++          videoCodec: "libx264",
++          pixelFormat: "yuv420p",
++          audioCodec: "aac",
++          twoPass: true,
++          videoArgs: ["-preset", "slow"],
++          outputArgs: [],
++        },
++        avi: {
++          videoCodec: "mpeg4",
++          pixelFormat: "yuv420p",
++          audioCodec: "libmp3lame",
++          twoPass: false,
++          videoArgs: [],
++          outputArgs: [],
++        },
++        mov: {
++          videoCodec: "libx264",
++          pixelFormat: "yuv420p",
++          audioCodec: "aac",
++          twoPass: true,
++          videoArgs: ["-preset", "slow"],
++          outputArgs: ["-movflags", "+faststart"],
++        },
++        webm: {
++          videoCodec: "libvpx-vp9",
++          pixelFormat: "yuva420p",
++          audioCodec: "libopus",
++          twoPass: true,
++          videoArgs: [
++            "-deadline",
++            "good",
++            "-row-mt",
++            "1",
++            "-threads",
++            "8",
++            "-auto-alt-ref",
++            "0",
++          ],
++          outputArgs: ["-fps_mode", "vfr"],
++        },
++        flv: {
++          videoCodec: "libx264",
++          pixelFormat: "yuv420p",
++          audioCodec: "aac",
++          twoPass: true,
++          videoArgs: ["-preset", "slow"],
++          outputArgs: [],
++        },
++        ts: {
++          videoCodec: "libx264",
++          pixelFormat: "yuv420p",
++          audioCodec: "aac",
++          twoPass: true,
++          videoArgs: ["-preset", "slow"],
++          outputArgs: [],
++        },
++        wmv: {
++          videoCodec: "wmv2",
++          pixelFormat: "yuv420p",
++          audioCodec: "wmav2",
++          twoPass: false,
++          videoArgs: [],
++          outputArgs: [],
++        },
++      };
++      const encodeTargetVideo = async (profile) => {
++        const targetBytes = Math.max(
++          10 * 1e3,
++          Math.floor(Number(targetFileSizeKb) * 1e3),
++        );
++        const media = await probeMediaInfo(ffmpeg, inputPath);
++        const reserve = Math.max(4096, Math.floor(targetBytes * 0.02));
++        const audioBitrate = media.hasAudio ? 64 : 0;
++        const audioBytes = (audioBitrate * 1e3 * media.duration) / 8;
++        let bitrate = Math.max(
++          8,
++          Math.floor(
++            ((targetBytes - reserve - audioBytes) * 8) / media.duration / 1e3,
++          ),
++        );
++        const nullOutput = isWin2 ? "NUL" : "/dev/null";
++        let bestUnder = null;
++        let bestSize = 0;
++        let scaleWidth = null;
++        try {
++          for (let attempt = 0; attempt < 7; attempt += 1) {
++            const tempPath = vtemp(`.${toFormat}`);
++            const passlog = vtemp(".pass");
++            const videoFilter = scaleWidth
++              ? ["-vf", `scale=${scaleWidth}:-2:flags=lanczos`]
++              : profile.pixelFormat === "yuv420p"
++                ? ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
++                : [];
++            const video = [
++              "-hide_banner",
++              "-y",
++              "-i",
++              inputPath,
++              "-map",
++              "0:v:0",
++              "-c:v",
++              profile.videoCodec,
++              "-pix_fmt",
++              profile.pixelFormat,
++              "-b:v",
++              `${bitrate}k`,
++              ...videoFilter,
++              ...profile.videoArgs,
++            ];
++            if (profile.twoPass) {
++              await execFileP(ffmpeg, [
++                ...video,
++                "-an",
++                "-pass",
++                "1",
++                "-passlogfile",
++                passlog,
++                "-f",
++                "null",
++                nullOutput,
++              ]);
++            }
++            const finalArgs = [...video];
++            if (media.hasAudio) {
++              finalArgs.push(
++                "-map",
++                "0:a?",
++                "-c:a",
++                profile.audioCodec,
++                "-b:a",
++                `${audioBitrate}k`,
++              );
++            } else {
++              finalArgs.push("-an");
++            }
++            if (profile.twoPass) {
++              finalArgs.push("-pass", "2", "-passlogfile", passlog);
++            }
++            finalArgs.push(...profile.outputArgs, tempPath);
++            await execFileP(ffmpeg, finalArgs);
++            const size = fs.statSync(tempPath).size;
++            for (const name of fs.readdirSync(path.dirname(passlog))) {
++              if (name.startsWith(path.basename(passlog))) {
++                safeUnlink(path.join(path.dirname(passlog), name));
++              }
++            }
++            if (size <= targetBytes) {
++              if (size > bestSize) {
++                safeUnlink(bestUnder);
++                bestUnder = tempPath;
++                bestSize = size;
++              } else {
++                safeUnlink(tempPath);
++              }
++              if (size >= targetBytes * 0.985) break;
++              bitrate = Math.max(
++                bitrate + 1,
++                Math.floor(bitrate * Math.min(1.5, targetBytes / size) * 0.992),
++              );
++            } else {
++              safeUnlink(tempPath);
++              const nextBitrate = Math.max(
++                8,
++                Math.floor(bitrate * (targetBytes / size) * 0.97),
++              );
++              if (nextBitrate === bitrate && bitrate === 8) {
++                if (!media.width || media.width <= 20) break;
++                scaleWidth = Math.max(
++                  20,
++                  Math.floor(
++                    media.width * Math.sqrt(targetBytes / size) * 0.94,
++                  ),
++                );
++              }
++              bitrate = nextBitrate;
++            }
++          }
++          if (!bestUnder) {
++            throw new Error(
++              `Unable to encode ${toFormat.toUpperCase()} at or below ${targetFileSizeKb} KB.`,
++            );
++          }
++          moveInto(bestUnder);
++          bestUnder = null;
++        } finally {
++          safeUnlink(bestUnder);
++        }
++      };
++      const encodeVideo = async (profile) => {
++        const media = await probeMediaInfo(ffmpeg, inputPath);
++        const tempPath = vtemp(`.${toFormat}`);
++        const videoFilter =
++          profile.pixelFormat === "yuv420p"
++            ? ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
++            : [];
++        const args = [
++          "-hide_banner",
++          "-y",
++          "-i",
++          inputPath,
++          "-map",
++          "0:v:0",
++          "-c:v",
++          profile.videoCodec,
++          "-pix_fmt",
++          profile.pixelFormat,
++          ...videoFilter,
++          ...profile.videoArgs,
++        ];
++        if (profile.videoCodec === "libx264") {
++          args.push("-crf", "23");
++        } else if (profile.videoCodec === "libvpx-vp9") {
++          args.push("-crf", "30", "-b:v", "0");
++        } else {
++          args.push("-q:v", "4");
++        }
++        if (media.hasAudio) {
++          args.push("-map", "0:a?", "-c:a", profile.audioCodec, "-b:a", "96k");
++        } else {
++          args.push("-an");
++        }
++        args.push(...profile.outputArgs, tempPath);
++        await execFileP(ffmpeg, args);
++        moveInto(tempPath);
++      };
++      const encodeAnimationTarget = async () => {
++        const targetBytes = Math.max(
++          10 * 1e3,
++          Math.floor(Number(targetFileSizeKb) * 1e3),
++        );
++        const maxScale = Math.max(20, Number(scale) || 320);
++        let currentScale = maxScale;
++        let fallbackPath = null;
++        let fallbackSize = Number.POSITIVE_INFINITY;
++        const runCandidate = async (tuning) => {
++          const candidate = vtemp(`.${toFormat}`);
++          const targetFilter = `fps=${fps || 10},scale=${currentScale}:-1:flags=lanczos`;
++          let args;
++          if (toFormat === "webp") {
++            args = [
++              "-hide_banner",
++              "-y",
++              "-i",
++              inputPath,
++              "-vf",
++              targetFilter,
++              "-c:v",
++              "libwebp_anim",
++              "-lossless",
++              "0",
++              "-compression_level",
++              "6",
++              "-q:v",
++              String(tuning),
++              "-loop",
++              String(loop ?? 0),
++              "-an",
++              "-fps_mode",
++              "vfr",
++              candidate,
++            ];
++          } else if (toFormat === "gif") {
++            args = [
++              "-hide_banner",
++              "-y",
++              "-i",
++              inputPath,
++              "-vf",
++              `${targetFilter},split[s0][s1];[s0]palettegen=max_colors=${tuning}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
++              "-loop",
++              String(loop ?? 0),
++              candidate,
++            ];
++          } else {
++            args = [
++              "-hide_banner",
++              "-y",
++              "-i",
++              inputPath,
++              "-vf",
++              targetFilter,
++              "-plays",
++              String(loop ?? 0),
++              "-compression_level",
++              "9",
++              "-f",
++              "apng",
++              candidate,
++            ];
++          }
++          await execFileP(ffmpeg, args);
++          return { path: candidate, size: fs.statSync(candidate).size };
++        };
++        try {
++          for (let scaleAttempt = 0; scaleAttempt < 7; scaleAttempt += 1) {
++            let low = toFormat === "gif" ? 16 : 1;
++            let high = toFormat === "gif" ? 256 : 100;
++            let best = null;
++            let smallest = null;
++            const attempts = toFormat === "apng" ? 1 : 8;
++            for (let i = 0; i < attempts; i += 1) {
++              const tuning =
++                toFormat === "apng" ? 9 : Math.floor((low + high) / 2);
++              const result = await runCandidate(tuning);
++              if (result.size <= targetBytes) {
++                if (best && best.path !== result.path) safeUnlink(best.path);
++                best = result;
++                low = tuning + 1;
++              } else {
++                high = tuning - 1;
++              }
++              if (!smallest || result.size < smallest.size) {
++                if (
++                  smallest &&
++                  smallest.path !== best?.path &&
++                  smallest.path !== result.path
++                ) {
++                  safeUnlink(smallest.path);
++                }
++                smallest = result;
++              } else if (result.path !== best?.path) {
++                safeUnlink(result.path);
++              }
++              if (low > high) break;
++            }
++            if (best) {
++              if (smallest && smallest.path !== best.path) {
++                safeUnlink(smallest.path);
++              }
++              moveInto(best.path);
++              return;
++            }
++            if (smallest && smallest.size < fallbackSize) {
++              safeUnlink(fallbackPath);
++              fallbackPath = smallest.path;
++              fallbackSize = smallest.size;
++            } else {
++              safeUnlink(smallest?.path);
++            }
++            if (!smallest || currentScale <= 20) break;
++            const ratio = Math.min(
++              0.92,
++              Math.sqrt(targetBytes / smallest.size) * 0.96,
++            );
++            currentScale = Math.max(20, Math.floor(currentScale * ratio));
++          }
++          if (!fallbackPath) {
++            throw new Error("Unable to produce a target-size animation.");
++          }
++          moveInto(fallbackPath);
++          fallbackPath = null;
++        } finally {
++          safeUnlink(fallbackPath);
++        }
++      };
+       return new Promise((resolve, reject) => {
+         ensureExecPerm(cwd)
+           .then(() => {
++            if (
++              Number(targetFileSizeKb) > 0 &&
++              ["webp", "gif", "apng"].includes(toFormat)
++            ) {
++              return encodeAnimationTarget().then(() => resolve(true));
++            }
+             if (toFormat === "webp") {
+               const q = { 2: 100, 1: 80, 0: 50 }[quality];
+               return execFileP(ffmpeg, [
+@@ -2143,7 +2559,7 @@
+                 "-c:v",
+                 "libwebp",
+                 "-lossless",
+-                String(loseless ? 0 : 1),
++                String(loseless ? 1 : 0),
+                 "-q:v",
+                 String(q),
+                 "-loop",
+@@ -2187,20 +2603,15 @@
+                 outPath,
+               ]).then(() => resolve(true));
+             }
+-            if (toFormat) {
+-              const tempPath2 = vtemp(path.extname(outPath));
+-              return execFileP(ffmpeg, [
+-                "-hide_banner",
+-                "-y",
+-                "-i",
+-                inputPath,
+-                "-c",
+-                "copy",
+-                tempPath2,
+-              ]).then(() => {
+-                moveInto(tempPath2);
+-                resolve(true);
+-              });
++            if (videoProfiles[toFormat]) {
++              if (Number(targetFileSizeKb) > 0) {
++                return encodeTargetVideo(videoProfiles[toFormat]).then(() =>
++                  resolve(true),
++                );
++              }
++              return encodeVideo(videoProfiles[toFormat]).then(() =>
++                resolve(true),
++              );
+             }
+             const crf = { 0: 18, 1: 30, 2: 40 }[quality];
+             const tempPath = vtemp(path.extname(outPath));
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -22800,6 +22800,7 @@
+   initialConfig: {
+     toFormat: "webp",
+     quality: 80,
++    targetFileSizes: {},
+     compressionLevel: 6,
+     palette: true,
+     lossless: false,
+@@ -22855,12 +22856,14 @@
+     quality: 1,
+     loop: 0,
+     toFormat: "gif",
++    targetFileSizes: {},
+   },
+ });
+ const vConvertSlice = createConfigSlice({
+   name: "vconvert",
+   initialConfig: {
+     toFormat: "mov",
++    targetFileSizes: {},
+   },
+ });
+ const vCompressSlice = createConfigSlice({
+@@ -23415,6 +23418,8 @@
+   "flow.cropLock": "锁定比例",
+   "flow.cropTarget": "目标大小(KB)",
+   "flow.cropTargetHint": "通过调整质量逼近目标体积，PNG 格式效果有限。",
++  "flow.targetSize": "目标输出大小(KB)",
++  "flow.targetSizeHint": "填 0 关闭。每种输出格式会分别记住自己的目标值。",
+   "flow.cropArea": "裁剪区域",
+   "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
+   "flow.verb.svga": "预览",
+@@ -23799,6 +23804,9 @@
+   "flow.cropLock": "Lock ratio",
+   "flow.cropTarget": "Target (KB)",
+   "flow.cropTargetHint": "Approximated by adjusting quality; limited for PNG.",
++  "flow.targetSize": "Target output size (KB)",
++  "flow.targetSizeHint":
++    "Set 0 to disable. Each output format remembers its own target.",
+   "flow.cropArea": "Crop area",
+   "flow.cropApplyAll": "{n} more get the same crop",
+   "flow.verb.svga": "Preview",
+@@ -25935,13 +25943,16 @@
+   ".rm",
+   ".roq",
+   ".swf",
++  ".gif",
++  ".webp",
++  ".apng",
+ ];
+ const vWriteAccept = [
+   ".mp4",
+   ".mkv",
+   ".avi",
+   ".mov",
+-  // '.webm', // 不是通用的视频格式，如 mov 转 webm 的时候会报错：Only VP8 or VP9 or AV1 video and Vorbis or Opus audio and WebVTT subtitles are supported for WebM，懒得特殊处理了，先不支持
++  ".webm",
+   ".flv",
+   ".ts",
+   ".wmv",
+@@ -39253,6 +39264,94 @@
+     outPath,
+   });
+ }
++const targetSizeFor = (config, format) =>
++  Math.max(0, Number(config.targetFileSizes?.[format] || 0));
++const updateTargetSizeFor = (config, format, value) => ({
++  targetFileSizes: {
++    ...(config.targetFileSizes || {}),
++    [format]: Math.max(0, Number(value) || 0),
++  },
++});
++async function writeBufferOut(buffer, item, outPath, pureName, outFormat) {
++  let destination = outPath;
++  if (outPath === item.path) {
++    const cachePath = await window.x("getCachePath");
++    destination = window.pj(cachePath, `${pureName}.${outFormat}`);
++  }
++  const result = await window.x("sharpToFile", {
++    inputBuffer: buffer,
++    outPath: destination,
++  });
++  if (destination !== outPath) {
++    await window.x("moveFile", destination, outPath);
++  }
++  return result?.size || buffer.length;
++}
++async function writeSharpToTarget({
++  recipe,
++  item,
++  outPath,
++  pureName,
++  outFormat,
++  targetKb,
++}) {
++  const targetBytes = Math.max(1, Math.floor(targetKb * 1e3));
++  const sourceWidth = Math.max(1, Number(item.meta?.width) || 1);
++  let width = sourceWidth;
++  let lastSmallest = null;
++  for (let scaleAttempt = 0; scaleAttempt < 7; scaleAttempt += 1) {
++    let low = 1;
++    let high = 100;
++    let bestAtWidth = null;
++    lastSmallest = null;
++    for (let qualityAttempt = 0; qualityAttempt < 7; qualityAttempt += 1) {
++      const quality = Math.floor((low + high) / 2);
++      const isGif = outFormat === "gif";
++      const buffer = await window.x("sharpToBuffer", {
++        ...recipe,
++        inputPath: item.path,
++        ...(width < sourceWidth
++          ? { resize: { width, options: { fit: "inside" } } }
++          : {}),
++        formatOptions: {
++          ...(recipe.formatOptions || {}),
++          lossless: false,
++          nearLossless: false,
++          quality,
++          ...(isGif
++            ? { colors: Math.max(16, Math.round(16 + quality * 2.4)) }
++            : {}),
++        },
++      });
++      if (!lastSmallest || buffer.length < lastSmallest.length) {
++        lastSmallest = buffer;
++      }
++      if (buffer.length <= targetBytes) {
++        bestAtWidth = buffer;
++        low = quality + 1;
++      } else {
++        high = quality - 1;
++      }
++      if (low > high) break;
++    }
++    if (bestAtWidth) {
++      return await writeBufferOut(
++        bestAtWidth,
++        item,
++        outPath,
++        pureName,
++        outFormat,
++      );
++    }
++    if (!lastSmallest || width <= 20) break;
++    const ratio = Math.min(
++      0.92,
++      Math.sqrt(targetBytes / lastSmallest.length) * 0.96,
++    );
++    width = Math.max(20, Math.floor(width * ratio));
++  }
++  return await writeBufferOut(lastSmallest, item, outPath, pureName, outFormat);
++}
+ const compress = {
+   key: "compress",
+   labelKey: "nav.compress",
+@@ -39366,6 +39465,23 @@
+           options: convertFormatOptions,
+           onChange: (v2) => update({ toFormat: v2 }),
+         }),
++        sharpExts().includes(`.${config.toFormat}`)
++          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                  label: t2("flow.targetSize"),
++                  value: targetSizeFor(config, config.toFormat),
++                  min: 0,
++                  onChange: (v2) =>
++                    update(updateTargetSizeFor(config, config.toFormat, v2)),
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                  className: "x-cfg-note",
++                  children: t2("flow.targetSizeHint"),
++                }),
++              ],
++            })
++          : null,
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+           label: t2("flow.quality"),
+           value: config.quality,
+@@ -39488,6 +39604,18 @@
+         fromFormat: fmt,
+       });
+       return { outName, outPath, outSize: r22.size };
++    }
++    const targetKb = targetSizeFor(config, toFormat);
++    if (targetKb > 0) {
++      const outSize = await writeSharpToTarget({
++        recipe,
++        item,
++        outPath,
++        pureName,
++        outFormat: toFormat,
++        targetKb,
++      });
++      return { outName, outPath, outSize };
+     }
+     const r2 = await writeOut(recipe, item, outPath, pureName, toFormat);
+     return { outName, outPath, outSize: r2.size };
+@@ -39513,11 +39641,30 @@
+   updateConfig: updateVConvertConfig,
+   showSaving: true,
+   renderParams: ({ config, update, t: t2 }) =>
+-    /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
+-      label: t2("flow.outFormat"),
+-      value: config.toFormat,
+-      options: vWriteOptions,
+-      onChange: (v2) => update({ toFormat: v2 }),
++    /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++          label: t2("flow.outFormat"),
++          value: config.toFormat,
++          options: vWriteOptions,
++          onChange: (v2) => update({ toFormat: v2 }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++          children: [
++            /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++              label: t2("flow.targetSize"),
++              value: targetSizeFor(config, config.toFormat),
++              min: 0,
++              onChange: (v2) =>
++                update(updateTargetSizeFor(config, config.toFormat, v2)),
++            }),
++            /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++              className: "x-cfg-note",
++              children: t2("flow.targetSizeHint"),
++            }),
++          ],
++        }),
++      ],
+     }),
+   panelSub: (config, n2, t2) =>
+     n2
+@@ -39537,6 +39684,7 @@
+       inputPath: item.path,
+       toFormat: config.toFormat,
+       outPath,
++      targetFileSizeKb: targetSizeFor(config, config.toFormat),
+     });
+     const info = await window.x("getFileInfo", outPath);
+     return {
+@@ -39608,9 +39756,21 @@
+           options: [
+             { label: "GIF", value: "gif" },
+             { label: "WebP", value: "webp" },
++            { label: "APNG", value: "apng" },
+           ],
+           onChange: (v2) => update({ toFormat: v2 }),
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.targetSize"),
++          value: targetSizeFor(config, config.toFormat),
++          min: 0,
++          onChange: (v2) =>
++            update(updateTargetSizeFor(config, config.toFormat, v2)),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.targetSizeHint"),
++        }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+           label: t2("flow.animQuality"),
+           value: config.quality,
+@@ -39669,6 +39829,7 @@
+       scale: config.scale,
+       ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
+       loop: config.loop,
++      targetFileSizeKb: targetSizeFor(config, toFormat),
+     });
+     const info = await window.x("getFileInfo", outPath);
+     return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
