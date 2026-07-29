@@ -1,0 +1,691 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1926,7 +1926,7 @@
+       return p.toBuffer();
+     },
+     mergeFramesIntermediate: async (_, opt) => {
+-      const { files, fps, outPath, jobId } = opt;
++      const { files, fps, longestEdge, pixelFormat, outPath, jobId } = opt;
+       if (!Array.isArray(files) || files.length < 2) {
+         throw new Error("Merge Frames requires at least two source images.");
+       }
+@@ -1950,6 +1950,13 @@
+       trackMediaTemp(jobId, outPath);
+       try {
+         await ensureExecPerm(cwd);
++        const edge = Math.max(0, Math.round(Number(longestEdge) || 0));
++        const filters = edge
++          ? [
++              "-vf",
++              `scale=${edge}:${edge}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos`,
++            ]
++          : [];
+         await runMediaProcess(
+           ffmpeg,
+           [
+@@ -1961,14 +1968,19 @@
+             "0",
+             "-i",
+             listPath,
++            ...filters,
++            "-r",
++            String(Math.max(1, Number(fps) || 10)),
++            "-frames:v",
++            String(files.length),
+             "-fps_mode",
+-            "vfr",
++            "cfr",
+             "-c:v",
+             "ffv1",
+             "-level",
+             "3",
+             "-pix_fmt",
+-            "bgra",
++            pixelFormat === "yuva420p" ? "yuva420p" : "bgra",
+             "-an",
+             outPath,
+           ],
+@@ -2089,7 +2101,12 @@
+       });
+     },
+     convert: (_, opt) => {
+-      const { quality, inputPath = "", outPath, toFormat } = opt;
++      const { quality, inputPath = "", outPath, toFormat, longestEdge } = opt;
++      const resizeEdge = Math.max(0, Math.round(Number(longestEdge) || 0));
++      const magickResizeArgs = resizeEdge
++        ? ["-resize", `${resizeEdge}x${resizeEdge}`]
++        : [];
++      const sipsResizeArgs = resizeEdge ? ["-Z", String(resizeEdge)] : [];
+       const isModify = outPath === inputPath;
+       const onlyCompress = !toFormat;
+       const cwd = binDir();
+@@ -2109,7 +2126,7 @@
+                 const tempPath = tempJpg;
+                 node_child_process.execFile(
+                   path.join(cwd, "magick.exe"),
+-                  [inputPath, tempPath],
++                  [inputPath, ...magickResizeArgs, tempPath],
+                   (err) => {
+                     if (err) {
+                       console.log("error:", err);
+@@ -2134,9 +2151,21 @@
+               } else {
+                 if (onlyCompress) {
+                   if (isModify) {
+-                    cmds = ["mogrify", "-quality", quality, outPath];
++                    cmds = [
++                      "mogrify",
++                      ...magickResizeArgs,
++                      "-quality",
++                      quality,
++                      outPath,
++                    ];
+                   } else {
+-                    cmds = [inputPath, "-quality", quality, outPath];
++                    cmds = [
++                      inputPath,
++                      ...magickResizeArgs,
++                      "-quality",
++                      quality,
++                      outPath,
++                    ];
+                   }
+                 } else {
+                   if (isModify) {
+@@ -2144,12 +2173,19 @@
+                       "mogrify",
+                       "-format",
+                       toFormat,
++                      ...magickResizeArgs,
+                       "-quality",
+                       quality,
+                       outPath,
+                     ];
+                   } else {
+-                    cmds = [inputPath, "-quality", quality, outPath];
++                    cmds = [
++                      inputPath,
++                      ...magickResizeArgs,
++                      "-quality",
++                      quality,
++                      outPath,
++                    ];
+                   }
+                 }
+               }
+@@ -2175,6 +2211,7 @@
+                     "-s",
+                     "formatOptions",
+                     quality,
++                    ...sipsResizeArgs,
+                     outPath,
+                   ]);
+                 } else {
+@@ -2183,6 +2220,7 @@
+                     "formatOptions",
+                     quality,
+                     inputPath,
++                    ...sipsResizeArgs,
+                     "--out",
+                     outPath,
+                   ]);
+@@ -2206,7 +2244,14 @@
+                             reject(new Error(String(stderr)));
+                             return;
+                           }
+-                          sharp(tempPath)
++                          let pipeline = sharp(tempPath);
++                          if (resizeEdge) {
++                            pipeline = pipeline.resize(resizeEdge, resizeEdge, {
++                              fit: "inside",
++                              withoutEnlargement: false,
++                            });
++                          }
++                          pipeline
+                             .webp()
+                             .toFile(outPath)
+                             .then(() => {
+@@ -2224,6 +2269,7 @@
+                       "-s",
+                       "formatOptions",
+                       quality,
++                      ...sipsResizeArgs,
+                       outPath,
+                     ]);
+                   }
+@@ -2245,8 +2291,14 @@
+                             reject(new Error(String(stderr)));
+                             return;
+                           }
+-                          sharp(tempPath)
+-                            .rotate()
++                          let pipeline = sharp(tempPath).rotate();
++                          if (resizeEdge) {
++                            pipeline = pipeline.resize(resizeEdge, resizeEdge, {
++                              fit: "inside",
++                              withoutEnlargement: false,
++                            });
++                          }
++                          pipeline
+                             .webp()
+                             .toFile(outPath)
+                             .then(() => {
+@@ -2264,6 +2316,7 @@
+                       "formatOptions",
+                       quality,
+                       inputPath,
++                      ...sipsResizeArgs,
+                       "--out",
+                       outPath,
+                     ]);
+@@ -2354,6 +2407,8 @@
+         toFormat,
+         fps,
+         scale,
++        longestEdge,
++        preparedInput,
+         loop,
+         loseless,
+         targetFileSizeKb,
+@@ -2361,7 +2416,22 @@
+       } = opt;
+       const cwd = binDir();
+       const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
+-      const filter = `fps=${fps || 10},scale=${scale || 320}:-1:flags=lanczos`;
++      const requestedLongestEdge = Math.max(
++        0,
++        Math.round(Number(longestEdge ?? scale) || 0),
++      );
++      const longestEdgeFilter = (edge) =>
++        `scale=${edge}:${edge}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos`;
++      const animationFilters = [];
++      if (!preparedInput) {
++        animationFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
++        if (requestedLongestEdge) {
++          animationFilters.push(longestEdgeFilter(requestedLongestEdge));
++        }
++      }
++      const animationFilterArgs = animationFilters.length
++        ? ["-vf", animationFilters.join(",")]
++        : [];
+       const vtemp = (ext) => {
+         const tempPath = path.join(
+           app2.getPath("temp"),
+@@ -2426,11 +2496,30 @@
+             "-row-mt",
+             "1",
+             "-threads",
+-            "8",
++            String(Math.max(8, Math.min(16, os.cpus()?.length || 8))),
++            "-tile-columns",
++            "2",
++            "-frame-parallel",
++            "1",
+             "-auto-alt-ref",
+             "0",
++            "-color_primaries",
++            "bt709",
++            "-color_trc",
++            "iec61966-2-1",
++            "-colorspace",
++            "bt709",
++            "-color_range",
++            "tv",
+           ],
+-          outputArgs: ["-fps_mode", "vfr"],
++          outputArgs: [
++            "-fps_mode",
++            "cfr",
++            "-metadata:s:v:0",
++            "alpha_mode=1",
++            "-cluster_time_limit",
++            "1000",
++          ],
+         },
+         flv: {
+           videoCodec: "libx264",
+@@ -2475,19 +2564,20 @@
+         const nullOutput = isWin2 ? "NUL" : "/dev/null";
+         let bestUnder = null;
+         let bestSize = 0;
+-        let scaleWidth = null;
++        let scaleLongest = null;
+         try {
+           for (let attempt = 0; attempt < 7; attempt += 1) {
+             const tempPath = vtemp(`.${toFormat}`);
+             const passlog = vtemp(".pass");
+-            const requestedFps = Math.max(0, Number(fps) || 0);
+-            const requestedScale =
+-              scaleWidth || Math.max(0, Number(scale) || 0);
++            const requestedFps = preparedInput
++              ? 0
++              : Math.max(0, Number(fps) || 0);
++            const requestedScale = scaleLongest || requestedLongestEdge;
+             const filters = [];
+             if (requestedFps) filters.push(`fps=${requestedFps}`);
+             if (requestedScale) {
+-              filters.push(`scale=${requestedScale}:-2:flags=lanczos`);
+-            } else if (profile.pixelFormat === "yuv420p") {
++              filters.push(longestEdgeFilter(requestedScale));
++            } else if (profile.pixelFormat.includes("420")) {
+               filters.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+             }
+             const videoFilter = filters.length
+@@ -2570,11 +2660,15 @@
+                 Math.floor(bitrate * (targetBytes / size) * 0.97),
+               );
+               if (nextBitrate === bitrate && bitrate === 8) {
+-                if (!media.width || media.width <= 20) break;
+-                scaleWidth = Math.max(
++                const mediaLongest = Math.max(
++                  Number(media.width) || 0,
++                  Number(media.height) || 0,
++                );
++                if (mediaLongest <= 20) break;
++                scaleLongest = Math.max(
+                   20,
+                   Math.floor(
+-                    media.width * Math.sqrt(targetBytes / size) * 0.94,
++                    mediaLongest * Math.sqrt(targetBytes / size) * 0.94,
+                   ),
+                 );
+               }
+@@ -2595,13 +2689,13 @@
+       const encodeVideo = async (profile) => {
+         const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
+         const tempPath = vtemp(`.${toFormat}`);
+-        const requestedFps = Math.max(0, Number(fps) || 0);
+-        const requestedScale = Math.max(0, Number(scale) || 0);
++        const requestedFps = preparedInput ? 0 : Math.max(0, Number(fps) || 0);
++        const requestedScale = preparedInput ? 0 : requestedLongestEdge;
+         const filters = [];
+         if (requestedFps) filters.push(`fps=${requestedFps}`);
+         if (requestedScale) {
+-          filters.push(`scale=${requestedScale}:-2:flags=lanczos`);
+-        } else if (profile.pixelFormat === "yuv420p") {
++          filters.push(longestEdgeFilter(requestedScale));
++        } else if (profile.pixelFormat.includes("420")) {
+           filters.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+         }
+         const videoFilter = filters.length ? ["-vf", filters.join(",")] : [];
+@@ -2641,10 +2735,15 @@
+           10 * 1e3,
+           Math.floor(Number(targetFileSizeKb) * 1e3),
+         );
+-        const maxScale = Math.max(20, Number(scale) || 320);
++        const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
++        const sourceLongest = Math.max(
++          20,
++          Number(media.width) || 0,
++          Number(media.height) || 0,
++        );
++        const maxScale = Math.max(20, requestedLongestEdge || sourceLongest);
+         let currentScale = maxScale;
+         if (toFormat === "webp") {
+-          const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
+           const outputFps = Math.max(1, Number(fps) || 10);
+           const estimatedFrames = Math.max(
+             1,
+@@ -2653,19 +2752,29 @@
+           const aspect =
+             media.width && media.height ? media.width / media.height : 16 / 9;
+           const targetPixelsPerFrame = targetBytes / estimatedFrames / 0.004;
+-          const targetAwareWidth = Math.floor(
+-            Math.sqrt(targetPixelsPerFrame * aspect),
++          const targetAwareLongest = Math.floor(
++            Math.sqrt(
++              targetPixelsPerFrame *
++                Math.max(aspect, 1 / Math.max(aspect, 1e-6)),
++            ),
+           );
+           currentScale = Math.max(
+             20,
+-            Math.min(maxScale, targetAwareWidth || maxScale),
++            Math.min(maxScale, targetAwareLongest || maxScale),
+           );
+         }
+         let fallbackPath = null;
+         let fallbackSize = Number.POSITIVE_INFINITY;
+         const runCandidate = async (tuning) => {
+           const candidate = vtemp(`.${toFormat}`);
+-          const targetFilter = `fps=${fps || 10},scale=${currentScale}:-1:flags=lanczos`;
++          const targetFilters = [];
++          if (!preparedInput) {
++            targetFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
++          }
++          if (currentScale !== sourceLongest || !preparedInput) {
++            targetFilters.push(longestEdgeFilter(currentScale));
++          }
++          const targetFilter = targetFilters.join(",");
+           let args;
+           if (toFormat === "webp") {
+             args = [
+@@ -2673,8 +2782,7 @@
+               "-y",
+               "-i",
+               inputPath,
+-              "-vf",
+-              targetFilter,
++              ...(targetFilter ? ["-vf", targetFilter] : []),
+               "-c:v",
+               "libwebp_anim",
+               "-lossless",
+@@ -2697,7 +2805,7 @@
+               "-i",
+               inputPath,
+               "-vf",
+-              `${targetFilter},split[s0][s1];[s0]palettegen=max_colors=${tuning}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
++              `${targetFilter ? `${targetFilter},` : ""}split[s0][s1];[s0]palettegen=max_colors=${tuning}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+               "-loop",
+               String(loop ?? 0),
+               candidate,
+@@ -2708,8 +2816,7 @@
+               "-y",
+               "-i",
+               inputPath,
+-              "-vf",
+-              targetFilter,
++              ...(targetFilter ? ["-vf", targetFilter] : []),
+               "-plays",
+               String(loop ?? 0),
+               "-compression_level",
+@@ -2802,8 +2909,7 @@
+                   "-y",
+                   "-i",
+                   inputPath,
+-                  "-vf",
+-                  filter,
++                  ...animationFilterArgs,
+                   "-c:v",
+                   "libwebp",
+                   "-lossless",
+@@ -2832,7 +2938,7 @@
+                   "-i",
+                   inputPath,
+                   "-vf",
+-                  `${filter},split[s0][s1];[s0]palettegen=max_colors=${q}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
++                  `${animationFilters.length ? `${animationFilters.join(",")},` : ""}split[s0][s1];[s0]palettegen=max_colors=${q}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+                   "-loop",
+                   String(loop ?? 0),
+                   outPath,
+@@ -2848,8 +2954,7 @@
+                   "-y",
+                   "-i",
+                   inputPath,
+-                  "-vf",
+-                  filter,
++                  ...animationFilterArgs,
+                   "-plays",
+                   String(loop ?? 0),
+                   "-compression_level",
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -23421,6 +23421,8 @@
+   "flow.cropTargetHint": "通过调整质量逼近目标体积，PNG 格式效果有限。",
+   "flow.targetSize": "目标输出大小(KB)",
+   "flow.targetSizeHint": "填 0 关闭。每种输出格式会分别记住自己的目标值。",
++  "flow.longestEdge": "最长边(px)",
++  "flow.longestEdgeHint": "填 0 保持原始尺寸。宽高比例始终保持不变。",
+   "flow.cropArea": "裁剪区域",
+   "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
+   "flow.verb.svga": "预览",
+@@ -23808,6 +23810,9 @@
+   "flow.targetSize": "Target output size (KB)",
+   "flow.targetSizeHint":
+     "Set 0 to disable. Each output format remembers its own target.",
++  "flow.longestEdge": "Longest edge (px)",
++  "flow.longestEdgeHint":
++    "Set 0 to keep the original size. Aspect ratio is always preserved.",
+   "flow.cropArea": "Crop area",
+   "flow.cropApplyAll": "{n} more get the same crop",
+   "flow.verb.svga": "Preview",
+@@ -37572,6 +37577,8 @@
+     } else {
+       recipe = "flag";
+     }
++    const resize = longestEdgeResize(config);
++    if (recipe !== "flag" && resize) recipe = { ...recipe, resize };
+     if (recipe === "flag") {
+       await window.x("convert", {
+         quality: convertConfig.quality,
+@@ -39276,6 +39283,18 @@
+     [format]: Math.max(0, Number(value) || 0),
+   },
+ });
++const longestEdgeFor = (config) =>
++  Math.max(0, Number(config.longestEdge ?? config.scale) || 0);
++const longestEdgeResize = (config) => {
++  const edge = longestEdgeFor(config);
++  return edge > 0
++    ? {
++        width: edge,
++        height: edge,
++        options: { fit: "inside", withoutEnlargement: false },
++      }
++    : null;
++};
+ async function writeBufferOut(buffer, item, outPath, pureName, outFormat) {
+   let destination = outPath;
+   if (outPath === item.path) {
+@@ -39298,10 +39317,16 @@
+   pureName,
+   outFormat,
+   targetKb,
++  longestEdge,
+ }) {
+   const targetBytes = Math.max(1, Math.floor(targetKb * 1e3));
+   const sourceWidth = Math.max(1, Number(item.meta?.width) || 1);
+-  let width = sourceWidth;
++  const sourceHeight = Math.max(1, Number(item.meta?.height) || 1);
++  const sourceLongest = Math.max(sourceWidth, sourceHeight);
++  let currentLongest = Math.max(
++    1,
++    Number(longestEdge) > 0 ? Number(longestEdge) : sourceLongest,
++  );
+   let lastSmallest = null;
+   for (let scaleAttempt = 0; scaleAttempt < 7; scaleAttempt += 1) {
+     let low = 1;
+@@ -39314,8 +39339,14 @@
+       const buffer = await window.x("sharpToBuffer", {
+         ...recipe,
+         inputPath: item.path,
+-        ...(width < sourceWidth
+-          ? { resize: { width, options: { fit: "inside" } } }
++        ...(currentLongest !== sourceLongest
++          ? {
++              resize: {
++                width: currentLongest,
++                height: currentLongest,
++                options: { fit: "inside", withoutEnlargement: false },
++              },
++            }
+           : {}),
+         formatOptions: {
+           ...(recipe.formatOptions || {}),
+@@ -39347,12 +39378,12 @@
+         outFormat,
+       );
+     }
+-    if (!lastSmallest || width <= 20) break;
++    if (!lastSmallest || currentLongest <= 20) break;
+     const ratio = Math.min(
+       0.92,
+       Math.sqrt(targetBytes / lastSmallest.length) * 0.96,
+     );
+-    width = Math.max(20, Math.floor(width * ratio));
++    currentLongest = Math.max(20, Math.floor(currentLongest * ratio));
+   }
+   return await writeBufferOut(lastSmallest, item, outPath, pureName, outFormat);
+ }
+@@ -39412,6 +39443,8 @@
+     } else {
+       recipe = "flag";
+     }
++    const resize = longestEdgeResize(config);
++    if (recipe !== "flag" && resize) recipe = { ...recipe, resize };
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+     const { pureName, outPath } = await resolveOut(
+       item,
+@@ -39426,6 +39459,7 @@
+         quality: config.quality,
+         inputPath: item.path,
+         outPath,
++        longestEdge: longestEdgeFor(config),
+       });
+       return { outName, outPath, outSize: r22.size };
+     }
+@@ -39590,6 +39624,8 @@
+     } else {
+       recipe = "flag";
+     }
++    const resize = longestEdgeResize(config);
++    if (recipe !== "flag" && resize) recipe = { ...recipe, resize };
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+     const { pureName, outPath } = await resolveOut(
+       item,
+@@ -39606,6 +39642,7 @@
+         outPath,
+         toFormat,
+         fromFormat: fmt,
++        longestEdge: longestEdgeFor(config),
+       });
+       return { outName, outPath, outSize: r22.size };
+     }
+@@ -39618,6 +39655,7 @@
+         pureName,
+         outFormat: toFormat,
+         targetKb,
++        longestEdge: longestEdgeFor(config),
+       });
+       return { outName, outPath, outSize };
+     }
+@@ -39689,6 +39727,7 @@
+       toFormat: config.toFormat,
+       outPath,
+       targetFileSizeKb: targetSizeFor(config, config.toFormat),
++      longestEdge: longestEdgeFor(config),
+       jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+@@ -39736,6 +39775,7 @@
+       quality: config.quality,
+       inputPath: item.path,
+       outPath,
++      longestEdge: longestEdgeFor(config),
+       jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+@@ -39792,12 +39832,6 @@
+           onChange: (v2) => update({ fps: v2 }),
+         }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-          label: t2("flow.scale"),
+-          value: config.scale,
+-          min: 20,
+-          onChange: (v2) => update({ scale: v2 }),
+-        }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+           label: t2("flow.loop"),
+           value: config.loop,
+           min: 0,
+@@ -39833,7 +39867,7 @@
+       toFormat,
+       outPath,
+       fps: config.fps,
+-      scale: config.scale,
++      longestEdge: longestEdgeFor(config),
+       ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
+       loop: config.loop,
+       targetFileSizeKb: targetSizeFor(config, toFormat),
+@@ -40057,6 +40091,8 @@
+         await window.x("mergeFramesIntermediate", {
+           files: files.map((item) => item.path),
+           fps: config.zl || 10,
++          longestEdge: longestEdgeFor(config),
++          pixelFormat: ext === "webm" ? "yuva420p" : "bgra",
+           outPath: bridgePath,
+           jobId,
+         });
+@@ -40066,7 +40102,8 @@
+           toFormat: ext,
+           outPath: outputPath,
+           fps: config.zl || 10,
+-          scale: files[0]?.meta?.width,
++          longestEdge: 0,
++          preparedInput: true,
+           loop,
+           targetFileSizeKb: targetKb,
+           jobId,
+@@ -40091,6 +40128,9 @@
+         info = await window.x("sharpToFile", {
+           inputPath: fakePath,
+           inputOptions: { animated: true },
++          ...(longestEdgeResize(config)
++            ? { resize: longestEdgeResize(config) }
++            : {}),
+           toFormat: ext,
+           formatOptions: { quality: config.q, nearLossless: true },
+           outPath: outputPath,
+@@ -40103,7 +40143,7 @@
+     }
+     const meta =
+       ext === "webm"
+-        ? files[0]?.meta
++        ? await window.x("vGetFileInfo", outputPath)
+         : await window.x("sharpMetadata", { path: outputPath });
+     setProgress2(100);
+     const totalFrom = files.reduce((a, f2) => a + (f2.size || 0), 0);
+@@ -40282,6 +40322,7 @@
+       limitInputPixels: false,
+       ...(isAnimated ? { animated: true } : {}),
+     };
++    const finalResize = longestEdgeResize(config);
+     const mode = config.mode;
+     const outName = `${pureName}${ext}`;
+     const writeFile = async (recipe2) => {
+@@ -40355,6 +40396,7 @@
+           const buf = await window.x("sharpToBuffer", {
+             inputPath: item.path,
+             inputOptions: sharpOpt,
++            ...(finalResize ? { resize: finalResize } : {}),
+             toFormat: format,
+             formatOptions: { quality: mid },
+           });
+@@ -40393,6 +40435,7 @@
+         };
+       }
+     }
++    if (finalResize) recipe = { ...recipe, resize: finalResize };
+     const outSize = await writeFile(recipe);
+     return { outName, outPath, outSize };
+   },
+@@ -41496,6 +41539,28 @@
+         className: "x-config-body",
+         children: [
+           config ? mod2.renderParams({ config, update, t: t2 }) : null,
++          config
++            ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                jsxRuntimeExports.Fragment,
++                {
++                  children: [
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                      label: t2("flow.longestEdge"),
++                      value: longestEdgeFor(config),
++                      min: 0,
++                      onChange: (v2) =>
++                        update({
++                          longestEdge: Math.max(0, Number(v2) || 0),
++                        }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                      className: "x-cfg-note",
++                      children: t2("flow.longestEdgeHint"),
++                    }),
++                  ],
++                },
++              )
++            : null,
+           /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+             className: "x-config-divider",
+           }),
+

@@ -42,6 +42,9 @@ This fork adds a **Target output size (KB)** control to image conversion,
 video-to-animation, and every video output format exposed by xPic:
 
 - target values are remembered independently for each output format;
+- every creation tab has a **Longest edge (px)** control; `0` keeps the
+  original dimensions, while any other value resizes landscape, portrait, or
+  square output proportionally;
 - still and animated images use a quality-first binary search, then reduce
   dimensions proportionally only when quality alone cannot meet the ceiling;
 - MP4, MKV, MOV, FLV, and TS use measured two-pass H.264; WebM uses measured
@@ -52,8 +55,11 @@ video-to-animation, and every video output format exposed by xPic:
   separate target size for each of those formats;
 - large frame sets use lazy, streamed previews, six-at-a-time metadata reads,
   and a disk-backed lossless intermediate instead of full-image buffers;
+- alpha WebM merges prepare a compact YUVA intermediate once, keep the exact
+  source frame count, and use VP9 row/tile parallelism for substantially faster
+  4K sequences;
 - Video → To Animation can output GIF, WebP, APNG, or WebM, including its own
-  remembered target size, FPS, and output width;
+  remembered target size, FPS, and longest-edge size;
 - video input accepts GIF, animated WebP, and APNG, and WebM is available as an
   output format;
 - fork builds use a content-hashed renderer filename so an older Chromium cache

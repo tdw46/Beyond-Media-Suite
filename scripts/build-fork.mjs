@@ -23,6 +23,11 @@ const cancellationPatchPath = path.join(
   "patches",
   "xpic-2.1.3-cancellable-media.patch",
 );
+const longestEdgePatchPath = path.join(
+  repoRoot,
+  "patches",
+  "xpic-2.1.3-longest-edge-webm-speed.patch",
+);
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xpic-fork-build-"));
 const extracted = path.join(tempRoot, "app");
 const packedAsar = path.join(tempRoot, "app.asar");
@@ -77,6 +82,8 @@ try {
   run("patch", ["-p1", "-d", extracted, "-i", patchPath]);
   await Promise.all([formatBundle(mainBundle), formatBundle(rendererBundle)]);
   run("patch", ["-p1", "-d", extracted, "-i", cancellationPatchPath]);
+  await Promise.all([formatBundle(mainBundle), formatBundle(rendererBundle)]);
+  run("patch", ["-p1", "-d", extracted, "-i", longestEdgePatchPath]);
 
   const rendererHtml = path.join(extracted, "out", "renderer", "index.html");
   const rendererName = path.basename(rendererBundle);
@@ -99,7 +106,7 @@ try {
   );
 
   packagedJson.productName = "xPic Fork";
-  packagedJson.version = "2.1.3-fork.4";
+  packagedJson.version = "2.1.3-fork.5";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -123,7 +130,8 @@ try {
       {
         fork: "tdw46/xPic",
         baseVersion: "2.1.3",
-        feature: "per-format-target-output-size",
+        feature:
+          "per-format-target-output-size, universal-longest-edge, faster-vp9-alpha",
         rendererAsset: cacheBustedName,
       },
       null,
@@ -154,7 +162,7 @@ try {
     "com.tdw46.xpic.fork",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.4", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.5", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

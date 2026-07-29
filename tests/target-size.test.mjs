@@ -159,3 +159,60 @@ test("Merge Frames previews use bounded thumbnails", async () => {
   assert.match(patch, /thumbnailCache\.size > 1024/);
   assert.match(patch, /src: f2\.poster \|\| f2\.thumb \|\| f2\.url/);
 });
+
+test("every creation panel exposes one aspect-preserving longest-edge control", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-longest-edge-webm-speed.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /"flow\.longestEdge": "Longest edge \(px\)"/);
+  assert.match(patch, /value: longestEdgeFor\(config\)/);
+  assert.match(patch, /fit: "inside", withoutEnlargement: false/);
+  assert.match(patch, /longestEdge: longestEdgeFor\(config\)/);
+  assert.match(patch, /const finalResize = longestEdgeResize\(config\)/);
+  assert.doesNotMatch(patch, /^\+.*label: t2\("flow\.scale"\)/m);
+});
+
+test("Merge Frames prepares exact-count CFR alpha frames before VP9 encoding", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-longest-edge-webm-speed.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /pixelFormat: ext === "webm" \? "yuva420p" : "bgra"/);
+  assert.match(patch, /"-frames:v"/);
+  assert.match(patch, /String\(files\.length\)/);
+  assert.match(patch, /pixelFormat === "yuva420p" \? "yuva420p" : "bgra"/);
+  assert.match(patch, /preparedInput: true/);
+});
+
+test("WebM remains VP9-alpha and uses bounded parallel encoding", async () => {
+  const patch = await import("node:fs/promises").then(
+    async ({ readFile }) =>
+      `${await readFile(
+        new URL("../patches/xpic-2.1.3-target-size.patch", import.meta.url),
+        "utf8",
+      )}\n${await readFile(
+        new URL(
+          "../patches/xpic-2.1.3-longest-edge-webm-speed.patch",
+          import.meta.url,
+        ),
+        "utf8",
+      )}`,
+  );
+  assert.match(patch, /pixelFormat: "yuva420p"/);
+  assert.match(patch, /"alpha_mode=1"/);
+  assert.match(patch, /"-auto-alt-ref",\s*\n\+\s*"0"/);
+  assert.match(patch, /os\.cpus\(\)\?\.length/);
+  assert.match(patch, /"-tile-columns"/);
+  assert.match(patch, /"-cluster_time_limit"/);
+});
