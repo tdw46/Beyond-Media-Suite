@@ -50,6 +50,8 @@ video-to-animation, and every video output format exposed by xPic:
   result fits the requested ceiling, with a small audio and container budget;
 - Merge Frames can create WebP, GIF, or alpha-capable WebM and remembers a
   separate target size for each of those formats;
+- large frame sets use lazy, streamed previews, six-at-a-time metadata reads,
+  and a disk-backed lossless intermediate instead of full-image buffers;
 - Video → To Animation can output GIF, WebP, APNG, or WebM, including its own
   remembered target size, FPS, and output width;
 - video input accepts GIF, animated WebP, and APNG, and WebM is available as an

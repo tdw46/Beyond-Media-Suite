@@ -92,7 +92,7 @@ try {
   );
 
   packagedJson.productName = "xPic Fork";
-  packagedJson.version = "2.1.3-fork.2";
+  packagedJson.version = "2.1.3-fork.3";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -147,7 +147,7 @@ try {
     "com.tdw46.xpic.fork",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.2", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.3", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

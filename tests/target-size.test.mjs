@@ -85,3 +85,19 @@ test("To Animation exposes target-sized WebM with FPS and scaling", async () => 
   );
   assert.match(buildScript, /index-fork-\$\{rendererHash\}\.js/);
 });
+
+test("large Merge Frames jobs avoid eager full-image buffers", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-target-size.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.doesNotMatch(patch, /^\+.*response\.clone\(\)\.arrayBuffer\(\)/m);
+  assert.match(patch, /^-.*response\.clone\(\)\.arrayBuffer\(\)/m);
+  assert.match(patch, /streamFileResponse/);
+  assert.match(patch, /mapWithConcurrency\(list, 6/);
+  assert.match(patch, /loading: "lazy"/);
+  assert.match(patch, /mergeFramesIntermediate/);
+  assert.match(patch, /"-c:v",\s*\n\+\s*"ffv1"/);
+});

@@ -60,7 +60,62 @@
    const changeMenu = (opt) => {
      const { id, email, newId } = opt;
      const menu22 = electron.Menu.getApplicationMenu();
-@@ -2112,6 +2151,7 @@
+@@ -1760,6 +1799,54 @@
+       if (resize) p = p.resize(resize.width, resize.height, resize.options);
+       if (toFormat) p = p.toFormat(toFormat, formatOptions);
+       return p.toBuffer();
++    },
++    mergeFramesIntermediate: async (_, opt) => {
++      const { files, fps, outPath } = opt;
++      if (!Array.isArray(files) || files.length < 2) {
++        throw new Error("Merge Frames requires at least two source images.");
++      }
++      const cwd = binDir();
++      const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
++      const listPath = path.join(
++        app2.getPath("temp"),
++        `xpic_frames_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.txt`,
++      );
++      const duration = 1 / Math.max(1, Number(fps) || 10);
++      const escapePath = (filePath) =>
++        String(filePath).replaceAll("'", "'\\''");
++      const lines = [];
++      for (const filePath of files) {
++        lines.push(`file '${escapePath(filePath)}'`);
++        lines.push(`duration ${duration.toFixed(9)}`);
++      }
++      lines.push(`file '${escapePath(files[files.length - 1])}'`);
++      fs.writeFileSync(listPath, `${lines.join("\n")}\n`);
++      try {
++        await ensureExecPerm(cwd);
++        await execFileP(ffmpeg, [
++          "-hide_banner",
++          "-y",
++          "-f",
++          "concat",
++          "-safe",
++          "0",
++          "-i",
++          listPath,
++          "-fps_mode",
++          "vfr",
++          "-c:v",
++          "ffv1",
++          "-level",
++          "3",
++          "-pix_fmt",
++          "bgra",
++          "-an",
++          outPath,
++        ]);
++        return fs.statSync(outPath).size;
++      } finally {
++        safeUnlink(listPath);
++      }
+     },
+     // sharp 元数据（merge / workflow 用；getMeta 带平台兜底，这个是纯 sharp）
+     sharpMetadata: (_, opt) => {
+@@ -2112,6 +2199,7 @@
          scale,
          loop,
          loseless,
@@ -68,7 +123,7 @@
        } = opt;
        const cwd = binDir();
        const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
-@@ -2126,11 +2166,402 @@
+@@ -2126,11 +2214,402 @@
          if (!fs.existsSync(destDir)) {
            fs.mkdirSync(destDir, { recursive: true });
          }
@@ -472,7 +527,7 @@
              if (toFormat === "webp") {
                const q = { 2: 100, 1: 80, 0: 50 }[quality];
                return execFileP(ffmpeg, [
-@@ -2143,7 +2574,7 @@
+@@ -2143,7 +2622,7 @@
                  "-c:v",
                  "libwebp",
                  "-lossless",
@@ -481,7 +536,7 @@
                  "-q:v",
                  String(q),
                  "-loop",
-@@ -2187,20 +2618,15 @@
+@@ -2187,20 +2666,15 @@
                  outPath,
                ]).then(() => resolve(true));
              }
@@ -511,6 +566,119 @@
              }
              const crf = { 0: 18, 1: 30, 2: 40 }[quality];
              const tempPath = vtemp(path.extname(outPath));
+@@ -2901,6 +3375,17 @@
+     ["Content-Range", `bytes ${startByte}-${endByte}/${stat2.size}`],
+   ]);
+   return new Response(nodeStreamToWeb(resultStream), { headers, status: 206 });
++};
++const streamFileResponse = async (targetPath) => {
++  const stat2 = await fs__namespace.stat(targetPath);
++  const resultStream = fs.createReadStream(targetPath);
++  return new Response(nodeStreamToWeb(resultStream), {
++    headers: {
++      "Content-Type": fromFilename(targetPath),
++      "Content-Length": `${stat2.size}`,
++      "Cache-Control": "no-store",
++    },
++  });
+ };
+ const createWindow = () => {
+   const mainWindowState = windowStateKeeper({
+@@ -3119,49 +3604,56 @@
+     stat({ req, store, app });
+     telemetry.track("app_launch", { version: app.getVersion() });
+     electron.protocol.handle("xpic", (request) => {
+-      console.log("xxx:", request.url);
+       let { host, pathname } = new URL(request.url);
+       pathname = decodeURIComponent(pathname).slice(1);
+       host = decodeURIComponent(host);
+       if (host === PICTURE_DOMAIN) {
+-        return electron.net
+-          .fetch(node_url.pathToFileURL(pathname).toString(), {
+-            mode: "cors",
+-            cache: "force-cache",
++        const ext = path.extname(pathname).toLocaleLowerCase();
++        const browserNative = new Set([
++          ".png",
++          ".jpg",
++          ".jpeg",
++          ".jpe",
++          ".webp",
++          ".gif",
++          ".apng",
++          ".avif",
++          ".bmp",
++          ".svg",
++        ]);
++        if (browserNative.has(ext)) {
++          return streamFileResponse(pathname);
++        }
++        if (ext === ".heic" || ext === ".heif") {
++          return fs__namespace
++            .readFile(pathname)
++            .then(async (fileBuffer) => {
++              const buffer = fileBuffer.buffer.slice(
++                fileBuffer.byteOffset,
++                fileBuffer.byteOffset + fileBuffer.byteLength,
++              );
++              const webp = await decodeHeif(buffer);
++              return new Response(new Uint8Array(webp), {
++                headers: { "Content-Type": "image/webp" },
++              });
++            })
++            .catch(() => streamFileResponse(pathname));
++        }
++        return sharp(pathname)
++          .rotate()
++          .resize(512, 512, {
++            fit: "inside",
++            withoutEnlargement: true,
+           })
+-          .then(async (response) => {
+-            if (
+-              ["heic", "heif"].some((type) =>
+-                pathname.toLocaleLowerCase().endsWith(`.${type}`),
+-              )
+-            ) {
+-              try {
+-                const buffer = await response.arrayBuffer();
+-                const webp = await decodeHeif(buffer);
+-                return new Response(new Uint8Array(webp), {
+-                  headers: { "Content-Type": "image/webp" },
+-                });
+-              } catch (e) {
+-                return response;
+-              }
+-            } else {
+-              if (
+-                ["webp", "gif", "apng"].some((type) =>
+-                  pathname.toLocaleLowerCase().endsWith(`.${type}`),
+-                )
+-              ) {
+-                return response;
+-              }
+-              try {
+-                const buffer = await response.clone().arrayBuffer();
+-                return new Response(
+-                  new Uint8Array(await sharp(buffer).rotate().toBuffer()),
+-                );
+-              } catch (e) {
+-                return response;
+-              }
+-            }
+-          });
++          .webp({ quality: 82 })
++          .toBuffer()
++          .then(
++            (buffer) =>
++              new Response(new Uint8Array(buffer), {
++                headers: { "Content-Type": "image/webp" },
++              }),
++          )
++          .catch(() => streamFileResponse(pathname));
+       }
+       if (host === VIDEO_DOMAIN) {
+         const rangeHeader = request.headers.get("Range");
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
 @@ -22800,6 +22800,7 @@
@@ -590,10 +758,11 @@
    };
  }
  function makeStep(type) {
-@@ -39252,6 +39266,94 @@
+@@ -39251,8 +39265,96 @@
+     ...recipe,
      inputPath: item.path,
      outPath,
-   });
++  });
 +}
 +const targetSizeFor = (config, format) =>
 +  Math.max(0, Number(config.targetFileSizes?.[format] || 0));
@@ -612,12 +781,12 @@
 +  const result = await window.x("sharpToFile", {
 +    inputBuffer: buffer,
 +    outPath: destination,
-+  });
+   });
 +  if (destination !== outPath) {
 +    await window.x("moveFile", destination, outPath);
 +  }
 +  return result?.size || buffer.length;
-+}
+ }
 +async function writeSharpToTarget({
 +  recipe,
 +  item,
@@ -682,9 +851,10 @@
 +    width = Math.max(20, Math.floor(width * ratio));
 +  }
 +  return await writeBufferOut(lastSmallest, item, outPath, pureName, outFormat);
- }
++}
  const compress = {
    key: "compress",
+   labelKey: "nav.compress",
 @@ -39366,6 +39468,23 @@
            options: convertFormatOptions,
            onChange: (v2) => update({ toFormat: v2 }),
@@ -709,10 +879,11 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.quality"),
            value: config.quality,
-@@ -39489,6 +39608,18 @@
+@@ -39488,6 +39607,18 @@
+         fromFormat: fmt,
        });
        return { outName, outPath, outSize: r22.size };
-     }
++    }
 +    const targetKb = targetSizeFor(config, toFormat);
 +    if (targetKb > 0) {
 +      const outSize = await writeSharpToTarget({
@@ -724,10 +895,9 @@
 +        targetKb,
 +      });
 +      return { outName, outPath, outSize };
-+    }
+     }
      const r2 = await writeOut(recipe, item, outPath, pureName, toFormat);
      return { outName, outPath, outSize: r2.size };
-   },
 @@ -39513,11 +39644,30 @@
    updateConfig: updateVConvertConfig,
    showSaving: true,
@@ -780,14 +950,14 @@
 +            { label: "WebM", value: "webm" },
            ],
            onChange: (v2) => update({ toFormat: v2 }),
-+        }),
+         }),
 +        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
 +          label: t2("flow.targetSize"),
 +          value: targetSizeFor(config, config.toFormat),
 +          min: 0,
 +          onChange: (v2) =>
 +            update(updateTargetSizeFor(config, config.toFormat, v2)),
-         }),
++        }),
 +        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
 +          className: "x-cfg-note",
 +          children: t2("flow.targetSizeHint"),
@@ -795,7 +965,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.animQuality"),
            value: config.quality,
-@@ -39669,6 +39833,7 @@
+@@ -39669,11 +39833,28 @@
        scale: config.scale,
        ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
        loop: config.loop,
@@ -803,7 +973,139 @@
      });
      const info = await window.x("getFileInfo", outPath);
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
-@@ -39766,6 +39931,7 @@
+   },
+ };
++async function mapWithConcurrency(items, concurrency, mapper) {
++  const results = new Array(items.length);
++  let nextIndex = 0;
++  const workers = Array.from(
++    { length: Math.min(concurrency, items.length) },
++    async () => {
++      while (nextIndex < items.length) {
++        const index = nextIndex;
++        nextIndex += 1;
++        results[index] = await mapper(items[index], index);
++      }
++    },
++  );
++  await Promise.all(workers);
++  return results;
++}
+ async function mergeLoad(rawFiles, ctx) {
+   try {
+     await window.x("focus");
+@@ -39693,63 +39874,62 @@
+         });
+         let notified = false;
+         list = (
+-          await Promise.all(
+-            names.map(async (name) => {
+-              const filePath = window.pj(f2.path, name);
+-              const ext = (
+-                await window.x("getFileExt", filePath)
+-              )?.toLowerCase();
+-              if (!mergeAccept.includes(ext) || !ext) {
+-                if (!notified) {
+-                  toast.warning(t("mod.folderExcluded"));
+-                  notified = true;
+-                }
+-                return null;
++          await mapWithConcurrency(names, 8, async (name) => {
++            const filePath = window.pj(f2.path, name);
++            const ext = (await window.x("getFileExt", filePath))?.toLowerCase();
++            if (!mergeAccept.includes(ext) || !ext) {
++              if (!notified) {
++                toast.warning(t("mod.folderExcluded"));
++                notified = true;
+               }
+-              const info = await window.x("getFileInfo", filePath);
+-              return { ext, dir: f2.path, ...info };
+-            }),
+-          )
++              return null;
++            }
++            const info = await window.x("getFileInfo", filePath);
++            return { ext, dir: f2.path, ...info };
++          })
+         ).filter(Boolean);
+       } else if (!ctx.append) {
+         toast.error(t("mod.mergeMin2"));
+         return null;
+       }
+     }
+-    let width = ctx.existing[0]?.meta?.width ?? null;
+-    let height = ctx.existing[0]?.meta?.height ?? null;
+-    let dir = ctx.existing[0]?.dir ?? null;
+     const mapped = (
+-      await Promise.all(
+-        list.map(async (file) => {
+-          const path = file.path || window.xGetFilePath(file);
+-          const ext = file.ext
+-            ? `.${file.ext}`
+-            : (await window.x("getFileExt", path))?.toLowerCase();
+-          if (!mergeAccept.includes(ext)) return null;
+-          const _dir = file.dir || (await window.x("getFileDir", path));
+-          if (dir === null) dir = _dir;
+-          else if (dir !== _dir) throw new Error(t("mod.sameDirOnly"));
+-          const meta = await window.x("sharpMetadata", { path: `${path}` });
+-          if (width === null && height === null) {
+-            width = meta.width;
+-            height = meta.height;
+-          } else if (width !== meta.width || height !== meta.height) {
+-            throw new Error(t("mod.sameSizeOnly"));
+-          }
+-          return {
+-            id: uuid(),
+-            name: file.name,
+-            path,
+-            ext,
+-            dir: _dir,
+-            url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
+-            size: file.size,
+-            meta: removeUnSerializable(meta),
+-          };
+-        }),
+-      )
++      await mapWithConcurrency(list, 6, async (file) => {
++        const path = file.path || window.xGetFilePath(file);
++        const ext = file.ext
++          ? `.${file.ext}`
++          : (await window.x("getFileExt", path))?.toLowerCase();
++        if (!mergeAccept.includes(ext)) return null;
++        const _dir = file.dir || (await window.x("getFileDir", path));
++        const meta = await window.x("sharpMetadata", { path: `${path}` });
++        return {
++          id: uuid(),
++          name: file.name,
++          path,
++          ext,
++          dir: _dir,
++          url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
++          size: file.size,
++          meta: removeUnSerializable(meta),
++        };
++      })
+     ).filter(Boolean);
++    const expectedDir = ctx.existing[0]?.dir ?? mapped[0]?.dir;
++    const expectedWidth =
++      ctx.existing[0]?.meta?.width ?? mapped[0]?.meta?.width;
++    const expectedHeight =
++      ctx.existing[0]?.meta?.height ?? mapped[0]?.meta?.height;
++    for (const item of mapped) {
++      if (item.dir !== expectedDir) {
++        throw new Error(t("mod.sameDirOnly"));
++      }
++      if (
++        item.meta?.width !== expectedWidth ||
++        item.meta?.height !== expectedHeight
++      ) {
++        throw new Error(t("mod.sameSizeOnly"));
++      }
++    }
+     const total = (ctx.append ? ctx.existing.length : 0) + mapped.length;
+     if (total < 2) {
+       toast.error(t("mod.mergeMin2Same"));
+@@ -39766,6 +39946,7 @@
  const FORMAT_SEG = [
    { label: "WebP", value: "webp" },
    { label: "GIF", value: "gif" },
@@ -811,7 +1113,16 @@
  ];
  const merge$1 = {
    key: "merge",
-@@ -39796,14 +39962,27 @@
+@@ -39774,7 +39955,7 @@
+   mediaType: "image",
+   domain: PICTURE_DOMAIN,
+   accept: mergeAccept,
+-  validation: { maxFiles: 20, minFiles: 2, requireActivation: true },
++  validation: { maxFiles: 5e3, minFiles: 2, requireActivation: true },
+   configKey: "merge",
+   updateConfig: updateMergeConfig,
+   showSaving: false,
+@@ -39796,14 +39977,27 @@
            options: FORMAT_SEG,
            onChange: (v2) => update({ ext: v2 }),
          }),
@@ -845,47 +1156,31 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
            label: t2("flow.fps"),
            value: zl,
-@@ -39839,7 +40018,12 @@
+@@ -39839,27 +40033,60 @@
        outputDir,
        `__xpic_temp_${stamp}_temp_xpic__.webp`,
      );
 +    const bridgePath = window.pj(
 +      outputDir,
-+      `__xpic_temp_${stamp}_temp_xpic__.gif`,
++      `__xpic_temp_${stamp}_temp_xpic__.mkv`,
 +    );
      const outputPath = window.pj(outputDir, `${name}.${ext}`);
+-    const cmdArr = ["img2webp", "-loop", loop];
+-    for (const item of files) {
+-      cmdArr.push(item.path);
+-      cmdArr.push("-d");
+-      cmdArr.push(d);
 +    const targetKb = targetSizeFor(config, ext);
-     const cmdArr = ["img2webp", "-loop", loop];
-     for (const item of files) {
-       cmdArr.push(item.path);
-@@ -39851,15 +40035,48 @@
-     setProgress2(25);
-     await window.x("exec", cmdArr);
-     setProgress2(70);
--    const info = await window.x("sharpToFile", {
--      inputPath: fakePath,
--      inputOptions: { animated: true },
--      toFormat: ext,
--      formatOptions: { quality: config.q, nearLossless: true },
--      outPath: outputPath,
--    });
--    await window.x("removeFile", fakePath);
--    const meta = await window.x("sharpMetadata", { path: outputPath });
 +    let info;
 +    try {
 +      if (ext === "webm" || targetKb > 0) {
-+        await window.x("sharpToFile", {
-+          inputPath: fakePath,
-+          inputOptions: { animated: true },
-+          toFormat: "gif",
-+          formatOptions: {
-+            quality: 100,
-+            colors: 256,
-+            effort: 10,
-+            dither: 0,
-+          },
++        setProgress2(20);
++        await window.x("mergeFramesIntermediate", {
++          files: files.map((item) => item.path),
++          fps: config.zl || 10,
 +          outPath: bridgePath,
 +        });
++        setProgress2(60);
 +        await window.x("vConvert", {
 +          inputPath: bridgePath,
 +          toFormat: ext,
@@ -897,6 +1192,17 @@
 +        });
 +        info = await window.x("getFileInfo", outputPath);
 +      } else {
++        const cmdArr = ["img2webp", "-loop", loop];
++        for (const item of files) {
++          cmdArr.push(item.path);
++          cmdArr.push("-d");
++          cmdArr.push(d);
++        }
++        cmdArr.push("-o");
++        cmdArr.push(fakePath);
++        setProgress2(25);
++        await window.x("exec", cmdArr);
++        setProgress2(70);
 +        info = await window.x("sharpToFile", {
 +          inputPath: fakePath,
 +          inputOptions: { animated: true },
@@ -908,7 +1214,21 @@
 +    } finally {
 +      await window.x("removeFile", fakePath);
 +      await window.x("removeFile", bridgePath);
-+    }
+     }
+-    cmdArr.push("-o");
+-    cmdArr.push(fakePath);
+-    setProgress2(25);
+-    await window.x("exec", cmdArr);
+-    setProgress2(70);
+-    const info = await window.x("sharpToFile", {
+-      inputPath: fakePath,
+-      inputOptions: { animated: true },
+-      toFormat: ext,
+-      formatOptions: { quality: config.q, nearLossless: true },
+-      outPath: outputPath,
+-    });
+-    await window.x("removeFile", fakePath);
+-    const meta = await window.x("sharpMetadata", { path: outputPath });
 +    const meta =
 +      ext === "webm"
 +        ? files[0]?.meta
@@ -916,7 +1236,7 @@
      setProgress2(100);
      const totalFrom = files.reduce((a, f2) => a + (f2.size || 0), 0);
      const outSize = info.size;
-@@ -39874,7 +40091,10 @@
+@@ -39874,7 +40101,10 @@
          name: `${name}.${ext}`,
          path: outputPath,
          size: outSize,
@@ -928,3 +1248,13 @@
          dim: meta?.width && meta?.height ? `${meta.width}×${meta.height}` : "",
        },
      };
+@@ -40679,6 +40909,9 @@
+     className,
+     src: f2.poster || f2.url,
+     draggable: false,
++    loading: "lazy",
++    decoding: "async",
++    fetchPriority: "low",
+     alt: "",
+     onError: (e) => {
+       e.target.style.visibility = "hidden";
