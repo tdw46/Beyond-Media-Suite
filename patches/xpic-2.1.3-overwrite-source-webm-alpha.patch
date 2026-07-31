@@ -1,0 +1,189 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1803,6 +1803,35 @@
+         });
+       });
+     },
++    replaceFile: async (_, src, dest) => {
++      if (src === dest) return null;
++      if (!fs.existsSync(src))
++        throw new Error(`Missing replacement file: ${src}`);
++      if (!fs.existsSync(dest)) throw new Error(`Missing source file: ${dest}`);
++      const backup = `${dest}.xpic-backup-${process.pid}-${Date.now()}`;
++      await fs.promises.rename(dest, backup);
++      try {
++        try {
++          await fs.promises.rename(src, dest);
++        } catch (error) {
++          if (error?.code !== "EXDEV") throw error;
++          await fs.promises.copyFile(src, dest);
++          await fs.promises.unlink(src);
++        }
++      } catch (error) {
++        try {
++          if (fs.existsSync(dest)) await fs.promises.unlink(dest);
++        } catch {}
++        await fs.promises.rename(backup, dest);
++        throw error;
++      }
++      try {
++        await fs.promises.unlink(backup);
++      } catch (error) {
++        console.warn("Unable to remove xPic source backup", backup, error);
++      }
++      return null;
++    },
+     exec: (_, cmd, isNative = false) => {
+       return new Promise((resolve, reject) => {
+         let cwd = path.join(__dirname, "bin");
+@@ -2416,6 +2445,10 @@
+       } = opt;
+       const cwd = binDir();
+       const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
++      const inputDecodeArgs =
++        path.extname(inputPath).toLowerCase() === ".webm"
++          ? ["-c:v", "libvpx-vp9"]
++          : [];
+       const requestedLongestEdge = Math.max(
+         0,
+         Math.round(Number(longestEdge ?? scale) || 0),
+@@ -2586,6 +2619,7 @@
+             const video = [
+               "-hide_banner",
+               "-y",
++              ...inputDecodeArgs,
+               "-i",
+               inputPath,
+               "-map",
+@@ -2702,6 +2736,7 @@
+         const args = [
+           "-hide_banner",
+           "-y",
++          ...inputDecodeArgs,
+           "-i",
+           inputPath,
+           "-map",
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -23424,6 +23424,9 @@
+   "flow.targetSizeHint": "填 0 关闭。每种输出格式会分别记住自己的目标值。",
+   "flow.longestEdge": "最长边(px)",
+   "flow.longestEdgeHint": "填 0 保持原始尺寸。宽高比例始终保持不变。",
++  "flow.overwriteSource": "覆盖源媒体",
++  "flow.overwriteSourceHint": "仅在同格式处理成功后替换每个源文件。",
++  "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
+   "flow.cropArea": "裁剪区域",
+   "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
+   "flow.verb.svga": "预览",
+@@ -23814,6 +23817,11 @@
+   "flow.longestEdge": "Longest edge (px)",
+   "flow.longestEdgeHint":
+     "Set 0 to keep the original size. Aspect ratio is always preserved.",
++  "flow.overwriteSource": "Overwrite source media",
++  "flow.overwriteSourceHint":
++    "Replaces each input only after a successful same-format encode.",
++  "flow.overwriteSourceUnavailable":
++    "Overwrite source requires the output format to match every input.",
+   "flow.cropArea": "Crop area",
+   "flow.cropApplyAll": "{n} more get the same crop",
+   "flow.verb.svga": "Preview",
+@@ -39295,7 +39303,22 @@
+   return configured && configured !== "x_output"
+     ? window.pj(sourceDir, configured)
+     : sourceDir;
++};
++const normalizedMediaFormat = (value = "") => {
++  const format = String(value).toLowerCase().replace(/^\./, "");
++  return format === "jpg" ? "jpeg" : format;
++};
++const outputFormatFor = (mod2, config, item) => {
++  if (mod2.key === "compress" || mod2.key === "crop") {
++    return item.meta?.format;
++  }
++  if (mod2.key === "vcompress") return item.ext;
++  return config.toFormat;
+ };
++const canOverwriteSourceItem = (mod2, config, item) =>
++  !!mod2?.processFile &&
++  normalizedMediaFormat(item.ext || item.meta?.format) ===
++    normalizedMediaFormat(outputFormatFor(mod2, config, item));
+ async function resolveOut(item, ext, outFormat, outputDir, globalConfig) {
+   const pureName = optimizedStem(item.name.slice(0, -1 * ext.length));
+   let outPath = window.pj(outputDir, `${pureName}.${outFormat}`);
+@@ -39881,7 +39904,8 @@
+       quality: config.quality,
+       inputPath: item.path,
+       outPath,
+-      ...(targetKb > 0 ? { toFormat: fmt, targetFileSizeKb: targetKb } : {}),
++      toFormat: fmt,
++      ...(targetKb > 0 ? { targetFileSizeKb: targetKb } : {}),
+       longestEdge: longestEdgeFor(config),
+       jobId,
+     });
+@@ -40933,6 +40957,11 @@
+             `flow-${runId}`,
+           );
+           if (!alive()) return;
++          if (config.overwriteSourceMedia) {
++            await window.x("replaceFile", r2.outPath, f2.path);
++            r2.outName = f2.name;
++            r2.outPath = f2.path;
++          }
+           store.dispatch(
+             updateSessionFile({
+               id: f2.id,
+@@ -41000,6 +41029,13 @@
+     if (!files.length) return;
+     const config = state[mod2.configKey].config;
+     const globalConfig = state.global.config;
++    if (
++      config.overwriteSourceMedia &&
++      !files.every((item) => canOverwriteSourceItem(mod2, config, item))
++    ) {
++      toast.error(t2("flow.overwriteSourceUnavailable"));
++      return;
++    }
+     const outputDir =
+       state.session.outputDir || defaultTaskOutputDir(files, globalConfig);
+     store.dispatch(startProcessing());
+@@ -41044,6 +41080,13 @@
+     if (!failed.length) return;
+     const config = state[mod2.configKey].config;
+     const globalConfig = state.global.config;
++    if (
++      config.overwriteSourceMedia &&
++      !failed.every((item) => canOverwriteSourceItem(mod2, config, item))
++    ) {
++      toast.error(t2("flow.overwriteSourceUnavailable"));
++      return;
++    }
+     const outputDir =
+       state.session.outputDir ||
+       defaultTaskOutputDir(state.session.files, globalConfig);
+@@ -41680,6 +41723,26 @@
+                   ],
+                 },
+               )
++            : null,
++          config && mod2.processFile
++            ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++                label: t2("flow.overwriteSource"),
++                desc: t2("flow.overwriteSourceHint"),
++                checked: !!config.overwriteSourceMedia,
++                onChange: (v2) => {
++                  if (
++                    v2 &&
++                    session.files.length > 0 &&
++                    !session.files.every((item) =>
++                      canOverwriteSourceItem(mod2, config, item),
++                    )
++                  ) {
++                    toast.error(t2("flow.overwriteSourceUnavailable"));
++                    return;
++                  }
++                  update({ overwriteSourceMedia: v2 });
++                },
++              })
+             : null,
+           /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+             className: "x-config-divider",

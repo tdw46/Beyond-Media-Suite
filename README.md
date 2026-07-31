@@ -69,6 +69,11 @@ video-to-animation, and every video output format exposed by xPic:
 - outputs default to the source folder with an `_opt` suffix before the
   extension; multi-input single-output tools use the first input's name, while
   explicitly chosen folders and custom merge names still take precedence;
+- one-to-one creation tabs offer an opt-in **Overwrite source media** switch;
+  it is limited to same-format output and replaces the source only after a
+  successful encode, with rollback protection;
+- Video Compress always routes WebM through VP9 and explicitly uses the libvpx
+  decoder so existing alpha is retained with or without a target file size;
 - fork builds do not download upstream app updates over the patch.
 
 The upstream repository publishes the website and releases, but not the

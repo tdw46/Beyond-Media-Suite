@@ -279,3 +279,41 @@ test("workflow optimizes only its final output name", async () => {
   assert.ok((patch.match(/^\+\s*isLastStep,$/gm) || []).length >= 4);
   assert.match(patch, /\? optimizedStem\(sourcePureName\)/);
 });
+
+test("source overwrite is explicit, same-format-only, and rollback-safe", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-overwrite-source-webm-alpha.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /"flow\.overwriteSource": "Overwrite source media"/);
+  assert.match(patch, /config && mod2\.processFile/);
+  assert.match(patch, /canOverwriteSourceItem/);
+  assert.match(patch, /normalizedMediaFormat\(outputFormatFor/);
+  assert.match(
+    patch,
+    /await window\.x\("replaceFile", r2\.outPath, f2\.path\)/,
+  );
+  assert.match(patch, /\.xpic-backup-/);
+  assert.match(patch, /await fs\.promises\.rename\(backup, dest\)/);
+});
+
+test("Video Compress keeps WebM on the VP9 alpha path", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-overwrite-source-webm-alpha.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /^\+\s*toFormat: fmt,$/m);
+  assert.match(patch, /\["-c:v", "libvpx-vp9"\]/);
+  assert.equal(patch.match(/^\+\s*\.\.\.inputDecodeArgs,$/gm)?.length, 2);
+  assert.doesNotMatch(patch, /^\+.*targetKb > 0 \? \{ toFormat: fmt,/m);
+});
