@@ -216,3 +216,27 @@ test("WebM remains VP9-alpha and uses bounded parallel encoding", async () => {
   assert.match(patch, /"-tile-columns"/);
   assert.match(patch, /"-cluster_time_limit"/);
 });
+
+test("every creation tab exposes a working target-size control", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-all-creation-target-size.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    patch.match(/^\+\s*label: t2\("flow\.targetSize"\),$/gm)?.length,
+    3,
+  );
+  assert.match(patch, /const sourceTargetSizeFor = \(config\)/);
+  assert.match(patch, /Object\.hasOwn\(config\.targetFileSizes/);
+  assert.match(patch, /outFormat: fmt,\s*\n\+\s*targetKb,/);
+  assert.match(
+    patch,
+    /\{ toFormat: fmt, targetFileSizeKb: targetKb \}/,
+  );
+  assert.match(patch, /targetKb > 0 && mode !== "filesize"/);
+});

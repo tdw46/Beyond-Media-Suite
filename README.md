@@ -41,6 +41,8 @@ Light & dark themes, multiple accent colors, English & Chinese interface. Update
 This fork adds a **Target output size (KB)** control to image conversion,
 video-to-animation, and every video output format exposed by xPic:
 
+- every creation tab exposes a target-size control, including Image Compress,
+  Crop, and Video Compress when preserving the source format;
 - target values are remembered independently for each output format;
 - every creation tab has a **Longest edge (px)** control; `0` keeps the
   original dimensions, while any other value resizes landscape, portrait, or

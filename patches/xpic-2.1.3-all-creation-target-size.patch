@@ -1,0 +1,203 @@
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -39283,6 +39283,14 @@
+     [format]: Math.max(0, Number(value) || 0),
+   },
+ });
++const sourceTargetSizeFor = (config) => {
++  if (Object.hasOwn(config.targetFileSizes || {}, "__source__")) {
++    return targetSizeFor(config, "__source__");
++  }
++  return Math.max(0, Number(config.targetFileSize) || 0);
++};
++const updateSourceTargetSizeFor = (config, value) =>
++  updateTargetSizeFor(config, "__source__", value);
+ const longestEdgeFor = (config) =>
+   Math.max(0, Number(config.longestEdge ?? config.scale) || 0);
+ const longestEdgeResize = (config) => {
+@@ -39399,15 +39407,29 @@
+   updateConfig: updateCompressConfig,
+   showSaving: true,
+   renderParams: ({ config, update, t: t2 }) =>
+-    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+-      label: t2("flow.quality"),
+-      value: config.quality,
+-      min: 10,
+-      max: 100,
+-      step: 5,
+-      minHint: t2("flow.smaller"),
+-      maxHint: t2("flow.clearer"),
+-      onChange: (v2) => update({ quality: v2 }),
++    /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++          label: t2("flow.quality"),
++          value: config.quality,
++          min: 10,
++          max: 100,
++          step: 5,
++          minHint: t2("flow.smaller"),
++          maxHint: t2("flow.clearer"),
++          onChange: (v2) => update({ quality: v2 }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.targetSize"),
++          value: sourceTargetSizeFor(config),
++          min: 0,
++          onChange: (v2) => update(updateSourceTargetSizeFor(config, v2)),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.targetSizeHint"),
++        }),
++      ],
+     }),
+   panelSub: (config, n2, t2) =>
+     n2
+@@ -39463,6 +39485,19 @@
+       });
+       return { outName, outPath, outSize: r22.size };
+     }
++    const targetKb = sourceTargetSizeFor(config);
++    if (targetKb > 0) {
++      const outSize = await writeSharpToTarget({
++        recipe,
++        item,
++        outPath,
++        pureName,
++        outFormat: fmt,
++        targetKb,
++        longestEdge: longestEdgeFor(config),
++      });
++      return { outName, outPath, outSize };
++    }
+     const r2 = await writeOut(recipe, item, outPath, pureName, fmt);
+     return { outName, outPath, outSize: r2.size };
+   },
+@@ -39750,14 +39785,28 @@
+   updateConfig: updateVCompressConfig,
+   showSaving: true,
+   renderParams: ({ config, update, t: t2 }) =>
+-    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+-      label: t2("flow.compressRate"),
+-      value: Number(config.quality) || 0,
+-      min: 0,
+-      max: 2,
+-      minHint: t2("flow.clearer"),
+-      maxHint: t2("flow.smaller"),
+-      onChange: (v2) => update({ quality: v2 }),
++    /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++          label: t2("flow.compressRate"),
++          value: Number(config.quality) || 0,
++          min: 0,
++          max: 2,
++          minHint: t2("flow.clearer"),
++          maxHint: t2("flow.smaller"),
++          onChange: (v2) => update({ quality: v2 }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.targetSize"),
++          value: sourceTargetSizeFor(config),
++          min: 0,
++          onChange: (v2) => update(updateSourceTargetSizeFor(config, v2)),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.targetSizeHint"),
++        }),
++      ],
+     }),
+   panelSub: (config, n2, t2) =>
+     n2
+@@ -39765,6 +39814,7 @@
+       : t2("flow.sub.idle"),
+   async processFile(item, config, _globalConfig, outputDir, jobId) {
+     const fmt = (item.ext || "").slice(1);
++    const targetKb = sourceTargetSizeFor(config);
+     const { pureName, outPath } = await resolveVideoOut(
+       item,
+       fmt,
+@@ -39775,6 +39825,7 @@
+       quality: config.quality,
+       inputPath: item.path,
+       outPath,
++      ...(targetKb > 0 ? { toFormat: fmt, targetFileSizeKb: targetKb } : {}),
+       longestEdge: longestEdgeFor(config),
+       jobId,
+     });
+@@ -40278,26 +40329,20 @@
+                   label: t2("flow.cropLock"),
+                   checked: config.lockAspect,
+                   onChange: (v2) => update({ lockAspect: v2 }),
+-                }),
+-              ],
+-            })
+-          : null,
+-        config.mode === "filesize"
+-          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
+-              children: [
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-                  label: t2("flow.cropTarget"),
+-                  value: config.targetFileSize,
+-                  min: 1,
+-                  onChange: (v2) => update({ targetFileSize: v2 }),
+                 }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
+-                  className: "x-cfg-note",
+-                  children: t2("flow.cropTargetHint"),
+-                }),
+               ],
+             })
+           : null,
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.targetSize"),
++          value: sourceTargetSizeFor(config),
++          min: 0,
++          onChange: (v2) => update(updateSourceTargetSizeFor(config, v2)),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.targetSizeHint"),
++        }),
+       ],
+     }),
+   panelSub: (config, n2, t2) =>
+@@ -40323,6 +40368,7 @@
+       ...(isAnimated ? { animated: true } : {}),
+     };
+     const finalResize = longestEdgeResize(config);
++    const targetKb = sourceTargetSizeFor(config);
+     const mode = config.mode;
+     const outName = `${pureName}${ext}`;
+     const writeFile = async (recipe2) => {
+@@ -40378,7 +40424,7 @@
+         },
+       };
+     } else {
+-      const targetBytes = config.targetFileSize * 1024;
++      const targetBytes = Math.max(1, targetKb) * 1e3;
+       const format = item.meta.format;
+       if (format === "png") {
+         recipe = {
+@@ -40436,6 +40482,18 @@
+       }
+     }
+     if (finalResize) recipe = { ...recipe, resize: finalResize };
++    if (targetKb > 0 && mode !== "filesize") {
++      const outSize = await writeSharpToTarget({
++        recipe,
++        item,
++        outPath,
++        pureName,
++        outFormat: item.meta.format,
++        targetKb,
++        longestEdge: longestEdgeFor(config),
++      });
++      return { outName, outPath, outSize };
++    }
+     const outSize = await writeFile(recipe);
+     return { outName, outPath, outSize };
+   },
+
