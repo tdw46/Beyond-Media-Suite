@@ -18,6 +18,11 @@ function nextScale(width, targetBytes, measuredBytes) {
   return Math.max(20, Math.floor(width * ratio));
 }
 
+function optimizedStem(name = "") {
+  const stem = String(name);
+  return stem.endsWith("_opt") ? stem : `${stem}_opt`;
+}
+
 test("500 KB over 17.59 seconds leaves room for container overhead", () => {
   assert.equal(targetVideoBitrateKbps(500, 17.59), 222);
   assert.equal(targetVideoBitrateKbps(500, 17.59, true), 158);
@@ -105,10 +110,7 @@ test("large Merge Frames jobs avoid eager full-image buffers", async () => {
 test("media batches are cancellable and clean up their process trees", async () => {
   const patch = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
-      new URL(
-        "../patches/xpic-2.1.3-cancellable-media.patch",
-        import.meta.url,
-      ),
+      new URL("../patches/xpic-2.1.3-cancellable-media.patch", import.meta.url),
       "utf8",
     ),
   );
@@ -124,17 +126,12 @@ test("target-sized WebP starts at a frame-count-aware scale", async () => {
   const targetBytes = 750_000;
   const frames = 336;
   const aspect = 16 / 9;
-  const width = Math.floor(
-    Math.sqrt((targetBytes / frames / 0.004) * aspect),
-  );
+  const width = Math.floor(Math.sqrt((targetBytes / frames / 0.004) * aspect));
   assert.equal(width, 996);
 
   const patch = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
-      new URL(
-        "../patches/xpic-2.1.3-cancellable-media.patch",
-        import.meta.url,
-      ),
+      new URL("../patches/xpic-2.1.3-cancellable-media.patch", import.meta.url),
       "utf8",
     ),
   );
@@ -146,10 +143,7 @@ test("target-sized WebP starts at a frame-count-aware scale", async () => {
 test("Merge Frames previews use bounded thumbnails", async () => {
   const patch = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
-      new URL(
-        "../patches/xpic-2.1.3-cancellable-media.patch",
-        import.meta.url,
-      ),
+      new URL("../patches/xpic-2.1.3-cancellable-media.patch", import.meta.url),
       "utf8",
     ),
   );
@@ -234,9 +228,54 @@ test("every creation tab exposes a working target-size control", async () => {
   assert.match(patch, /const sourceTargetSizeFor = \(config\)/);
   assert.match(patch, /Object\.hasOwn\(config\.targetFileSizes/);
   assert.match(patch, /outFormat: fmt,\s*\n\+\s*targetKb,/);
+  assert.match(patch, /\{ toFormat: fmt, targetFileSizeKb: targetKb \}/);
+  assert.match(patch, /targetKb > 0 && mode !== "filesize"/);
+});
+
+test("default outputs are source-adjacent and use a stable _opt suffix", async () => {
+  assert.equal(optimizedStem("avatar"), "avatar_opt");
+  assert.equal(optimizedStem("avatar_opt"), "avatar_opt");
+
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-source-adjacent-opt-output.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /^\+\s*defaultOutputDir: "",$/m);
+  assert.match(patch, /configured && configured !== "x_output"/);
+  assert.match(patch, /const pureName = optimizedStem\(/);
+  assert.match(patch, /optimizedStem\(fileStem\(files\[0\]\?\.name/);
+  assert.match(patch, /defaultTaskOutputDir\(files, globalConfig\)/);
   assert.match(
     patch,
-    /\{ toFormat: fmt, targetFileSizeKb: targetKb \}/,
+    /defaultTaskOutputDir\(\[\{ dir: baseDir \}\], globalConfig\)/,
   );
-  assert.match(patch, /targetKb > 0 && mode !== "filesize"/);
+  assert.match(patch, /savedOutputDir === "x_output" \? "" : savedOutputDir/);
+  assert.match(patch, /placeholder: t2\("flow\.outDirDefault"\)/);
+});
+
+test("workflow optimizes only its final output name", async () => {
+  const patch = await import("node:fs/promises").then(
+    async ({ readFile }) =>
+      `${await readFile(
+        new URL(
+          "../patches/xpic-2.1.3-all-creation-target-size.patch",
+          import.meta.url,
+        ),
+        "utf8",
+      )}\n${await readFile(
+        new URL(
+          "../patches/xpic-2.1.3-source-adjacent-opt-output.patch",
+          import.meta.url,
+        ),
+        "utf8",
+      )}`,
+  );
+  assert.match(patch, /optimizeOutputName = false/g);
+  assert.ok((patch.match(/^\+\s*isLastStep,$/gm) || []).length >= 4);
+  assert.match(patch, /\? optimizedStem\(sourcePureName\)/);
 });

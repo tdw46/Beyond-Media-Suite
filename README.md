@@ -66,6 +66,9 @@ video-to-animation, and every video output format exposed by xPic:
   output format;
 - fork builds use a content-hashed renderer filename so an older Chromium cache
   cannot hide newly installed controls;
+- outputs default to the source folder with an `_opt` suffix before the
+  extension; multi-input single-output tools use the first input's name, while
+  explicitly chosen folders and custom merge names still take precedence;
 - fork builds do not download upstream app updates over the patch.
 
 The upstream repository publishes the website and releases, but not the

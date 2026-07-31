@@ -1,0 +1,377 @@
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -22837,7 +22837,7 @@
+ const mergeSlice = createConfigSlice({
+   name: "merge",
+   initialConfig: {
+-    o: "x_animate",
++    o: "",
+     loop: 0,
+     zl: 10,
+     d: 100,
+@@ -22878,7 +22878,7 @@
+   initialState: {
+     config: {
+       currentTab: "convert",
+-      defaultOutputDir: "x_output",
++      defaultOutputDir: "",
+       quitWhenClose: false,
+       keepDirStructure: true,
+       autoDownloadUpdate: true,
+@@ -23349,7 +23349,8 @@
+   "settings.language": "语言",
+   "settings.languageHint": "中文 / English / 跟随系统",
+   "settings.outputDir": "输出目录",
+-  "settings.outputDirHint": "每次任务默认输出的目录名，同名文件夹会被覆盖",
++  "settings.outputDirHint":
++    "留空则输出到原文件同一目录；也可填写自定义子文件夹名称",
+   "settings.quitOnClose": "关闭后退出",
+   "settings.quitOnCloseHint":
+     "开启后点 × 关闭窗口会退出应用（图标也退出 Dock/任务栏）",
+@@ -23527,7 +23528,7 @@
+   "flow.outDir": "输出目录",
+   "flow.choose": "选择",
+   "flow.default": "默认",
+-  "flow.outDirDefault": "原图同级 ./{dir}",
++  "flow.outDirDefault": "与原文件相同的目录",
+   "flow.panelTitle": "{verb}设置",
+   "flow.sub.idle": "参数即时生效",
+   "flow.sub.compress": "{n} 个文件 · q{q}",
+@@ -23737,7 +23738,7 @@
+   "settings.languageHint": "中文 / English / System",
+   "settings.outputDir": "Output folder",
+   "settings.outputDirHint":
+-    "Default output folder for each task; same-name folders are overwritten",
++    "Leave blank to write beside each source, or enter a custom subfolder name",
+   "settings.quitOnClose": "Quit on close",
+   "settings.quitOnCloseHint":
+     "When on, clicking × quits the app (also removed from Dock/taskbar)",
+@@ -23906,7 +23907,7 @@
+   "flow.outDir": "Output folder",
+   "flow.choose": "Choose",
+   "flow.default": "Default",
+-  "flow.outDirDefault": "Beside source ./{dir}",
++  "flow.outDirDefault": "Same folder as source",
+   "flow.panelTitle": "{verb} settings",
+   "flow.sub.idle": "Changes apply instantly",
+   "flow.sub.compress": "{n} file(s) · q{q}",
+@@ -37538,13 +37539,22 @@
+     file.path,
+   );
+ });
+-async function executeConvertStep(config, files, outputDir, globalConfig) {
++async function executeConvertStep(
++  config,
++  files,
++  outputDir,
++  globalConfig,
++  optimizeOutputName = false,
++) {
+   console.log("[Workflow] 执行格式转换步骤", config);
+   const sharpAccept$1 = getExt(sharpAccept);
+   const output = [];
+   for (const item of files) {
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+-    const pureName = item.name.slice(0, -ext.length);
++    const sourcePureName = item.name.slice(0, -ext.length);
++    const pureName = optimizeOutputName
++      ? optimizedStem(sourcePureName)
++      : sourcePureName;
+     const outPath = window.pj(outputDir, `${pureName}.${config.toFormat}`);
+     await window.x("createDirIfNotExist", outputDir);
+     const convertConfig = getConvertImgParams({
+@@ -37611,15 +37621,24 @@
+   }
+   return output;
+ }
+-async function executeCompressStep(config, files, outputDir) {
++async function executeCompressStep(
++  config,
++  files,
++  outputDir,
++  optimizeOutputName = false,
++) {
+   console.log("[Workflow] 执行图片压缩步骤", config);
+   const sharpAccept$1 = getExt(sharpAccept);
+   const compressConfig = getCompressImgParams(config);
+   const output = [];
+   for (const item of files) {
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+-    item.name.slice(0, -ext.length);
+-    const outPath = window.pj(outputDir, item.name);
++    const sourcePureName = item.name.slice(0, -ext.length);
++    const pureName = optimizeOutputName
++      ? optimizedStem(sourcePureName)
++      : sourcePureName;
++    const outputName = `${pureName}${ext}`;
++    const outPath = window.pj(outputDir, outputName);
+     await window.x("createDirIfNotExist", outputDir);
+     let recipe;
+     const isAnimated =
+@@ -37663,7 +37682,7 @@
+     } else {
+       if (outPath === item.path) {
+         const cachePath = await window.x("getCachePath");
+-        const fakePath = window.pj(cachePath, item.name);
++        const fakePath = window.pj(cachePath, outputName);
+         await window.x("sharpToFile", { ...recipe, outPath: fakePath });
+         await window.x("moveFile", fakePath, outPath);
+       } else {
+@@ -37673,7 +37692,7 @@
+     const newMeta = removeUnSerializable(await window.x("getMeta", outPath));
+     output.push({
+       id: uuid(),
+-      name: item.name,
++      name: outputName,
+       path: outPath,
+       size: (await window.x("getFileInfo", outPath))?.size ?? 0,
+       meta: newMeta,
+@@ -37683,13 +37702,22 @@
+   }
+   return output;
+ }
+-async function executeCropStep(config, files, outputDir) {
++async function executeCropStep(
++  config,
++  files,
++  outputDir,
++  optimizeOutputName = false,
++) {
+   console.log("[Workflow] 执行图片裁剪步骤（固定尺寸）", config);
+   const output = [];
+   for (const item of files) {
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+-    const pureName = item.name.slice(0, -ext.length);
+-    const outPath = window.pj(outputDir, item.name);
++    const sourcePureName = item.name.slice(0, -ext.length);
++    const pureName = optimizeOutputName
++      ? optimizedStem(sourcePureName)
++      : sourcePureName;
++    const outputName = `${pureName}${ext}`;
++    const outPath = window.pj(outputDir, outputName);
+     await window.x("createDirIfNotExist", outputDir);
+     const isAnimated =
+       (item.meta.format === "webp" || item.meta.format === "gif") &&
+@@ -37719,7 +37747,7 @@
+     const newMeta = removeUnSerializable(await window.x("getMeta", outPath));
+     output.push({
+       id: uuid(),
+-      name: item.name,
++      name: outputName,
+       path: outPath,
+       size: (await window.x("getFileInfo", outPath))?.size ?? 0,
+       meta: newMeta,
+@@ -37729,7 +37757,12 @@
+   }
+   return output;
+ }
+-async function executeMergeStep(config, files, outputDir) {
++async function executeMergeStep(
++  config,
++  files,
++  outputDir,
++  optimizeOutputName = false,
++) {
+   console.log("[Workflow] 执行序列帧合成步骤", config);
+   await window.x("createDirIfNotExist", outputDir);
+   const cmdArr = ["img2webp", "-loop", config.loop];
+@@ -37738,7 +37771,11 @@
+     cmdArr.push("-d");
+     cmdArr.push(config.d);
+   }
+-  const outputName = `${config.o || "x_animate"}.webp`;
++  const configuredName = String(config.o || "").trim();
++  const defaultName = optimizeOutputName
++    ? optimizedStem(fileStem(files[0]?.name || "animation"))
++    : "x_animate";
++  const outputName = `${configuredName && configuredName !== "x_animate" ? configuredName : defaultName}.webp`;
+   const cachePath = await window.x("getCachePath");
+   const fakePath = window.pj(
+     cachePath,
+@@ -37814,24 +37851,28 @@
+             currentFiles,
+             stepOutputDir,
+             globalConfig,
++            isLastStep,
+           );
+         } else if (step.type === "compress") {
+           currentFiles = await executeCompressStep(
+             step.config,
+             currentFiles,
+             stepOutputDir,
++            isLastStep,
+           );
+         } else if (step.type === "crop") {
+           currentFiles = await executeCropStep(
+             step.config,
+             currentFiles,
+             stepOutputDir,
++            isLastStep,
+           );
+         } else if (step.type === "merge") {
+           currentFiles = await executeMergeStep(
+             step.config,
+             currentFiles,
+             stepOutputDir,
++            isLastStep,
+           );
+         } else {
+           throw new Error(`未知的工作流步骤类型：${step?.type}`);
+@@ -38896,7 +38937,7 @@
+           return;
+         }
+         const baseDir = await window.x("getFileDir", current2[0].path);
+-        const outDir = window.pj(baseDir, globalConfig.defaultOutputDir);
++        const outDir = defaultTaskOutputDir([{ dir: baseDir }], globalConfig);
+         setLoading(false);
+         runningRef.current = true;
+         setRun({
+@@ -39240,14 +39281,29 @@
+   });
+ });
+ const sharpExts = () => getExt(sharpAccept);
++const fileStem = (name = "") => {
++  const lastDot = String(name).lastIndexOf(".");
++  return lastDot > 0 ? String(name).slice(0, lastDot) : String(name);
++};
++const optimizedStem = (name = "") => {
++  const stem = String(name);
++  return stem.endsWith("_opt") ? stem : `${stem}_opt`;
++};
++const defaultTaskOutputDir = (files, globalConfig) => {
++  const sourceDir = files?.[0]?.dir || "";
++  const configured = String(globalConfig?.defaultOutputDir || "").trim();
++  return configured && configured !== "x_output"
++    ? window.pj(sourceDir, configured)
++    : sourceDir;
++};
+ async function resolveOut(item, ext, outFormat, outputDir, globalConfig) {
+-  const pureName = item.name.slice(0, -1 * ext.length);
++  const pureName = optimizedStem(item.name.slice(0, -1 * ext.length));
+   let outPath = window.pj(outputDir, `${pureName}.${outFormat}`);
+   let outDir = outputDir;
+   if (globalConfig.keepDirStructure && item.relaPath) {
+     outPath = window.pj(
+       outputDir,
+-      `${item.relaPath.slice(0, -1 * ext.length)}.${outFormat}`,
++      `${optimizedStem(item.relaPath.slice(0, -1 * ext.length))}.${outFormat}`,
+     );
+     outDir = window.pj(
+       outputDir,
+@@ -40053,12 +40109,15 @@
+   load: mergeLoad,
+   renderParams: ({ config, update, t: t2 }) => {
+     const zl = config.zl || 10;
++    const firstName = store.getState().session.files[0]?.name || "animation";
++    const defaultName = optimizedStem(fileStem(firstName));
++    const configuredName = config.o === "x_animate" ? "" : config.o;
+     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
+       children: [
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
+           label: t2("flow.mergeName"),
+-          value: config.o ?? "x_animate",
+-          placeholder: "x_animate",
++          value: configuredName ?? "",
++          placeholder: defaultName,
+           onChange: (v2) => update({ o: v2 }),
+         }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
+@@ -40121,7 +40180,11 @@
+     const ext = config.ext || "webp";
+     const loop = config.loop ?? 0;
+     const d = config.d || Math.max(1, Math.round(1e3 / (config.zl || 10)));
+-    const name = config.o || "x_animate";
++    const configuredName = String(config.o || "").trim();
++    const name =
++      configuredName && configuredName !== "x_animate"
++        ? configuredName
++        : optimizedStem(fileStem(files[0]?.name || "animation"));
+     setProgress2(8);
+     await window.x("createDirIfNotExist", outputDir);
+     const stamp = `${files.length}_${name}`;
+@@ -40349,11 +40412,14 @@
+     n2 ? t2("flow.sub.generic", { n: n2 }) : t2("flow.sub.idle"),
+   async processFile(item, config, globalConfig, outputDir) {
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+-    const pureName = item.name.slice(0, -1 * ext.length);
++    const pureName = optimizedStem(item.name.slice(0, -1 * ext.length));
+     let outPath = window.pj(outputDir, `${pureName}${ext}`);
+     let outDir = outputDir;
+     if (globalConfig.keepDirStructure && item.relaPath) {
+-      outPath = window.pj(outputDir, item.relaPath);
++      outPath = window.pj(
++        outputDir,
++        `${optimizedStem(item.relaPath.slice(0, -1 * ext.length))}${ext}`,
++      );
+       outDir = window.pj(
+         outputDir,
+         `${item.relaPath.slice(0, -1 * item.name.length)}`,
+@@ -40935,8 +41001,7 @@
+     const config = state[mod2.configKey].config;
+     const globalConfig = state.global.config;
+     const outputDir =
+-      state.session.outputDir ||
+-      window.pj(files[0].dir || "", globalConfig.defaultOutputDir);
++      state.session.outputDir || defaultTaskOutputDir(files, globalConfig);
+     store.dispatch(startProcessing());
+     const runId = store.getState().session.runId;
+     const jobId = `flow-${runId}`;
+@@ -40981,10 +41046,7 @@
+     const globalConfig = state.global.config;
+     const outputDir =
+       state.session.outputDir ||
+-      window.pj(
+-        state.session.files[0].dir || "",
+-        globalConfig.defaultOutputDir,
+-      );
++      defaultTaskOutputDir(state.session.files, globalConfig);
+     store.dispatch(retryStart(failed.map((f2) => f2.id)));
+     const runId = store.getState().session.runId;
+     await processList(failed, config, globalConfig, outputDir, runId);
+@@ -41662,9 +41724,7 @@
+                 className: "x-cfg-dir-path",
+                 children: session.outputDir
+                   ? session.outputDir
+-                  : t2("flow.outDirDefault", {
+-                      dir: globalConfig.defaultOutputDir,
+-                    }),
++                  : t2("flow.outDirDefault"),
+               }),
+             ],
+           }),
+@@ -42359,7 +42419,16 @@
+   reactExports.useEffect(() => {
+     window.x("readConfig").then((config) => {
+       const g2 = config?.global?.config || {};
+-      setOutputDir2(g2.defaultOutputDir ?? "");
++      const savedOutputDir = String(g2.defaultOutputDir ?? "");
++      const migratedOutputDir =
++        savedOutputDir === "x_output" ? "" : savedOutputDir;
++      setOutputDir2(migratedOutputDir);
++      if (savedOutputDir === "x_output") {
++        window.x("broadcast", {
++          type: "global-config",
++          payload: { defaultOutputDir: "" },
++        });
++      }
+       setQuitWhenClose(!!g2.quitWhenClose);
+       setKeepDirStructure(!!g2.keepDirStructure);
+       setAutoDownloadUpdate(!!g2.autoDownloadUpdate);
+@@ -42428,7 +42497,7 @@
+   const onOutputDirChange = reactExports.useCallback(
+     (v2) => {
+       setOutputDir2(v2);
+-      if (isValidFilename(v2)) {
++      if (!v2.trim() || isValidFilename(v2)) {
+         setDirInvalid(false);
+         apply({ defaultOutputDir: v2 });
+       } else {
+@@ -42648,7 +42717,7 @@
+                           value: outputDir,
+                           invalid: dirInvalid,
+                           onChange: (e) => onOutputDirChange(e.target.value),
+-                          placeholder: "x_output",
++                          placeholder: t2("flow.outDirDefault"),
+                         }),
+                       }),
+                       /* @__PURE__ */ jsxRuntimeExports.jsx(Row, {
