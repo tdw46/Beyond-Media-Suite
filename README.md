@@ -81,7 +81,12 @@ video-to-animation, and every video output format exposed by xPic:
 - automatic collage layouts proportionally size each cell from its source
   aspect ratio—equal heights within rows and equal widths within columns—so
   full media frames meet edge-to-edge without distortion or letterbox gaps;
-- Collage previews are live and paused by default, with synchronized playback,
+- exact collage target width and height can override the automatic canvas;
+  media defaults to aspect-preserving Fill with the minimum centered crop,
+  while complete-frame letterboxing is available as an opt-in placement mode;
+- Collage previews are live and paused by default, with synchronized playback;
+  paused moving media uses a lossless high-resolution poster instead of the
+  small list thumbnail, preserving alpha and source detail up to 2560px,
   and can export still PNG/JPEG/WebP/AVIF/TIFF, animated GIF/WebP/APNG, or every
   video container exposed by xPic. The same per-format target-size,
   longest-edge, source-adjacent `_opt` naming, aspect, FPS, duration, and loop

@@ -1,9 +1,11 @@
 --- a/out/main/index.js
 +++ b/out/main/index.js
-@@ -2020,6 +2020,105 @@
+@@ -2018,7 +2018,106 @@
+         return fs.statSync(outPath).size;
+       } finally {
          safeUnlink(listPath);
-       }
-     },
++      }
++    },
 +    collageIntermediate: async (_, opt) => {
 +      const { files, width, height, fps, duration, outPath, still, jobId } =
 +        opt || {};
@@ -38,7 +40,7 @@
 +          }
 +          args.push("-i", inputPath);
 +        }
-+      }
+       }
 +      const filters = [
 +        `color=c=black@0.0:s=${canvasWidth}x${canvasHeight}:r=${outputFps}:d=${outputDuration},format=rgba[canvas]`,
 +      ];
@@ -102,11 +104,10 @@
 +        { jobId },
 +      );
 +      return fs.statSync(outPath).size;
-+    },
+     },
      execMedia: async (_, opt) => {
        const { cmd, jobId, tempPaths = [] } = opt || {};
-       if (!Array.isArray(cmd) || !cmd.length) {
-@@ -3065,13 +3164,25 @@
+@@ -3065,21 +3164,43 @@
                /Stream #0:0.*: Video: (\w+).*?, (\d+)x(\d+).*?, (\d+) kb\/s, ([\d.]+) fps/.exec(
                  stderr,
                );
@@ -136,18 +137,76 @@
              });
            })
            .catch((e) => reject(e));
+       });
+     },
+-    vGetPoster: (_, filePath) => {
++    vGetPoster: (_, filePath, options = {}) => {
+       const cwd = binDir();
+       const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
++      const highResolution = options?.purpose === "collage-preview";
++      const requestedEdge = Math.round(Number(options?.maxEdge) || 2560);
++      const maxEdge = Math.max(512, Math.min(4096, requestedEdge));
++      const useVp9AlphaDecoder =
++        highResolution &&
++        path.extname(filePath).toLowerCase() === ".webm" &&
++        String(options?.decoder || "")
++          .toLowerCase()
++          .includes("vp9");
++      const previewScale = `select=eq(n\\,0),scale='if(gte(iw,ih),min(${maxEdge},iw),-2)':'if(gte(iw,ih),-2,min(${maxEdge},ih))':flags=lanczos`;
+       return new Promise((resolve, reject) => {
+         ensureExecPerm(cwd)
+           .then(() =>
+@@ -3088,25 +3209,28 @@
+               ffmpeg,
+               [
+                 "-hide_banner",
++                ...(useVp9AlphaDecoder ? ["-c:v", "libvpx-vp9"] : []),
+                 "-i",
+                 filePath,
+                 "-vf",
+-                "select=eq(n\\,0),scale=100:-1",
++                highResolution ? previewScale : "select=eq(n\\,0),scale=100:-1",
+                 "-vframes",
+                 "1",
+                 "-f",
+                 "image2pipe",
+                 "-vcodec",
+-                "mjpeg",
+-                "-q:v",
+-                "3",
++                highResolution ? "libwebp" : "mjpeg",
++                ...(highResolution
++                  ? ["-lossless", "1", "-compression_level", "3", "-q:v", "100"]
++                  : ["-q:v", "3"]),
+                 "-",
+               ],
+               { encoding: "buffer" },
+             ),
+           )
+           .then(({ stdoutBuf }) => {
+-            resolve(`data:image/jpeg;base64,${stdoutBuf.toString("base64")}`);
++            const mime = highResolution ? "image/webp" : "image/jpeg";
++            resolve(`data:${mime};base64,${stdoutBuf.toString("base64")}`);
+           })
+           .catch((e) => reject(e));
+       });
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22873,6 +22873,21 @@
+@@ -22871,6 +22871,24 @@
+   name: "vcompress",
+   initialConfig: {
      quality: "",
-   },
- });
++  },
++});
 +const collageSlice = createConfigSlice({
 +  name: "collage",
 +  initialConfig: {
 +    toFormat: "webm",
 +    layout: "grid",
 +    aspect: "auto",
++    targetWidth: 0,
++    targetHeight: 0,
++    fitMode: "fill",
 +    fps: 24,
 +    duration: 0,
 +    quality: 80,
@@ -155,12 +214,10 @@
 +    loop: 0,
 +    longestEdge: 0,
 +    targetFileSizes: {},
-+  },
-+});
+   },
+ });
  const globalSlice = createSlice({
-   name: "global",
-   initialState: {
-@@ -22900,6 +22915,7 @@
+@@ -22900,6 +22918,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -168,7 +225,7 @@
  const { updateGlobalConfig } = globalSlice.actions;
  const {
    switchTab,
-@@ -22929,6 +22945,7 @@
+@@ -22929,6 +22948,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -176,7 +233,7 @@
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
    },
-@@ -23305,6 +23322,7 @@
+@@ -23305,6 +23325,7 @@
    "nav.vconvert": "格式转换",
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
@@ -184,7 +241,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23404,10 +23422,12 @@
+@@ -23404,10 +23425,12 @@
    "flow.verb.vconvert": "转换",
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
@@ -197,12 +254,21 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23427,6 +23447,25 @@
+@@ -23427,6 +23450,34 @@
    "flow.overwriteSource": "覆盖源媒体",
    "flow.overwriteSourceHint": "仅在同格式处理成功后替换每个源文件。",
    "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
 +  "flow.collageLayout": "布局",
 +  "flow.collageAspect": "画布比例",
++  "flow.collageTargetWidth": "目标宽度(px)",
++  "flow.collageTargetHeight": "目标高度(px)",
++  "flow.collageDimensionsHint":
++    "宽高填 0 使用自动尺寸；填写任一项会按画布比例推算另一项。",
++  "flow.collageFit": "媒体适配",
++  "flow.collageFill": "填满（最少裁切）",
++  "flow.collageLetterbox": "完整显示（留边）",
++  "flow.collageFitHint":
++    "默认填满每个区域并使用最少的居中裁切；留边模式会显示完整画面。",
 +  "flow.collageDuration": "时长(秒，0=自动)",
 +  "flow.collagePreview": "实时预览",
 +  "flow.collagePaused": "默认暂停",
@@ -223,7 +289,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23699,6 +23738,7 @@
+@@ -23699,6 +23750,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -231,7 +297,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23835,12 @@
+@@ -23795,10 +23847,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -244,12 +310,21 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23822,6 +23864,25 @@
+@@ -23822,6 +23876,34 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
 +  "flow.collageLayout": "Layout",
 +  "flow.collageAspect": "Canvas aspect",
++  "flow.collageTargetWidth": "Target width (px)",
++  "flow.collageTargetHeight": "Target height (px)",
++  "flow.collageDimensionsHint":
++    "Set both to 0 for automatic dimensions. Set either one to derive the other from the canvas aspect.",
++  "flow.collageFit": "Media placement",
++  "flow.collageFill": "Fill (minimum crop)",
++  "flow.collageLetterbox": "Fit (letterbox)",
++  "flow.collageFitHint":
++    "Fill is the default and uses the smallest centered crop needed. Fit shows the complete frame with letterboxing.",
 +  "flow.collageDuration": "Duration (seconds, 0=auto)",
 +  "flow.collagePreview": "Live preview",
 +  "flow.collagePaused": "Paused by default",
@@ -270,7 +345,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -26272,6 +26333,7 @@
+@@ -26272,6 +26354,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -278,11 +353,10 @@
      ],
    },
  ];
-@@ -40007,7 +40069,814 @@
-     const info = await window.x("getFileInfo", outPath);
+@@ -40008,6 +40091,878 @@
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
    },
-+};
+ };
 +const COLLAGE_STILL_OUTPUTS = new Set([
 +  "png",
 +  "jpeg",
@@ -414,8 +488,20 @@
 +    ? config.layout
 +    : options[0]?.value || "grid";
 +  const packed = collagePackedLayout(files, layout);
++  const requestedWidth = Math.max(
++    0,
++    Math.min(16384, Math.round(Number(config.targetWidth) || 0)),
++  );
++  const requestedHeight = Math.max(
++    0,
++    Math.min(16384, Math.round(Number(config.targetHeight) || 0)),
++  );
 +  const aspect =
-+    config.aspect === "auto" ? packed.aspect : Number(config.aspect) || 1;
++    requestedWidth > 0 && requestedHeight > 0
++      ? requestedWidth / requestedHeight
++      : config.aspect === "auto"
++        ? packed.aspect
++        : Number(config.aspect) || 1;
 +  const sourceLongest = Math.max(
 +    320,
 +    ...files.map((item) =>
@@ -426,8 +512,22 @@
 +    ),
 +  );
 +  const edge = Math.max(2, longestEdgeFor(config) || sourceLongest);
-+  const width = Math.max(2, Math.round(aspect >= 1 ? edge : edge * aspect));
-+  const height = Math.max(2, Math.round(aspect >= 1 ? edge / aspect : edge));
++  const automaticWidth = Math.round(aspect >= 1 ? edge : edge * aspect);
++  const automaticHeight = Math.round(aspect >= 1 ? edge / aspect : edge);
++  const width = Math.max(
++    2,
++    requestedWidth ||
++      (requestedHeight > 0
++        ? Math.round(requestedHeight * aspect)
++        : automaticWidth),
++  );
++  const height = Math.max(
++    2,
++    requestedHeight ||
++      (requestedWidth > 0
++        ? Math.round(requestedWidth / aspect)
++        : automaticHeight),
++  );
 +  const rects = packed.rects;
 +  return {
 +    layout,
@@ -435,16 +535,18 @@
 +    height,
 +    placements: files.map((item, index) => {
 +      const rect = rects[index];
-+      const baseWidth = Math.max(2, Math.round(rect.width * width));
-+      const baseHeight = Math.max(2, Math.round(rect.height * height));
++      const baseX = Math.round(rect.x * width);
++      const baseY = Math.round(rect.y * height);
++      const baseRight = Math.round((rect.x + rect.width) * width);
++      const baseBottom = Math.round((rect.y + rect.height) * height);
++      const baseWidth = Math.max(2, baseRight - baseX);
++      const baseHeight = Math.max(2, baseBottom - baseY);
 +      const scale = Math.max(
 +        0.25,
 +        Math.min(3, (Number(item.scale) || 100) / 100),
 +      );
 +      const itemWidth = Math.max(2, Math.round(baseWidth * scale));
 +      const itemHeight = Math.max(2, Math.round(baseHeight * scale));
-+      const baseX = Math.round(rect.x * width);
-+      const baseY = Math.round(rect.y * height);
 +      return {
 +        ...rect,
 +        baseWidth,
@@ -462,7 +564,7 @@
 +      };
 +    }),
 +  };
- };
++};
 +async function collageLoad(rawFiles, ctx) {
 +  try {
 +    await window.x("focus");
@@ -488,7 +590,11 @@
 +          (!convertReadAccept.includes(ext) || animatedImages.has(ext));
 +        if (moving) {
 +          const meta = await window.x("vGetFileInfo", path);
-+          const poster = await window.x("vGetPoster", path);
++          const poster = await window.x("vGetPoster", path, {
++            purpose: "collage-preview",
++            maxEdge: 2560,
++            decoder: meta?.format,
++          });
 +          return {
 +            id: uuid(),
 +            name: file.name,
@@ -798,7 +904,8 @@
 +                    top: `${(rect.y / geometry.height) * 100}%`,
 +                    width: `${(rect.itemWidth / geometry.width) * 100}%`,
 +                    height: `${(rect.itemHeight / geometry.height) * 100}%`,
-+                    objectFit: config.aspect === "auto" ? "cover" : "contain",
++                    objectFit:
++                      config.fitMode === "letterbox" ? "contain" : "cover",
 +                    zIndex: Number(item.layer) || index + 1,
 +                  };
 +                  if (item.mediaKind === "video") {
@@ -811,6 +918,7 @@
 +                        },
 +                        src: item.url,
 +                        poster: item.poster,
++                        preload: "auto",
 +                        muted: true,
 +                        loop: true,
 +                        playsInline: true,
@@ -898,6 +1006,37 @@
 +            { label: "3:4", value: String(3 / 4) },
 +          ],
 +          onChange: (value) => update({ aspect: value }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.collageTargetWidth"),
++          value: config.targetWidth || 0,
++          min: 0,
++          max: 16384,
++          onChange: (value) => update({ targetWidth: value }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.collageTargetHeight"),
++          value: config.targetHeight || 0,
++          min: 0,
++          max: 16384,
++          onChange: (value) => update({ targetHeight: value }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.collageDimensionsHint"),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++          label: t2("flow.collageFit"),
++          value: config.fitMode || "fill",
++          options: [
++            { label: t2("flow.collageFill"), value: "fill" },
++            { label: t2("flow.collageLetterbox"), value: "letterbox" },
++          ],
++          onChange: (value) => update({ fitMode: value }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.collageFitHint"),
 +        }),
 +        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
 +          label: t2("flow.outFormat"),
@@ -1003,7 +1142,7 @@
 +            path: item.path,
 +            still: item.still,
 +            layer: item.layer,
-+            cover: config.aspect === "auto",
++            cover: config.fitMode !== "letterbox",
 +            x: placement.x,
 +            y: placement.y,
 +            width: placement.itemWidth,
@@ -1093,7 +1232,7 @@
  async function mapWithConcurrency(items, concurrency, mapper) {
    const results = new Array(items.length);
    let nextIndex = 0;
-@@ -40655,6 +41524,7 @@
+@@ -40655,6 +41610,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -1101,7 +1240,7 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -41448,7 +42318,7 @@
+@@ -41448,7 +42404,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -1110,7 +1249,7 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41685,6 +42555,15 @@
+@@ -41685,6 +42641,15 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [

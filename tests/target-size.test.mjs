@@ -366,11 +366,32 @@ test("Collage packs every requested layout without distorting source aspect rati
   assert.match(patch, /crop=\$\{itemWidth\}:\$\{itemHeight\}/);
   assert.match(patch, /force_original_aspect_ratio=decrease/);
   assert.match(patch, /pad=\$\{itemWidth\}:\$\{itemHeight\}/);
-  assert.match(
-    patch,
-    /objectFit: config\.aspect === "auto" \? "cover" : "contain"/,
+  assert.match(patch, /config\.fitMode === "letterbox" \? "contain" : "cover"/);
+  assert.match(patch, /cover: config\.fitMode !== "letterbox"/);
+});
+
+test("Collage supports exact target dimensions with minimum-crop fill and opt-in letterboxing", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
   );
-  assert.match(patch, /cover: config\.aspect === "auto"/);
+  assert.match(patch, /targetWidth: 0/);
+  assert.match(patch, /targetHeight: 0/);
+  assert.match(patch, /fitMode: "fill"/);
+  assert.match(patch, /"flow\.collageTargetWidth": "Target width \(px\)"/);
+  assert.match(patch, /"flow\.collageTargetHeight": "Target height \(px\)"/);
+  assert.match(patch, /value: config\.targetWidth \|\| 0/);
+  assert.match(patch, /value: config\.targetHeight \|\| 0/);
+  assert.match(patch, /requestedWidth \/ requestedHeight/);
+  assert.match(patch, /requestedWidth \|\|/);
+  assert.match(patch, /requestedHeight \|\|/);
+  assert.match(patch, /value: "letterbox"/);
+  assert.match(patch, /config\.fitMode === "letterbox" \? "contain" : "cover"/);
+  assert.match(patch, /cover: config\.fitMode !== "letterbox"/);
+  assert.match(patch, /force_original_aspect_ratio=increase/);
+  assert.match(patch, /force_original_aspect_ratio=decrease/);
 });
 
 test("Collage preview starts paused and exposes synchronized playback and item transforms", async () => {
@@ -384,6 +405,13 @@ test("Collage preview starts paused and exposes synchronized playback and item t
   assert.match(patch, /video\.play\(\)\.catch/);
   assert.match(patch, /video\.pause\(\)/);
   assert.match(patch, /video\.currentTime = 0/);
+  assert.match(patch, /purpose: "collage-preview"/);
+  assert.match(patch, /maxEdge: 2560/);
+  assert.match(patch, /highResolution \? "libwebp" : "mjpeg"/);
+  assert.match(patch, /"-lossless", "1"/);
+  assert.match(patch, /useVp9AlphaDecoder/);
+  assert.match(patch, /decoder: meta\?\.format/);
+  assert.match(patch, /preload: "auto"/);
   assert.match(patch, /layer: item\.layer/);
   assert.match(patch, /offsetX: value/);
   assert.match(patch, /offsetY: value/);
@@ -431,6 +459,6 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.10/);
-  assert.match(build, /2\.1\.3\.10/);
+  assert.match(build, /2\.1\.3-fork\.11/);
+  assert.match(build, /2\.1\.3\.11/);
 });
