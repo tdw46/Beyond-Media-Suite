@@ -1,6 +1,19 @@
 --- a/out/main/index.js
 +++ b/out/main/index.js
-@@ -2020,6 +2020,102 @@
+@@ -1732,6 +1732,12 @@
+       const enc = new TextDecoder("utf-8");
+       return enc.decode(buffer);
+     },
++    writeBufferToFile: (_, buffer, outPath) => {
++      const bytes = Buffer.from(buffer?.data ?? buffer);
++      fs.mkdirSync(path.dirname(outPath), { recursive: true });
++      fs.writeFileSync(outPath, bytes);
++      return { size: bytes.length };
++    },
+     createDirIfNotExist: (_, dirPath) => {
+       if (!fs.existsSync(dirPath)) {
+         fs.mkdirSync(dirPath, { recursive: true });
+@@ -2020,6 +2026,102 @@
          safeUnlink(listPath);
        }
      },
@@ -103,7 +116,15 @@
      execMedia: async (_, opt) => {
        const { cmd, jobId, tempPaths = [] } = opt || {};
        if (!Array.isArray(cmd) || !cmd.length) {
-@@ -2766,18 +2862,26 @@
+@@ -2441,6 +2543,7 @@
+         loop,
+         loseless,
+         targetFileSizeKb,
++        allowGifColorReduction = false,
+         jobId,
+       } = opt;
+       const cwd = binDir();
+@@ -2766,18 +2869,26 @@
          moveInto(tempPath);
        };
        const encodeAnimationTarget = async () => {
@@ -132,7 +153,7 @@
          if (toFormat === "webp") {
            const outputFps = Math.max(1, Number(fps) || 10);
            const estimatedFrames = Math.max(
-@@ -2794,7 +2898,7 @@
+@@ -2794,7 +2905,7 @@
              ),
            );
            currentScale = Math.max(
@@ -141,7 +162,7 @@
              Math.min(maxScale, targetAwareLongest || maxScale),
            );
          }
-@@ -2803,7 +2907,9 @@
+@@ -2803,7 +2914,9 @@
          const runCandidate = async (tuning) => {
            const candidate = vtemp(`.${toFormat}`);
            const targetFilters = [];
@@ -152,18 +173,35 @@
              targetFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
            }
            if (currentScale !== sourceLongest || !preparedInput) {
-@@ -2865,8 +2971,8 @@
+@@ -2865,15 +2978,23 @@
            return { path: candidate, size: fs.statSync(candidate).size };
          };
          try {
 -          for (let scaleAttempt = 0; scaleAttempt < 7; scaleAttempt += 1) {
 -            let low = toFormat === "gif" ? 16 : 1;
 +          for (let scaleAttempt = 0; scaleAttempt < 10; scaleAttempt += 1) {
-+            let low = toFormat === "gif" ? 2 : 1;
++            let low = toFormat === "gif" && allowGifColorReduction ? 3 : 1;
              let high = toFormat === "gif" ? 256 : 100;
              let best = null;
              let smallest = null;
-@@ -2910,18 +3016,43 @@
+-            const attempts = toFormat === "apng" ? 1 : 8;
++            const attempts =
++              toFormat === "apng" ||
++              (toFormat === "gif" && !allowGifColorReduction)
++                ? 1
++                : 8;
+             for (let i = 0; i < attempts; i += 1) {
+               const tuning =
+-                toFormat === "apng" ? 9 : Math.floor((low + high) / 2);
++                toFormat === "apng"
++                  ? 9
++                  : toFormat === "gif" && !allowGifColorReduction
++                    ? 256
++                    : Math.floor((low + high) / 2);
+               const result = await runCandidate(tuning);
+               if (result.size <= targetBytes) {
+                 if (best && best.path !== result.path) safeUnlink(best.path);
+@@ -2910,18 +3031,43 @@
              } else {
                safeUnlink(smallest?.path);
              }
@@ -215,7 +253,18 @@
          } finally {
            safeUnlink(fallbackPath);
          }
-@@ -3065,21 +3196,43 @@
+@@ -2964,7 +3110,9 @@
+               ).then(() => resolve(true));
+             }
+             if (toFormat === "gif") {
+-              const q = { 2: 256, 1: 128, 0: 64 }[quality];
++              const q = allowGifColorReduction
++                ? ({ 2: 256, 1: 128, 0: 64 }[quality] ?? 128)
++                : 256;
+               return runMediaProcess(
+                 ffmpeg,
+                 [
+@@ -3065,21 +3213,43 @@
                /Stream #0:0.*: Video: (\w+).*?, (\d+)x(\d+).*?, (\d+) kb\/s, ([\d.]+) fps/.exec(
                  stderr,
                );
@@ -264,7 +313,7 @@
        return new Promise((resolve, reject) => {
          ensureExecPerm(cwd)
            .then(() =>
-@@ -3088,25 +3241,28 @@
+@@ -3088,25 +3258,28 @@
                ffmpeg,
                [
                  "-hide_banner",
@@ -300,11 +349,10 @@
        });
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22766,6 +22766,21 @@
-         err: void 0,
-       }));
+@@ -22752,6 +22752,21 @@
      },
-+    resumeEditing: (state) => {
+     // 手动取消当前处理：runId +1 让在途循环丢弃迟到回调；回到待处理（保留文件，清掉处理/结果态）
+     cancelProcessing: (state) => {
 +      state.runId += 1;
 +      state.stage = state.files.length ? "staging" : "empty";
 +      state.progress = 0;
@@ -319,9 +367,10 @@
 +        err: void 0,
 +      }));
 +    },
-     // 再来一批 / 复位；runId +1 使在途循环失效。保留其他 Tab 的缓存，只清掉当前 Tab 的完成快照。
-     resetSession: (state) => {
-       const nextRun = state.runId + 1;
++    resumeEditing: (state) => {
+       state.runId += 1;
+       state.stage = state.files.length ? "staging" : "empty";
+       state.progress = 0;
 @@ -22793,6 +22808,7 @@
    finishProcessing: finishProcessing$1,
    retryStart: retryStart$1,
@@ -330,7 +379,55 @@
    resetSession: resetSession$1,
  } = sessionSlice.actions;
  const convertSlice = createConfigSlice({
-@@ -22873,6 +22889,24 @@
+@@ -22801,6 +22817,7 @@
+     toFormat: "webp",
+     quality: 80,
+     targetFileSizes: {},
++    gifColorReduction: false,
+     compressionLevel: 6,
+     palette: true,
+     lossless: false,
+@@ -22815,6 +22832,7 @@
+   initialConfig: {
+     quality: 80,
+     overwrite: false,
++    gifColorReduction: false,
+   },
+ });
+ const cropSlice = createConfigSlice({
+@@ -22827,6 +22845,7 @@
+     lockAspect: true,
+     targetFileSize: 500,
+     quality: 80,
++    gifColorReduction: false,
+     // 单窗流：裁剪框像素坐标（由画布编辑器实时写入）
+     cropX: 0,
+     cropY: 0,
+@@ -22846,6 +22865,7 @@
+     lossless: true,
+     ext: "webp",
+     targetFileSizes: {},
++    gifColorReduction: false,
+   },
+ });
+ const v2ImageSlice = createConfigSlice({
+@@ -22858,6 +22878,7 @@
+     loop: 0,
+     toFormat: "gif",
+     targetFileSizes: {},
++    gifColorReduction: false,
+   },
+ });
+ const vConvertSlice = createConfigSlice({
+@@ -22865,6 +22886,7 @@
+   initialConfig: {
+     toFormat: "mov",
+     targetFileSizes: {},
++    gifColorReduction: false,
+   },
+ });
+ const vCompressSlice = createConfigSlice({
+@@ -22873,6 +22895,25 @@
      quality: "",
    },
  });
@@ -350,12 +447,13 @@
 +    loop: 0,
 +    longestEdge: 0,
 +    targetFileSizes: {},
++    gifColorReduction: false,
 +  },
 +});
  const globalSlice = createSlice({
    name: "global",
    initialState: {
-@@ -22900,6 +22934,7 @@
+@@ -22900,6 +22941,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -363,7 +461,7 @@
  const { updateGlobalConfig } = globalSlice.actions;
  const {
    switchTab,
-@@ -22915,6 +22950,7 @@
+@@ -22915,6 +22957,7 @@
    finishProcessing,
    retryStart,
    cancelProcessing,
@@ -371,7 +469,7 @@
    resetSession,
  } = sessionSlice.actions;
  const { createWorkflow, updateWorkflow, deleteWorkflow, restoreWorkflows } =
-@@ -22929,6 +22965,7 @@
+@@ -22929,6 +22972,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -379,7 +477,7 @@
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
    },
-@@ -23305,6 +23342,7 @@
+@@ -23305,6 +23349,7 @@
    "nav.vconvert": "格式转换",
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
@@ -387,7 +485,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23404,10 +23442,12 @@
+@@ -23404,10 +23449,12 @@
    "flow.verb.vconvert": "转换",
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
@@ -400,7 +498,15 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23427,6 +23467,36 @@
+@@ -23422,11 +23469,44 @@
+   "flow.cropTargetHint": "通过调整质量逼近目标体积，PNG 格式效果有限。",
+   "flow.targetSize": "目标输出大小(KB)",
+   "flow.targetSizeHint": "填 0 关闭。每种输出格式会分别记住自己的目标值。",
++  "flow.gifColorReduction": "减少 GIF 颜色",
++  "flow.gifColorReductionDesc":
++    "默认关闭并保留完整的 256 色调色板。开启后允许减少颜色以达到目标大小。",
+   "flow.longestEdge": "最长边(px)",
+   "flow.longestEdgeHint": "填 0 保持原始尺寸。宽高比例始终保持不变。",
    "flow.overwriteSource": "覆盖源媒体",
    "flow.overwriteSourceHint": "仅在同格式处理成功后替换每个源文件。",
    "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
@@ -437,7 +543,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23512,6 +23582,8 @@
+@@ -23512,6 +23592,8 @@
    "flow.doneSubUp": "{count} 个文件 · 共增大",
    "flow.doneCount": "{count} 个文件",
    "flow.reveal": "在文件夹中显示",
@@ -446,7 +552,7 @@
    "flow.again": "再来一批",
    "flow.againPanel": "再处理一批",
    "flow.start": "开始{verb} ({n})",
-@@ -23699,6 +23771,7 @@
+@@ -23699,6 +23781,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -454,7 +560,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23868,12 @@
+@@ -23795,10 +23878,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -467,7 +573,17 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23822,6 +23897,36 @@
+@@ -23814,6 +23899,9 @@
+   "flow.targetSize": "Target output size (KB)",
+   "flow.targetSizeHint":
+     "Set 0 to disable. Each output format remembers its own target.",
++  "flow.gifColorReduction": "Reduce GIF colors",
++  "flow.gifColorReductionDesc":
++    "Off preserves the full 256-color palette. Enable to allow fewer colors when meeting a size target.",
+   "flow.longestEdge": "Longest edge (px)",
+   "flow.longestEdgeHint":
+     "Set 0 to keep the original size. Aspect ratio is always preserved.",
+@@ -23822,6 +23910,36 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
@@ -504,7 +620,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -23896,6 +24001,8 @@
+@@ -23896,6 +24014,8 @@
    "flow.doneSubUp": "{count} file(s) · grew",
    "flow.doneCount": "{count} file(s)",
    "flow.reveal": "Reveal in Finder",
@@ -513,7 +629,7 @@
    "flow.again": "New batch",
    "flow.againPanel": "Process again",
    "flow.start": "Start {verb} ({n})",
-@@ -26272,6 +26379,7 @@
+@@ -26272,6 +26392,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -521,7 +637,295 @@
      ],
    },
  ];
-@@ -40006,6 +40114,995 @@
+@@ -39370,6 +39491,18 @@
+ };
+ const updateSourceTargetSizeFor = (config, value) =>
+   updateTargetSizeFor(config, "__source__", value);
++const GifColorReductionSwitch = reactExports.memo(({ config, update, t: t2 }) =>
++  /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++    label: t2("flow.gifColorReduction"),
++    desc: t2("flow.gifColorReductionDesc"),
++    checked: Boolean(config.gifColorReduction),
++    onChange: (value) => update({ gifColorReduction: value }),
++  }),
++);
++const sessionHasGif = (session) =>
++  session?.files?.some(
++    (item) => normalizedMediaFormat(item.ext || item.meta?.format) === "gif",
++  ) ?? false;
+ const longestEdgeFor = (config) =>
+   Math.max(0, Number(config.longestEdge ?? config.scale) || 0);
+ const longestEdgeResize = (config) => {
+@@ -39388,10 +39521,7 @@
+     const cachePath = await window.x("getCachePath");
+     destination = window.pj(cachePath, `${pureName}.${outFormat}`);
+   }
+-  const result = await window.x("sharpToFile", {
+-    inputBuffer: buffer,
+-    outPath: destination,
+-  });
++  const result = await window.x("writeBufferToFile", buffer, destination);
+   if (destination !== outPath) {
+     await window.x("moveFile", destination, outPath);
+   }
+@@ -39405,8 +39535,11 @@
+   outFormat,
+   targetKb,
+   longestEdge,
++  allowGifColorReduction = false,
+ }) {
+   const targetBytes = Math.max(1, Math.floor(targetKb * 1e3));
++  const isGif = outFormat === "gif";
++  const minLongest = isGif ? 8 : 20;
+   const sourceWidth = Math.max(1, Number(item.meta?.width) || 1);
+   const sourceHeight = Math.max(1, Number(item.meta?.height) || 1);
+   const sourceLongest = Math.max(sourceWidth, sourceHeight);
+@@ -39415,17 +39548,25 @@
+     Number(longestEdge) > 0 ? Number(longestEdge) : sourceLongest,
+   );
+   let lastSmallest = null;
+-  for (let scaleAttempt = 0; scaleAttempt < 7; scaleAttempt += 1) {
+-    let low = 1;
++  let smallestSize = Number.POSITIVE_INFINITY;
++  const scaleAttempts = isGif ? 12 : 7;
++  for (let scaleAttempt = 0; scaleAttempt < scaleAttempts; scaleAttempt += 1) {
++    let low = isGif ? (allowGifColorReduction ? 2 : 256) : 1;
+     let high = 100;
++    if (isGif) high = 256;
+     let bestAtWidth = null;
+     lastSmallest = null;
+-    for (let qualityAttempt = 0; qualityAttempt < 7; qualityAttempt += 1) {
+-      const quality = Math.floor((low + high) / 2);
+-      const isGif = outFormat === "gif";
++    const tuningAttempts = isGif && !allowGifColorReduction ? 1 : 8;
++    for (
++      let tuningAttempt = 0;
++      tuningAttempt < tuningAttempts;
++      tuningAttempt += 1
++    ) {
++      const tuning = Math.floor((low + high) / 2);
+       const buffer = await window.x("sharpToBuffer", {
+         ...recipe,
+         inputPath: item.path,
++        toFormat: outFormat,
+         ...(currentLongest !== sourceLongest
+           ? {
+               resize: {
+@@ -39437,22 +39578,30 @@
+           : {}),
+         formatOptions: {
+           ...(recipe.formatOptions || {}),
+-          lossless: false,
+-          nearLossless: false,
+-          quality,
+           ...(isGif
+-            ? { colors: Math.max(16, Math.round(16 + quality * 2.4)) }
+-            : {}),
++            ? {
++                colors: allowGifColorReduction ? tuning : 256,
++                effort: 10,
++                dither: 1,
++                interFrameMaxError: 0,
++                interPaletteMaxError: 0,
++              }
++            : {
++                lossless: false,
++                nearLossless: false,
++                quality: tuning,
++              }),
+         },
+       });
+       if (!lastSmallest || buffer.length < lastSmallest.length) {
+         lastSmallest = buffer;
+       }
++      smallestSize = Math.min(smallestSize, buffer.length);
+       if (buffer.length <= targetBytes) {
+         bestAtWidth = buffer;
+-        low = quality + 1;
++        low = tuning + 1;
+       } else {
+-        high = quality - 1;
++        high = tuning - 1;
+       }
+       if (low > high) break;
+     }
+@@ -39465,14 +39614,23 @@
+         outFormat,
+       );
+     }
+-    if (!lastSmallest || currentLongest <= 20) break;
++    if (!lastSmallest || currentLongest <= minLongest) break;
+     const ratio = Math.min(
+       0.92,
+       Math.sqrt(targetBytes / lastSmallest.length) * 0.96,
+     );
+-    currentLongest = Math.max(20, Math.floor(currentLongest * ratio));
++    const nextLongest = Math.max(
++      minLongest,
++      Math.floor(currentLongest * ratio),
++    );
++    currentLongest =
++      nextLongest === currentLongest && currentLongest > minLongest
++        ? currentLongest - 1
++        : nextLongest;
+   }
+-  return await writeBufferOut(lastSmallest, item, outPath, pureName, outFormat);
++  throw new Error(
++    `Unable to encode ${outFormat.toUpperCase()} at or below ${targetKb} KB. Smallest candidate was ${Math.ceil(smallestSize / 1e3)} KB.`,
++  );
+ }
+ const compress = {
+   key: "compress",
+@@ -39485,7 +39643,7 @@
+   configKey: "compress",
+   updateConfig: updateCompressConfig,
+   showSaving: true,
+-  renderParams: ({ config, update, t: t2 }) =>
++  renderParams: ({ config, update, t: t2, session }) =>
+     /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
+       children: [
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+@@ -39508,6 +39666,13 @@
+           className: "x-cfg-note",
+           children: t2("flow.targetSizeHint"),
+         }),
++        sessionHasGif(session)
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
++              config,
++              update,
++              t: t2,
++            })
++          : null,
+       ],
+     }),
+   panelSub: (config, n2, t2) =>
+@@ -39518,18 +39683,16 @@
+     const fmt = item.meta.format;
+     let recipe;
+     if ((fmt === "webp" || fmt === "gif") && item.meta.loop >= 0) {
+-      const opt = {
+-        quality: config.quality,
+-        ...(fmt === "webp"
+-          ? {}
++      const opt =
++        fmt === "webp"
++          ? { quality: config.quality }
+           : {
+-              colors: 32,
+-              dither: 0,
++              colors: config.gifColorReduction ? 32 : 256,
++              dither: config.gifColorReduction ? 0 : 1,
+               effort: 10,
+-              interFrameMaxError: 32,
+-              interPaletteMaxError: 32,
+-            }),
+-      };
++              interFrameMaxError: config.gifColorReduction ? 32 : 0,
++              interPaletteMaxError: config.gifColorReduction ? 32 : 0,
++            };
+       recipe = {
+         inputOptions: { animated: true, limitInputPixels: false },
+         toFormat: fmt,
+@@ -39574,6 +39737,7 @@
+         outFormat: fmt,
+         targetKb,
+         longestEdge: longestEdgeFor(config),
++        allowGifColorReduction: config.gifColorReduction,
+       });
+       return { outName, outPath, outSize };
+     }
+@@ -39634,6 +39798,13 @@
+               ],
+             })
+           : null,
++        config.toFormat === "gif"
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
++              config,
++              update,
++              t: t2,
++            })
++          : null,
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+           label: t2("flow.quality"),
+           value: config.quality,
+@@ -39713,18 +39884,16 @@
+       ((fmt === "gif" || item.meta.loop >= 0) && toFormat === "webp") ||
+       ((fmt === "webp" || item.meta.loop >= 0) && toFormat === "gif")
+     ) {
+-      const opt = {
+-        ...formatOptions,
+-        ...(toFormat === "webp"
+-          ? {}
++      const opt =
++        toFormat === "webp"
++          ? formatOptions
+           : {
+-              colors: 64,
+-              dither: 0.5,
+-              effort: 7,
+-              interFrameMaxError: 16,
+-              interPaletteMaxError: 16,
+-            }),
+-      };
++              colors: config.gifColorReduction ? 64 : 256,
++              dither: config.gifColorReduction ? 0.5 : 1,
++              effort: 10,
++              interFrameMaxError: config.gifColorReduction ? 16 : 0,
++              interPaletteMaxError: config.gifColorReduction ? 16 : 0,
++            };
+       recipe = {
+         inputOptions: { animated: true, limitInputPixels: false },
+         toFormat,
+@@ -39770,6 +39939,7 @@
+         outFormat: toFormat,
+         targetKb,
+         longestEdge: longestEdgeFor(config),
++        allowGifColorReduction: config.gifColorReduction,
+       });
+       return { outName, outPath, outSize };
+     }
+@@ -39818,6 +39988,13 @@
+               className: "x-cfg-note",
+               children: t2("flow.targetSizeHint"),
+             }),
++            config.toFormat === "gif"
++              ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
++                  config,
++                  update,
++                  t: t2,
++                })
++              : null,
+           ],
+         }),
+       ],
+@@ -39842,6 +40019,7 @@
+       outPath,
+       targetFileSizeKb: targetSizeFor(config, config.toFormat),
+       longestEdge: longestEdgeFor(config),
++      allowGifColorReduction: config.gifColorReduction,
+       jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+@@ -39949,6 +40127,13 @@
+           className: "x-cfg-note",
+           children: t2("flow.targetSizeHint"),
+         }),
++        config.toFormat === "gif"
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
++              config,
++              update,
++              t: t2,
++            })
++          : null,
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+           label: t2("flow.animQuality"),
+           value: config.quality,
+@@ -40002,11 +40187,1009 @@
+       ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
+       loop: config.loop,
+       targetFileSizeKb: targetSizeFor(config, toFormat),
++      allowGifColorReduction: config.gifColorReduction,
+       jobId,
      });
      const info = await window.x("getFileInfo", outPath);
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
@@ -1343,6 +1747,13 @@
 +          className: "x-cfg-note",
 +          children: t2("flow.targetSizeHint"),
 +        }),
++        config.toFormat === "gif"
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
++              config,
++              update,
++              t: t2,
++            })
++          : null,
 +        !output.still
 +          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
 +              children: [
@@ -1384,7 +1795,7 @@
 +        }),
 +      ],
 +    });
-+  },
+   },
 +  panelSub: (config, count, t2) =>
 +    count
 +      ? t2("flow.sub.fmt", {
@@ -1487,6 +1898,7 @@
 +          quality: config.animationQuality,
 +          loop: config.loop || 0,
 +          targetFileSizeKb: targetKb,
++          allowGifColorReduction: config.gifColorReduction,
 +          jobId,
 +        });
 +        outSize = (await window.x("getFileInfo", outputPath)).size;
@@ -1514,10 +1926,118 @@
 +        dim: `${geometry.width}×${geometry.height}`,
 +      },
 +    };
-   },
++  },
  };
  async function mapWithConcurrency(items, concurrency, mapper) {
-@@ -40655,6 +41752,7 @@
+   const results = new Array(items.length);
+@@ -40161,6 +41344,13 @@
+           className: "x-cfg-note",
+           children: t2("flow.targetSizeHint"),
+         }),
++        config.ext === "gif"
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
++              config,
++              update,
++              t: t2,
++            })
++          : null,
+         config.ext !== "webm"
+           ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+               label: t2("flow.quality"),
+@@ -40244,6 +41434,7 @@
+           preparedInput: true,
+           loop,
+           targetFileSizeKb: targetKb,
++          allowGifColorReduction: config.gifColorReduction,
+           jobId,
+         });
+         info = await window.x("getFileInfo", outputPath);
+@@ -40270,7 +41461,18 @@
+             ? { resize: longestEdgeResize(config) }
+             : {}),
+           toFormat: ext,
+-          formatOptions: { quality: config.q, nearLossless: true },
++          formatOptions:
++            ext === "gif"
++              ? {
++                  colors: config.gifColorReduction
++                    ? Math.max(2, Math.round(2 + (config.q / 100) * 254))
++                    : 256,
++                  effort: 10,
++                  dither: 1,
++                  interFrameMaxError: 0,
++                  interPaletteMaxError: 0,
++                }
++              : { quality: config.q, nearLossless: true },
+           outPath: outputPath,
+         });
+       }
+@@ -40334,7 +41536,7 @@
+     }
+     return { pass: true };
+   },
+-  renderParams: ({ config, update, t: t2 }) =>
++  renderParams: ({ config, update, t: t2, session }) =>
+     /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
+       children: [
+         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+@@ -40430,6 +41632,13 @@
+           className: "x-cfg-note",
+           children: t2("flow.targetSizeHint"),
+         }),
++        sessionHasGif(session)
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
++              config,
++              update,
++              t: t2,
++            })
++          : null,
+       ],
+     }),
+   panelSub: (config, n2, t2) =>
+@@ -40516,10 +41725,23 @@
+     } else {
+       const targetBytes = Math.max(1, targetKb) * 1e3;
+       const format = item.meta.format;
+-      if (format === "png") {
++      if (format === "gif") {
+         recipe = {
+           inputPath: item.path,
+           inputOptions: sharpOpt,
++          toFormat: "gif",
++          formatOptions: {
++            colors: config.gifColorReduction ? 64 : 256,
++            dither: config.gifColorReduction ? 0.5 : 1,
++            effort: 10,
++            interFrameMaxError: config.gifColorReduction ? 16 : 0,
++            interPaletteMaxError: config.gifColorReduction ? 16 : 0,
++          },
++        };
++      } else if (format === "png") {
++        recipe = {
++          inputPath: item.path,
++          inputOptions: sharpOpt,
+           toFormat: "png",
+           formatOptions: { palette: true, quality: 50, effort: 10 },
+         };
+@@ -40572,7 +41794,7 @@
+       }
+     }
+     if (finalResize) recipe = { ...recipe, resize: finalResize };
+-    if (targetKb > 0 && mode !== "filesize") {
++    if (targetKb > 0 && (mode !== "filesize" || item.meta.format === "gif")) {
+       const outSize = await writeSharpToTarget({
+         recipe,
+         item,
+@@ -40581,6 +41803,7 @@
+         outFormat: item.meta.format,
+         targetKb,
+         longestEdge: longestEdgeFor(config),
++        allowGifColorReduction: config.gifColorReduction,
+       });
+       return { outName, outPath, outSize };
+     }
+@@ -40655,6 +41878,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -1525,17 +2045,17 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -40928,6 +42026,9 @@
-   }, []);
+@@ -40929,6 +42153,9 @@
    const reset = reactExports.useCallback(() => {
      store.dispatch(resetSession());
-+  }, []);
+   }, []);
 +  const edit = reactExports.useCallback(() => {
 +    store.dispatch(resumeEditing());
-   }, []);
++  }, []);
    const chooseOutputDir = reactExports.useCallback(async () => {
      try {
-@@ -41122,6 +42223,7 @@
+       const dirs = await window.x("selectDir");
+@@ -41122,6 +42349,7 @@
      load,
      removeFile: removeFile2,
      clear,
@@ -1543,7 +2063,7 @@
      reset,
      start,
      cancel,
-@@ -41448,7 +42550,7 @@
+@@ -41448,7 +42676,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -1552,20 +2072,20 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41465,6 +42567,12 @@
-                     " ",
-                     t2("flow.reveal"),
-                   ],
+@@ -41469,6 +42697,12 @@
+                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                   type: "button",
+                   className: "x-flow-btn-ghost",
++                  onClick: handlers2.edit,
++                  children: t2("flow.backToEdit"),
 +                }),
 +                /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
 +                  type: "button",
 +                  className: "x-flow-btn-ghost",
-+                  onClick: handlers2.edit,
-+                  children: t2("flow.backToEdit"),
+                   onClick: handlers2.reset,
+                   children: t2("flow.again"),
                  }),
-                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
-                   type: "button",
-@@ -41654,8 +42762,8 @@
+@@ -41654,8 +42888,8 @@
      return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
        type: "button",
        className: "x-cfg-action is-secondary",
@@ -1576,7 +2096,7 @@
      });
    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
      type: "button",
-@@ -41668,6 +42776,7 @@
+@@ -41668,6 +42902,7 @@
    mod: mod2,
    handlers: handlers2,
    t: t2,
@@ -1584,7 +2104,7 @@
  }) {
    const session = useSelector((s) => s.session);
    const config = useSelector((s) => s[mod2.configKey]?.config);
-@@ -41685,6 +42794,16 @@
+@@ -41685,6 +42920,16 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [
@@ -1601,7 +2121,16 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-head",
          children: [
-@@ -42284,6 +43403,7 @@
+@@ -41701,7 +42946,7 @@
+       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+         className: "x-config-body",
+         children: [
+-          config ? mod2.renderParams({ config, update, t: t2 }) : null,
++          config ? mod2.renderParams({ config, update, t: t2, session }) : null,
+           config
+             ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                 jsxRuntimeExports.Fragment,
+@@ -42284,6 +43529,7 @@
                          mod: mod2,
                          handlers: handlers2,
                          t: t2,

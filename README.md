@@ -98,6 +98,11 @@ video-to-animation, and every video output format exposed by xPic:
   controls apply;
 - target-sized GIF creation now searches palette, dimensions, and frame rate
   against a hard byte ceiling and never silently accepts an oversized result;
+- GIF output preserves the full 256-color palette by default. **Reduce GIF
+  colors** is an explicit opt-in available anywhere GIF media is created or
+  compressed;
+- image-based target searches write the exact measured encoded bytes, avoiding
+  a second encode that could push the saved file above its requested limit;
 - every completed creation flow offers **Back to edit**, restoring the same
   inputs and settings for another export while keeping **New batch** separate;
 - fork builds do not download upstream app updates over the patch.

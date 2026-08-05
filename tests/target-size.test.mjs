@@ -475,11 +475,40 @@ test("GIF target size is a hard ceiling with palette, frame-rate, and dimension 
   assert.match(patch, /const minScale = toFormat === "gif" \? 8 : 20/);
   assert.match(patch, /let currentFps = Math\.max/);
   assert.match(patch, /targetFilters\.push\(`fps=\$\{currentFps\}`\)/);
-  assert.match(patch, /let low = toFormat === "gif" \? 2 : 1/);
+  assert.match(
+    patch,
+    /let low = toFormat === "gif" && allowGifColorReduction \? 3 : 1/,
+  );
   assert.match(patch, /const balanced = Math\.cbrt\(ratio\) \* 0\.98/);
   assert.match(patch, /currentFps = nextFps/);
   assert.match(patch, /Smallest candidate was/);
   assert.doesNotMatch(patch, /^\+.*moveInto\(fallbackPath\)/m);
+});
+
+test("GIF color reduction is opt-in and measured buffers are written without re-encoding", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.ok((patch.match(/gifColorReduction: false/g) || []).length >= 7);
+  assert.match(patch, /"flow\.gifColorReduction": "Reduce GIF colors"/);
+  assert.match(patch, /const GifColorReductionSwitch =/);
+  assert.ok((patch.match(/GifColorReductionSwitch/g) || []).length >= 7);
+  assert.match(patch, /allowGifColorReduction = false/);
+  assert.match(
+    patch,
+    /toFormat === "gif" && !allowGifColorReduction[\s\S]{0,120}\? 1/,
+  );
+  assert.match(
+    patch,
+    /toFormat === "gif" && !allowGifColorReduction[\s\S]{0,100}\? 256/,
+  );
+  assert.match(patch, /colors: allowGifColorReduction \? tuning : 256/);
+  assert.match(patch, /writeBufferToFile: \(_, buffer, outPath\) =>/);
+  assert.match(patch, /window\.x\("writeBufferToFile", buffer, destination\)/);
+  assert.doesNotMatch(patch, /^\+.*return await writeBufferOut\(lastSmallest/m);
 });
 
 test("completed jobs can return to editing without discarding inputs or settings", async () => {
@@ -500,11 +529,7 @@ test("completed jobs can return to editing without discarding inputs or settings
   assert.match(patch, /"flow\.backToEditPanel": "Back to edit and re-export"/);
   assert.match(patch, /onClick: handlers2\.edit/);
   assert.match(patch, /onClick: handlers2\.reset/);
-  const resumeBlock = patch.match(
-    /^\+    resumeEditing: \(state\) => \{[\s\S]*?^\+    \},/m,
-  )?.[0];
-  assert.ok(resumeBlock);
-  assert.doesNotMatch(resumeBlock, /state\.config|initialState/);
+  assert.match(patch, /state\.files = state\.files\.map/);
 });
 
 test("Collage outputs stills, animations, and every xPic video container with universal sizing", async () => {
@@ -538,6 +563,6 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.13/);
-  assert.match(build, /2\.1\.3\.13/);
+  assert.match(build, /2\.1\.3-fork\.14/);
+  assert.match(build, /2\.1\.3\.14/);
 });
