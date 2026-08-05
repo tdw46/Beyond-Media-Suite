@@ -1,11 +1,9 @@
 --- a/out/main/index.js
 +++ b/out/main/index.js
-@@ -2018,7 +2018,106 @@
-         return fs.statSync(outPath).size;
-       } finally {
+@@ -2020,6 +2020,102 @@
          safeUnlink(listPath);
-+      }
-+    },
+       }
+     },
 +    collageIntermediate: async (_, opt) => {
 +      const { files, width, height, fps, duration, outPath, still, jobId } =
 +        opt || {};
@@ -40,18 +38,15 @@
 +          }
 +          args.push("-i", inputPath);
 +        }
-       }
++      }
 +      const filters = [
 +        `color=c=black@0.0:s=${canvasWidth}x${canvasHeight}:r=${outputFps}:d=${outputDuration},format=rgba[canvas]`,
 +      ];
 +      files.forEach((file, index) => {
 +        const itemWidth = Math.max(2, Math.round(Number(file.width) || 0));
 +        const itemHeight = Math.max(2, Math.round(Number(file.height) || 0));
-+        const fit = file.cover
-+          ? `scale=${itemWidth}:${itemHeight}:force_original_aspect_ratio=increase:flags=lanczos,crop=${itemWidth}:${itemHeight}:(iw-ow)/2:(ih-oh)/2`
-+          : `scale=${itemWidth}:${itemHeight}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${itemWidth}:${itemHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0.0`;
 +        filters.push(
-+          `[${index}:v:0]fps=${outputFps},${fit},format=rgba,setpts=PTS-STARTPTS[item${index}]`,
++          `[${index}:v:0]fps=${outputFps},scale=${itemWidth}:${itemHeight}:flags=lanczos,format=rgba,setpts=PTS-STARTPTS[item${index}]`,
 +        );
 +      });
 +      const ordered = files
@@ -104,10 +99,11 @@
 +        { jobId },
 +      );
 +      return fs.statSync(outPath).size;
-     },
++    },
      execMedia: async (_, opt) => {
        const { cmd, jobId, tempPaths = [] } = opt || {};
-@@ -3065,21 +3164,43 @@
+       if (!Array.isArray(cmd) || !cmd.length) {
+@@ -3065,21 +3161,43 @@
                /Stream #0:0.*: Video: (\w+).*?, (\d+)x(\d+).*?, (\d+) kb\/s, ([\d.]+) fps/.exec(
                  stderr,
                );
@@ -156,7 +152,7 @@
        return new Promise((resolve, reject) => {
          ensureExecPerm(cwd)
            .then(() =>
-@@ -3088,25 +3209,28 @@
+@@ -3088,25 +3206,28 @@
                ffmpeg,
                [
                  "-hide_banner",
@@ -254,7 +250,7 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23427,6 +23450,34 @@
+@@ -23427,6 +23450,36 @@
    "flow.overwriteSource": "覆盖源媒体",
    "flow.overwriteSourceHint": "仅在同格式处理成功后替换每个源文件。",
    "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
@@ -274,6 +270,8 @@
 +  "flow.collagePaused": "默认暂停",
 +  "flow.collageLayers": "图层",
 +  "flow.collageLayer": "层级",
++  "flow.collageBringForward": "上移一层",
++  "flow.collageSendBackward": "下移一层",
 +  "flow.collageScale": "缩放",
 +  "flow.collageOffsetX": "左右偏移",
 +  "flow.collageOffsetY": "上下偏移",
@@ -289,7 +287,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23699,6 +23750,7 @@
+@@ -23699,6 +23752,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -297,7 +295,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23847,12 @@
+@@ -23795,10 +23849,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -310,7 +308,7 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23822,6 +23876,34 @@
+@@ -23822,6 +23878,36 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
@@ -330,6 +328,8 @@
 +  "flow.collagePaused": "Paused by default",
 +  "flow.collageLayers": "Layers",
 +  "flow.collageLayer": "Layer order",
++  "flow.collageBringForward": "Bring forward",
++  "flow.collageSendBackward": "Send backward",
 +  "flow.collageScale": "Scale",
 +  "flow.collageOffsetX": "Left / right offset",
 +  "flow.collageOffsetY": "Up / down offset",
@@ -345,7 +345,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -26272,6 +26354,7 @@
+@@ -26272,6 +26358,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -353,10 +353,11 @@
      ],
    },
  ];
-@@ -40008,6 +40091,878 @@
+@@ -40007,7 +40094,996 @@
+     const info = await window.x("getFileInfo", outPath);
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
    },
- };
++};
 +const COLLAGE_STILL_OUTPUTS = new Set([
 +  "png",
 +  "jpeg",
@@ -408,7 +409,7 @@
 +    { label: t2("flow.collageRow"), value: "row" },
 +    { label: t2("flow.collageColumn"), value: "column" },
 +  ];
-+};
+ };
 +const collagePackedLayout = (files, layout) => {
 +  const aspects = files.map((item) => {
 +    const width = Number(item.meta?.width || item.meta?.pixelWidth) || 1;
@@ -541,26 +542,63 @@
 +      const baseBottom = Math.round((rect.y + rect.height) * height);
 +      const baseWidth = Math.max(2, baseRight - baseX);
 +      const baseHeight = Math.max(2, baseBottom - baseY);
-+      const scale = Math.max(
-+        0.25,
++      const sourceWidth = Math.max(
++        1,
++        Number(item.meta?.width || item.meta?.pixelWidth) || 1,
++      );
++      const sourceHeight = Math.max(
++        1,
++        Number(item.meta?.height || item.meta?.pixelHeight) || 1,
++      );
++      const fill = config.fitMode !== "letterbox";
++      const fitScale = fill
++        ? Math.max(baseWidth / sourceWidth, baseHeight / sourceHeight)
++        : Math.min(baseWidth / sourceWidth, baseHeight / sourceHeight);
++      const userScale = Math.max(
++        fill ? 1 : 0.25,
 +        Math.min(3, (Number(item.scale) || 100) / 100),
 +      );
-+      const itemWidth = Math.max(2, Math.round(baseWidth * scale));
-+      const itemHeight = Math.max(2, Math.round(baseHeight * scale));
++      const mediaWidth = Math.max(
++        2,
++        Math.round(sourceWidth * fitScale * userScale),
++      );
++      const mediaHeight = Math.max(
++        2,
++        Math.round(sourceHeight * fitScale * userScale),
++      );
++      const centeredX = baseX + Math.round((baseWidth - mediaWidth) / 2);
++      const centeredY = baseY + Math.round((baseHeight - mediaHeight) / 2);
++      const offsetX = Math.max(-50, Math.min(50, Number(item.offsetX) || 0));
++      const offsetY = Math.max(-50, Math.min(50, Number(item.offsetY) || 0));
++      const clampFillShift = (
++        offset,
++        center,
++        frameStart,
++        frameSize,
++        mediaSize,
++      ) => {
++        const minShift = frameStart + frameSize - (center + mediaSize);
++        const maxShift = frameStart - center;
++        return offset >= 0
++          ? (offset / 50) * maxShift
++          : (-offset / 50) * minShift;
++      };
++      const shiftX = fill
++        ? clampFillShift(offsetX, centeredX, baseX, baseWidth, mediaWidth)
++        : (offsetX / 100) * baseWidth;
++      const shiftY = fill
++        ? clampFillShift(offsetY, centeredY, baseY, baseHeight, mediaHeight)
++        : (offsetY / 100) * baseHeight;
 +      return {
 +        ...rect,
++        frameX: baseX,
++        frameY: baseY,
 +        baseWidth,
 +        baseHeight,
-+        itemWidth,
-+        itemHeight,
-+        x:
-+          baseX -
-+          Math.round((itemWidth - baseWidth) / 2) +
-+          Math.round(((Number(item.offsetX) || 0) / 100) * baseWidth),
-+        y:
-+          baseY -
-+          Math.round((itemHeight - baseHeight) / 2) +
-+          Math.round(((Number(item.offsetY) || 0) / 100) * baseHeight),
++        mediaWidth,
++        mediaHeight,
++        mediaX: centeredX + Math.round(shiftX),
++        mediaY: centeredY + Math.round(shiftY),
 +      };
 +    }),
 +  };
@@ -642,11 +680,37 @@
 +}
 +const CollageLayerControls = reactExports.memo(function CollageLayerControls2({
 +  files,
++  config,
 +  t: t2,
 +  handlers: handlers2,
++  onPick,
 +}) {
 +  const patchItem = (id2, patch2) =>
 +    store.dispatch(updateSessionFile({ id: id2, ...patch2 }));
++  const backToFront = [...files].sort(
++    (a, b) =>
++      (Number(a.layer) || 0) - (Number(b.layer) || 0) ||
++      files.indexOf(a) - files.indexOf(b),
++  );
++  const layerPosition = (id2) =>
++    backToFront.findIndex((item) => item.id === id2) + 1;
++  const setLayerPosition = (id2, position) => {
++    const ordered = [...backToFront];
++    const current = ordered.findIndex((item) => item.id === id2);
++    if (current < 0) return;
++    const [item] = ordered.splice(current, 1);
++    const target = Math.max(
++      0,
++      Math.min(ordered.length, Math.round(Number(position) || 1) - 1),
++    );
++    ordered.splice(target, 0, item);
++    ordered.forEach((entry, index) =>
++      patchItem(entry.id, { layer: index + 1 }),
++    );
++  };
++  const moveLayer = (id2, delta) =>
++    setLayerPosition(id2, layerPosition(id2) + delta);
++  const frontToBack = [...backToFront].reverse();
 +  const control = (label, value, min, max, onChange, suffix = "") =>
 +    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +      style: { display: "grid", gap: 5 },
@@ -695,15 +759,32 @@
 +            className: "x-config-title",
 +            children: t2("flow.collageLayers"),
 +          }),
-+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
-+            className: "x-config-sub",
-+            children: [files.length, "/4"],
++          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++            style: { display: "flex", alignItems: "center", gap: 8 },
++            children: [
++              files.length < 4
++                ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
++                    type: "button",
++                    className: "x-flow-chip",
++                    onClick: () => onPick(true),
++                    children: [
++                      /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 13 }),
++                      " ",
++                      t2("flow.addMore"),
++                    ],
++                  })
++                : null,
++              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
++                className: "x-config-sub",
++                children: [files.length, "/4"],
++              }),
++            ],
 +          }),
 +        ],
 +      }),
 +      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
 +        style: { display: "grid", gap: 9 },
-+        children: files.map((item, index) =>
++        children: frontToBack.map((item, index) =>
 +          /* @__PURE__ */ jsxRuntimeExports.jsxs(
 +            "div",
 +            {
@@ -717,7 +798,7 @@
 +                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +                  style: {
 +                    display: "grid",
-+                    gridTemplateColumns: "38px minmax(0,1fr) 58px 26px",
++                    gridTemplateColumns: "38px minmax(0,1fr) auto 26px",
 +                    alignItems: "center",
 +                    gap: 8,
 +                    marginBottom: 10,
@@ -732,7 +813,7 @@
 +                      children: [
 +                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +                          className: "x-flow-row-name",
-+                          children: [index + 1, ". ", item.name],
++                          children: [files.length - index, ". ", item.name],
 +                        }),
 +                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
 +                          className: "x-flow-row-sub",
@@ -740,14 +821,46 @@
 +                        }),
 +                      ],
 +                    }),
-+                    /* @__PURE__ */ jsxRuntimeExports.jsx(InputNumber, {
-+                      value: item.layer ?? index + 1,
-+                      min: 1,
-+                      max: 99,
-+                      title: t2("flow.collageLayer"),
-+                      style: { width: 58, minWidth: 0 },
-+                      onChange: (value) =>
-+                        patchItem(item.id, { layer: Number(value) || 1 }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                      style: { display: "flex", alignItems: "center", gap: 4 },
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                          type: "button",
++                          className: "x-flow-remove",
++                          style: { position: "static" },
++                          disabled: layerPosition(item.id) <= 1,
++                          title: t2("flow.collageSendBackward"),
++                          onClick: () => moveLayer(item.id, -1),
++                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(
++                            ChevronUp,
++                            {
++                              size: 13,
++                              style: { transform: "rotate(180deg)" },
++                            },
++                          ),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(InputNumber, {
++                          value: layerPosition(item.id),
++                          min: 1,
++                          max: files.length,
++                          title: t2("flow.collageLayer"),
++                          style: { width: 48, minWidth: 0 },
++                          onChange: (value) =>
++                            setLayerPosition(item.id, Number(value) || 1),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                          type: "button",
++                          className: "x-flow-remove",
++                          style: { position: "static" },
++                          disabled: layerPosition(item.id) >= files.length,
++                          title: t2("flow.collageBringForward"),
++                          onClick: () => moveLayer(item.id, 1),
++                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(
++                            ChevronUp,
++                            { size: 13 },
++                          ),
++                        }),
++                      ],
 +                    }),
 +                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
 +                      type: "button",
@@ -766,8 +879,11 @@
 +                  children: [
 +                    control(
 +                      t2("flow.collageScale"),
-+                      Math.max(25, Number(item.scale) || 100),
-+                      25,
++                      Math.max(
++                        config.fitMode === "letterbox" ? 25 : 100,
++                        Number(item.scale) || 100,
++                      ),
++                      config.fitMode === "letterbox" ? 25 : 100,
 +                      300,
 +                      (value) => patchItem(item.id, { scale: value }),
 +                      "%",
@@ -900,12 +1016,13 @@
 +                  const rect = geometry.placements[index];
 +                  const mediaStyle = {
 +                    position: "absolute",
-+                    left: `${(rect.x / geometry.width) * 100}%`,
-+                    top: `${(rect.y / geometry.height) * 100}%`,
-+                    width: `${(rect.itemWidth / geometry.width) * 100}%`,
-+                    height: `${(rect.itemHeight / geometry.height) * 100}%`,
-+                    objectFit:
-+                      config.fitMode === "letterbox" ? "contain" : "cover",
++                    left: `${(rect.mediaX / geometry.width) * 100}%`,
++                    top: `${(rect.mediaY / geometry.height) * 100}%`,
++                    width: `${(rect.mediaWidth / geometry.width) * 100}%`,
++                    height: `${(rect.mediaHeight / geometry.height) * 100}%`,
++                    objectFit: "fill",
++                    maxWidth: "none",
++                    maxHeight: "none",
 +                    zIndex: Number(item.layer) || index + 1,
 +                  };
 +                  if (item.mediaKind === "video") {
@@ -975,12 +1092,14 @@
 +  doneKey: "flow.doneCollage",
 +  load: collageLoad,
 +  StagingView: CollageStaging,
-+  renderPanelTop: ({ session, t: t2, handlers: handlers2 }) =>
++  renderPanelTop: ({ config, session, t: t2, handlers: handlers2, onPick }) =>
 +    session.stage === "staging" && session.files.length
 +      ? /* @__PURE__ */ jsxRuntimeExports.jsx(CollageLayerControls, {
 +          files: session.files,
++          config,
 +          t: t2,
 +          handlers: handlers2,
++          onPick,
 +        })
 +      : null,
 +  renderParams: ({ config, update, t: t2 }) => {
@@ -1142,11 +1261,10 @@
 +            path: item.path,
 +            still: item.still,
 +            layer: item.layer,
-+            cover: config.fitMode !== "letterbox",
-+            x: placement.x,
-+            y: placement.y,
-+            width: placement.itemWidth,
-+            height: placement.itemHeight,
++            x: placement.mediaX,
++            y: placement.mediaY,
++            width: placement.mediaWidth,
++            height: placement.mediaHeight,
 +          };
 +        }),
 +        width: geometry.width,
@@ -1232,7 +1350,7 @@
  async function mapWithConcurrency(items, concurrency, mapper) {
    const results = new Array(items.length);
    let nextIndex = 0;
-@@ -40655,6 +41610,7 @@
+@@ -40655,6 +41731,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -1240,7 +1358,7 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -41448,7 +42404,7 @@
+@@ -41448,7 +42525,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -1249,7 +1367,15 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41685,6 +42641,15 @@
+@@ -41668,6 +42745,7 @@
+   mod: mod2,
+   handlers: handlers2,
+   t: t2,
++  onPick,
+ }) {
+   const session = useSelector((s) => s.session);
+   const config = useSelector((s) => s[mod2.configKey]?.config);
+@@ -41685,6 +42763,16 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [
@@ -1260,8 +1386,17 @@
 +            t: t2,
 +            session,
 +            handlers: handlers2,
++            onPick,
 +          })
 +        : null,
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-head",
          children: [
+@@ -42284,6 +43372,7 @@
+                         mod: mod2,
+                         handlers: handlers2,
+                         t: t2,
++                        onPick,
+                       })
+                     : null,
+                 ],

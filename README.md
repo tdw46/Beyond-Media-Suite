@@ -84,6 +84,11 @@ video-to-animation, and every video output format exposed by xPic:
 - exact collage target width and height can override the automatic canvas;
   media defaults to aspect-preserving Fill with the minimum centered crop,
   while complete-frame letterboxing is available as an opt-in placement mode;
+- Fill transforms retain the full source layer and constrain offsets so its
+  assigned cell never exposes transparency; scaled or panned overflow remains
+  visible on the canvas and obeys explicit front/back layer controls;
+- the populated Layers panel keeps Add, Remove, bring-forward, and
+  send-backward controls available until the four-item limit is reached;
 - Collage previews are live and paused by default, with synchronized playback;
   paused moving media uses a lossless high-resolution poster instead of the
   small list thumbnail, preserving alpha and source detail up to 2560px,

@@ -362,12 +362,19 @@ test("Collage packs every requested layout without distorting source aspect rati
   assert.match(patch, /const packColumns = \(groups\)/);
   assert.match(patch, /const rowHeight =\s*\n\+\s*1 \/ group\.reduce/);
   assert.match(patch, /const columnWidth =/);
-  assert.match(patch, /force_original_aspect_ratio=increase/);
-  assert.match(patch, /crop=\$\{itemWidth\}:\$\{itemHeight\}/);
-  assert.match(patch, /force_original_aspect_ratio=decrease/);
-  assert.match(patch, /pad=\$\{itemWidth\}:\$\{itemHeight\}/);
-  assert.match(patch, /config\.fitMode === "letterbox" \? "contain" : "cover"/);
-  assert.match(patch, /cover: config\.fitMode !== "letterbox"/);
+  assert.match(patch, /const sourceWidth = Math\.max/);
+  assert.match(patch, /const sourceHeight = Math\.max/);
+  assert.match(
+    patch,
+    /Math\.max\(baseWidth \/ sourceWidth, baseHeight \/ sourceHeight\)/,
+  );
+  assert.match(
+    patch,
+    /Math\.min\(baseWidth \/ sourceWidth, baseHeight \/ sourceHeight\)/,
+  );
+  assert.match(patch, /sourceWidth \* fitScale \* userScale/);
+  assert.match(patch, /sourceHeight \* fitScale \* userScale/);
+  assert.match(patch, /objectFit: "fill"/);
 });
 
 test("Collage supports exact target dimensions with minimum-crop fill and opt-in letterboxing", async () => {
@@ -388,10 +395,9 @@ test("Collage supports exact target dimensions with minimum-crop fill and opt-in
   assert.match(patch, /requestedWidth \|\|/);
   assert.match(patch, /requestedHeight \|\|/);
   assert.match(patch, /value: "letterbox"/);
-  assert.match(patch, /config\.fitMode === "letterbox" \? "contain" : "cover"/);
-  assert.match(patch, /cover: config\.fitMode !== "letterbox"/);
-  assert.match(patch, /force_original_aspect_ratio=increase/);
-  assert.match(patch, /force_original_aspect_ratio=decrease/);
+  assert.match(patch, /const fill = config\.fitMode !== "letterbox"/);
+  assert.match(patch, /fill \? 1 : 0\.25/);
+  assert.match(patch, /value: "letterbox"/);
 });
 
 test("Collage preview starts paused and exposes synchronized playback and item transforms", async () => {
@@ -416,6 +422,13 @@ test("Collage preview starts paused and exposes synchronized playback and item t
   assert.match(patch, /offsetX: value/);
   assert.match(patch, /offsetY: value/);
   assert.match(patch, /scale: value/);
+  assert.match(patch, /const clampFillShift =/);
+  assert.match(patch, /mediaX: centeredX \+ Math\.round\(shiftX\)/);
+  assert.match(patch, /mediaY: centeredY \+ Math\.round\(shiftY\)/);
+  assert.match(
+    patch,
+    /left: `\$\{\(rect\.mediaX \/ geometry\.width\) \* 100\}%`/,
+  );
   assert.match(patch, /"flow\.collageScale": "Scale"/);
   assert.match(
     patch,
@@ -426,6 +439,30 @@ test("Collage preview starts paused and exposes synchronized playback and item t
   assert.match(patch, /renderPanelTop/);
   assert.match(patch, /mod2\.renderPanelTop\(\{/);
   assert.match(patch, /children: t2\("flow\.collageLayers"\)/);
+});
+
+test("Collage layer ordering and populated-canvas media controls remain interactive", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /const backToFront = \[\.\.\.files\]\.sort/);
+  assert.match(patch, /const setLayerPosition =/);
+  assert.match(patch, /const moveLayer =/);
+  assert.match(patch, /const frontToBack = \[\.\.\.backToFront\]\.reverse\(\)/);
+  assert.match(patch, /"flow\.collageBringForward": "Bring forward"/);
+  assert.match(patch, /"flow\.collageSendBackward": "Send backward"/);
+  assert.match(patch, /onClick: \(\) => moveLayer\(item\.id, 1\)/);
+  assert.match(patch, /onClick: \(\) => moveLayer\(item\.id, -1\)/);
+  assert.match(patch, /onClick: \(\) => onPick\(true\)/);
+  assert.match(patch, /onClick: \(\) => handlers2\.removeFile\(item\.id\)/);
+  assert.match(
+    patch,
+    /renderPanelTop: \(\{ config, session, t: t2, handlers: handlers2, onPick \}\)/,
+  );
+  assert.match(patch, /onPick,\s*\n\+\s*\}\)/);
 });
 
 test("Collage outputs stills, animations, and every xPic video container with universal sizing", async () => {
@@ -459,6 +496,6 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.11/);
-  assert.match(build, /2\.1\.3\.11/);
+  assert.match(build, /2\.1\.3-fork\.12/);
+  assert.match(build, /2\.1\.3\.12/);
 });
