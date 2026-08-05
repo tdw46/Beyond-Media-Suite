@@ -1,0 +1,1024 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -2018,7 +2018,103 @@
+         return fs.statSync(outPath).size;
+       } finally {
+         safeUnlink(listPath);
++      }
++    },
++    collageIntermediate: async (_, opt) => {
++      const { files, width, height, fps, duration, outPath, still, jobId } =
++        opt || {};
++      if (!Array.isArray(files) || files.length < 2 || files.length > 4) {
++        throw new Error("Collage requires two to four source files.");
+       }
++      const canvasWidth = Math.max(2, Math.round(Number(width) || 0));
++      const canvasHeight = Math.max(2, Math.round(Number(height) || 0));
++      const outputFps = Math.max(1, Math.round(Number(fps) || 24));
++      const outputDuration = Math.max(0.1, Number(duration) || 3);
++      const cwd = binDir();
++      const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
++      const args = ["-hide_banner", "-y"];
++      for (const file of files) {
++        const inputPath = String(file.path || "");
++        if (!inputPath || !fs.existsSync(inputPath)) {
++          throw new Error(`Missing collage source: ${inputPath}`);
++        }
++        if (file.still) {
++          args.push(
++            "-loop",
++            "1",
++            "-framerate",
++            String(outputFps),
++            "-i",
++            inputPath,
++          );
++        } else {
++          args.push("-stream_loop", "-1");
++          if (path.extname(inputPath).toLowerCase() === ".webm") {
++            args.push("-c:v", "libvpx-vp9");
++          }
++          args.push("-i", inputPath);
++        }
++      }
++      const filters = [
++        `color=c=black@0.0:s=${canvasWidth}x${canvasHeight}:r=${outputFps}:d=${outputDuration},format=rgba[canvas]`,
++      ];
++      files.forEach((file, index) => {
++        const itemWidth = Math.max(2, Math.round(Number(file.width) || 0));
++        const itemHeight = Math.max(2, Math.round(Number(file.height) || 0));
++        filters.push(
++          `[${index}:v:0]fps=${outputFps},scale=${itemWidth}:${itemHeight}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${itemWidth}:${itemHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0.0,format=rgba,setpts=PTS-STARTPTS[item${index}]`,
++        );
++      });
++      const ordered = files
++        .map((file, index) => ({ file, index }))
++        .sort(
++          (a, b) =>
++            (Number(a.file.layer) || 0) - (Number(b.file.layer) || 0) ||
++            a.index - b.index,
++        );
++      let previous = "canvas";
++      ordered.forEach(({ file, index }, layerIndex) => {
++        const next =
++          layerIndex === ordered.length - 1 ? "collage" : `layer${layerIndex}`;
++        const x = Math.round(Number(file.x) || 0);
++        const y = Math.round(Number(file.y) || 0);
++        filters.push(
++          `[${previous}][item${index}]overlay=x=${x}:y=${y}:eof_action=repeat:shortest=0:format=auto[${next}]`,
++        );
++        previous = next;
++      });
++      trackMediaTemp(jobId, outPath);
++      await ensureExecPerm(cwd);
++      await runMediaProcess(
++        ffmpeg,
++        [
++          ...args,
++          "-filter_complex",
++          filters.join(";"),
++          "-map",
++          `[${previous}]`,
++          "-t",
++          still ? String(1 / outputFps) : String(outputDuration),
++          ...(still
++            ? ["-frames:v", "1", "-c:v", "png", "-pix_fmt", "rgba"]
++            : [
++                "-r",
++                String(outputFps),
++                "-fps_mode",
++                "cfr",
++                "-c:v",
++                "ffv1",
++                "-level",
++                "3",
++                "-pix_fmt",
++                "bgra",
++              ]),
++          "-an",
++          outPath,
++        ],
++        { jobId },
++      );
++      return fs.statSync(outPath).size;
+     },
+     execMedia: async (_, opt) => {
+       const { cmd, jobId, tempPaths = [] } = opt || {};
+@@ -3065,13 +3161,25 @@
+               /Stream #0:0.*: Video: (\w+).*?, (\d+)x(\d+).*?, (\d+) kb\/s, ([\d.]+) fps/.exec(
+                 stderr,
+               );
++            const videoLine = stderr
++              .split("\n")
++              .find((line) => /Stream #\S+.*Video:/.test(line));
++            const dimensionMatch = /(\d{2,5})x(\d{2,5})/.exec(videoLine || "");
++            const formatMatch = /Video:\s*([^,\s]+)/.exec(videoLine || "");
++            const fpsMatch = /([\d.]+)\s*fps/.exec(videoLine || "");
+             resolve({
+               duration,
+-              format: streamMatch ? streamMatch[1] : "Unknown",
+-              width: streamMatch ? streamMatch[2] : "Unknown",
+-              height: streamMatch ? streamMatch[3] : "Unknown",
++              format: streamMatch
++                ? streamMatch[1]
++                : formatMatch?.[1] || "Unknown",
++              width: streamMatch
++                ? streamMatch[2]
++                : dimensionMatch?.[1] || "Unknown",
++              height: streamMatch
++                ? streamMatch[3]
++                : dimensionMatch?.[2] || "Unknown",
+               bitrate: streamMatch ? streamMatch[4] : "Unknown",
+-              fps: streamMatch ? streamMatch[5] : "Unknown",
++              fps: streamMatch ? streamMatch[5] : fpsMatch?.[1] || "Unknown",
+             });
+           })
+           .catch((e) => reject(e));
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -22871,6 +22871,21 @@
+   name: "vcompress",
+   initialConfig: {
+     quality: "",
++  },
++});
++const collageSlice = createConfigSlice({
++  name: "collage",
++  initialConfig: {
++    toFormat: "webm",
++    layout: "grid",
++    aspect: "auto",
++    fps: 24,
++    duration: 0,
++    quality: 80,
++    animationQuality: 1,
++    loop: 0,
++    longestEdge: 0,
++    targetFileSizes: {},
+   },
+ });
+ const globalSlice = createSlice({
+@@ -22900,6 +22915,7 @@
+ const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
+ const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
+ const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
++const { updateConfig: updateCollageConfig } = collageSlice.actions;
+ const { updateGlobalConfig } = globalSlice.actions;
+ const {
+   switchTab,
+@@ -22929,6 +22945,7 @@
+     v2image: v2ImageSlice.reducer,
+     vcompress: vCompressSlice.reducer,
+     vconvert: vConvertSlice.reducer,
++    collage: collageSlice.reducer,
+     workflow: workflowSlice.reducer,
+     session: sessionSlice.reducer,
+   },
+@@ -23305,6 +23322,7 @@
+   "nav.vconvert": "格式转换",
+   "nav.vcompress": "视频压缩",
+   "nav.v2image": "动图生成",
++  "nav.collage": "拼贴画布",
+   // 侧栏
+   "sidebar.inactive": "未激活",
+   "sidebar.toggleTheme": "切换主题",
+@@ -23404,10 +23422,12 @@
+   "flow.verb.vconvert": "转换",
+   "flow.verb.vcompress": "压缩",
+   "flow.verb.v2image": "生成",
++  "flow.verb.collage": "创建",
+   "flow.verb.merge": "合成",
+   "flow.verb.crop": "裁剪",
+   "flow.mergeName": "动图名称",
+   "flow.doneMerged": "{n} 帧 → 1 个动图",
++  "flow.doneCollage": "{n} 个项目 → 1 个拼贴",
+   "flow.cropMode": "处理模式",
+   "flow.cropRatio": "比例裁剪",
+   "flow.cropFree": "自由裁剪",
+@@ -23427,6 +23447,23 @@
+   "flow.overwriteSource": "覆盖源媒体",
+   "flow.overwriteSourceHint": "仅在同格式处理成功后替换每个源文件。",
+   "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
++  "flow.collageLayout": "布局",
++  "flow.collageAspect": "画布比例",
++  "flow.collageDuration": "时长(秒，0=自动)",
++  "flow.collagePreview": "实时预览",
++  "flow.collagePaused": "默认暂停",
++  "flow.collageLayer": "层级",
++  "flow.collageOffsetX": "左右偏移",
++  "flow.collageOffsetY": "上下偏移",
++  "flow.collageNeed": "请选择 2–4 个图片或视频文件",
++  "flow.collageMax": "拼贴最多支持 4 个项目。",
++  "flow.collageRow": "左右排列",
++  "flow.collageColumn": "上下排列",
++  "flow.collageGrid": "四宫格",
++  "flow.collageTopPair": "上二下一",
++  "flow.collageBottomPair": "上一下二",
++  "flow.collageLeftPair": "左二右一",
++  "flow.collageRightPair": "左一右二",
+   "flow.cropArea": "裁剪区域",
+   "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
+   "flow.verb.svga": "预览",
+@@ -23699,6 +23736,7 @@
+   "nav.vconvert": "Convert",
+   "nav.vcompress": "Compress",
+   "nav.v2image": "To Animation",
++  "nav.collage": "Collage",
+   "sidebar.inactive": "Unactivated",
+   "sidebar.toggleTheme": "Toggle theme",
+   "sidebar.resizeHint": "Drag to resize, double-click to reset",
+@@ -23795,10 +23833,12 @@
+   "flow.verb.vconvert": "Convert",
+   "flow.verb.vcompress": "Compress",
+   "flow.verb.v2image": "Generate",
++  "flow.verb.collage": "Create",
+   "flow.verb.merge": "Merge",
+   "flow.verb.crop": "Crop",
+   "flow.mergeName": "Animation name",
+   "flow.doneMerged": "{n} frames → 1 animation",
++  "flow.doneCollage": "{n} items → 1 collage",
+   "flow.cropMode": "Mode",
+   "flow.cropRatio": "Aspect",
+   "flow.cropFree": "Free",
+@@ -23822,6 +23862,23 @@
+     "Replaces each input only after a successful same-format encode.",
+   "flow.overwriteSourceUnavailable":
+     "Overwrite source requires the output format to match every input.",
++  "flow.collageLayout": "Layout",
++  "flow.collageAspect": "Canvas aspect",
++  "flow.collageDuration": "Duration (seconds, 0=auto)",
++  "flow.collagePreview": "Live preview",
++  "flow.collagePaused": "Paused by default",
++  "flow.collageLayer": "Layer order",
++  "flow.collageOffsetX": "Left / right offset",
++  "flow.collageOffsetY": "Up / down offset",
++  "flow.collageNeed": "Choose 2–4 image or video files",
++  "flow.collageMax": "A collage supports up to 4 items.",
++  "flow.collageRow": "Side by side",
++  "flow.collageColumn": "Top to bottom",
++  "flow.collageGrid": "4-item grid",
++  "flow.collageTopPair": "Two top, one bottom",
++  "flow.collageBottomPair": "One top, two bottom",
++  "flow.collageLeftPair": "Two left, one right",
++  "flow.collageRightPair": "One left, two right",
+   "flow.cropArea": "Crop area",
+   "flow.cropApplyAll": "{n} more get the same crop",
+   "flow.verb.svga": "Preview",
+@@ -26272,6 +26329,7 @@
+       { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
+       { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
+       { key: "v2image", labelKey: "nav.v2image", Icon: Film },
++      { key: "collage", labelKey: "nav.collage", Icon: Layers },
+     ],
+   },
+ ];
+@@ -40006,7 +40064,732 @@
+     });
+     const info = await window.x("getFileInfo", outPath);
+     return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
++  },
++};
++const COLLAGE_STILL_OUTPUTS = new Set([
++  "png",
++  "jpeg",
++  "webp-still",
++  "avif",
++  "tiff",
++]);
++const COLLAGE_OUTPUT_OPTIONS = [
++  { label: "PNG", value: "png" },
++  { label: "JPEG", value: "jpeg" },
++  { label: "WebP (still)", value: "webp-still" },
++  { label: "AVIF", value: "avif" },
++  { label: "TIFF", value: "tiff" },
++  { label: "GIF", value: "gif" },
++  { label: "WebP (animated)", value: "webp" },
++  { label: "APNG", value: "apng" },
++  ...vWriteOptions,
++];
++const collageOutputSpec = (value) => {
++  if (value === "webp-still") {
++    return { format: "webp", ext: "webp", still: true };
++  }
++  if (value === "jpeg") return { format: "jpeg", ext: "jpg", still: true };
++  return {
++    format: value,
++    ext: value,
++    still: COLLAGE_STILL_OUTPUTS.has(value),
++  };
++};
++const collageLayoutOptions = (count, t2) => {
++  if (count <= 2) {
++    return [
++      { label: t2("flow.collageRow"), value: "row" },
++      { label: t2("flow.collageColumn"), value: "column" },
++    ];
++  }
++  if (count === 3) {
++    return [
++      { label: t2("flow.collageTopPair"), value: "top-pair" },
++      { label: t2("flow.collageBottomPair"), value: "bottom-pair" },
++      { label: t2("flow.collageLeftPair"), value: "left-pair" },
++      { label: t2("flow.collageRightPair"), value: "right-pair" },
++      { label: t2("flow.collageRow"), value: "row" },
++      { label: t2("flow.collageColumn"), value: "column" },
++    ];
++  }
++  return [
++    { label: t2("flow.collageGrid"), value: "grid" },
++    { label: t2("flow.collageRow"), value: "row" },
++    { label: t2("flow.collageColumn"), value: "column" },
++  ];
++};
++const collageRects = (layout, count) => {
++  if (layout === "row") {
++    return Array.from({ length: count }, (_, i) => ({
++      x: i / count,
++      y: 0,
++      width: 1 / count,
++      height: 1,
++    }));
++  }
++  if (layout === "column") {
++    return Array.from({ length: count }, (_, i) => ({
++      x: 0,
++      y: i / count,
++      width: 1,
++      height: 1 / count,
++    }));
++  }
++  if (count === 3 && layout === "bottom-pair") {
++    return [
++      { x: 0, y: 0, width: 1, height: 0.5 },
++      { x: 0, y: 0.5, width: 0.5, height: 0.5 },
++      { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
++    ];
++  }
++  if (count === 3 && layout === "left-pair") {
++    return [
++      { x: 0, y: 0, width: 0.5, height: 0.5 },
++      { x: 0, y: 0.5, width: 0.5, height: 0.5 },
++      { x: 0.5, y: 0, width: 0.5, height: 1 },
++    ];
++  }
++  if (count === 3 && layout === "right-pair") {
++    return [
++      { x: 0, y: 0, width: 0.5, height: 1 },
++      { x: 0.5, y: 0, width: 0.5, height: 0.5 },
++      { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
++    ];
++  }
++  if (count === 3) {
++    return [
++      { x: 0, y: 0, width: 0.5, height: 0.5 },
++      { x: 0.5, y: 0, width: 0.5, height: 0.5 },
++      { x: 0, y: 0.5, width: 1, height: 0.5 },
++    ];
++  }
++  return [
++    { x: 0, y: 0, width: 0.5, height: 0.5 },
++    { x: 0.5, y: 0, width: 0.5, height: 0.5 },
++    { x: 0, y: 0.5, width: 0.5, height: 0.5 },
++    { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
++  ].slice(0, count);
++};
++const parseCollageDuration = (value) => {
++  const match = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(String(value || ""));
++  return match
++    ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
++    : 0;
++};
++const collageAutoAspect = (files, layout) => {
++  const aspects = files.map((item) => {
++    const width = Number(item.meta?.width || item.meta?.pixelWidth) || 1;
++    const height = Number(item.meta?.height || item.meta?.pixelHeight) || 1;
++    return Math.max(0.1, width / height);
++  });
++  if (layout === "row") return aspects.reduce((sum, value) => sum + value, 0);
++  if (layout === "column") {
++    return 1 / aspects.reduce((sum, value) => sum + 1 / value, 0);
++  }
++  return 1;
++};
++const collageGeometry = (files, config) => {
++  const options = collageLayoutOptions(files.length, (key) => key);
++  const layout = options.some((option) => option.value === config.layout)
++    ? config.layout
++    : options[0]?.value || "grid";
++  const aspect =
++    config.aspect === "auto"
++      ? collageAutoAspect(files, layout)
++      : Number(config.aspect) || 1;
++  const sourceLongest = Math.max(
++    320,
++    ...files.map((item) =>
++      Math.max(
++        Number(item.meta?.width || item.meta?.pixelWidth) || 0,
++        Number(item.meta?.height || item.meta?.pixelHeight) || 0,
++      ),
++    ),
++  );
++  const edge = Math.max(2, longestEdgeFor(config) || sourceLongest);
++  const width = Math.max(2, Math.round(aspect >= 1 ? edge : edge * aspect));
++  const height = Math.max(2, Math.round(aspect >= 1 ? edge / aspect : edge));
++  const rects = collageRects(layout, files.length);
++  return {
++    layout,
++    width,
++    height,
++    placements: files.map((item, index) => {
++      const rect = rects[index];
++      const itemWidth = Math.max(2, Math.round(rect.width * width));
++      const itemHeight = Math.max(2, Math.round(rect.height * height));
++      return {
++        ...rect,
++        itemWidth,
++        itemHeight,
++        x:
++          Math.round(rect.x * width) +
++          Math.round(((Number(item.offsetX) || 0) / 100) * itemWidth),
++        y:
++          Math.round(rect.y * height) +
++          Math.round(((Number(item.offsetY) || 0) / 100) * itemHeight),
++      };
++    }),
++  };
++};
++async function collageLoad(rawFiles, ctx) {
++  try {
++    await window.x("focus");
++    const total = (ctx.append ? ctx.existing.length : 0) + rawFiles.length;
++    if (total > 4) {
++      toast.error(t("flow.collageMax"));
++      return null;
++    }
++    const accepted = new Set([...convertReadAccept, ...vReadAccept]);
++    const animatedImages = new Set([".gif", ".webp", ".apng"]);
++    const mapped = await mapWithConcurrency(
++      rawFiles,
++      4,
++      async (file, index) => {
++        const path = file.path || window.xGetFilePath(file);
++        const ext = (await window.x("getFileExt", path))?.toLowerCase();
++        if (!accepted.has(ext)) return null;
++        const info =
++          file.size == null ? await window.x("getFileInfo", path) : file;
++        const dir = await window.x("getFileDir", path);
++        const moving =
++          vReadAccept.includes(ext) &&
++          (!convertReadAccept.includes(ext) || animatedImages.has(ext));
++        if (moving) {
++          const meta = await window.x("vGetFileInfo", path);
++          const poster = await window.x("vGetPoster", path);
++          return {
++            id: uuid(),
++            name: file.name,
++            path,
++            ext,
++            dir,
++            size: info.size,
++            meta,
++            poster,
++            url: `xpic://${VIDEO_DOMAIN}/${path}`,
++            mediaKind: animatedImages.has(ext) ? "animated-image" : "video",
++            still: false,
++            layer: (ctx.append ? ctx.existing.length : 0) + index + 1,
++            offsetX: 0,
++            offsetY: 0,
++          };
++        }
++        const meta = await window.x("sharpMetadata", { path });
++        return {
++          id: uuid(),
++          name: file.name,
++          path,
++          ext,
++          dir,
++          size: info.size,
++          meta: removeUnSerializable(meta),
++          url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
++          mediaKind: "image",
++          still: true,
++          layer: (ctx.append ? ctx.existing.length : 0) + index + 1,
++          offsetX: 0,
++          offsetY: 0,
++        };
++      },
++    );
++    const result = mapped.filter(Boolean);
++    if (!result.length) toast.error(t("flow.collageNeed"));
++    return result;
++  } catch (error) {
++    toast.error(error?.message || t("val.unknownError"));
++    return null;
++  }
++}
++const CollageStaging = reactExports.memo(function CollageStaging2({
++  files,
++  t: t2,
++  handlers: handlers2,
++  onPick,
++}) {
++  const config = useSelector((state) => state.collage.config);
++  const [playing, setPlaying] = reactExports.useState(false);
++  const videoRefs = reactExports.useRef(new Map());
++  const layouts = collageLayoutOptions(files.length, t2);
++  const geometry = collageGeometry(files, config);
++  reactExports.useEffect(() => {
++    if (!layouts.some((option) => option.value === config.layout)) {
++      store.dispatch(
++        updateCollageConfig({ layout: layouts[0]?.value || "grid" }),
++      );
++    }
++  }, [config.layout, files.length]);
++  reactExports.useEffect(() => {
++    for (const video of videoRefs.current.values()) {
++      if (playing) {
++        video.play().catch(() => {});
++      } else {
++        video.pause();
++        video.currentTime = 0;
++      }
++    }
++  }, [playing, files]);
++  const patchItem = (id2, patch2) =>
++    store.dispatch(updateSessionFile({ id: id2, ...patch2 }));
++  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++    className: "x-flow-pane",
++    style: { overflow: "auto" },
++    children: [
++      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++        className: "x-flow-bar",
++        children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
++            className: "x-flow-bar-title",
++            children: [t2("flow.collagePreview"), " · ", files.length, "/4"],
++          }),
++          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
++            type: "button",
++            className: "x-flow-chip",
++            onClick: () => setPlaying((value) => !value),
++            style: { marginLeft: "auto" },
++            children: [
++              playing
++                ? /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 13 })
++                : /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 13 }),
++              " ",
++              playing ? t2("flow.svgaPause") : t2("flow.svgaPlay"),
++            ],
++          }),
++          files.length < 4
++            ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
++                type: "button",
++                className: "x-flow-chip",
++                onClick: () => onPick(true),
++                children: [
++                  /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 13 }),
++                  " ",
++                  t2("flow.addMore"),
++                ],
++              })
++            : null,
++          /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++            type: "button",
++            className: "x-flow-clear",
++            onClick: handlers2.clear,
++            children: t2("flow.clear"),
++          }),
++        ],
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++        style: {
++          display: "grid",
++          gridTemplateColumns: "minmax(320px, 1.25fr) minmax(280px, .9fr)",
++          gap: 18,
++          padding: 20,
++          alignItems: "start",
++        },
++        children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++            children: [
++              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                style: {
++                  position: "relative",
++                  width: "100%",
++                  aspectRatio: `${geometry.width} / ${geometry.height}`,
++                  maxHeight: "calc(100vh - 250px)",
++                  overflow: "hidden",
++                  borderRadius: 14,
++                  border: "1px solid var(--border)",
++                  backgroundColor: "var(--bg-elevated)",
++                  backgroundImage:
++                    "linear-gradient(45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(-45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(128,128,128,.12) 75%),linear-gradient(-45deg,transparent 75%,rgba(128,128,128,.12) 75%)",
++                  backgroundSize: "22px 22px",
++                  backgroundPosition: "0 0,0 11px,11px -11px,-11px 0",
++                  boxShadow: "0 18px 50px rgba(0,0,0,.18)",
++                },
++                children: files.map((item, index) => {
++                  const rect = geometry.placements[index];
++                  const mediaStyle = {
++                    position: "absolute",
++                    left: `${(rect.x / geometry.width) * 100}%`,
++                    top: `${(rect.y / geometry.height) * 100}%`,
++                    width: `${(rect.itemWidth / geometry.width) * 100}%`,
++                    height: `${(rect.itemHeight / geometry.height) * 100}%`,
++                    objectFit: "contain",
++                    zIndex: Number(item.layer) || index + 1,
++                  };
++                  if (item.mediaKind === "video") {
++                    return /* @__PURE__ */ jsxRuntimeExports.jsx(
++                      "video",
++                      {
++                        ref: (node) => {
++                          if (node) videoRefs.current.set(item.id, node);
++                          else videoRefs.current.delete(item.id);
++                        },
++                        src: item.url,
++                        poster: item.poster,
++                        muted: true,
++                        loop: true,
++                        playsInline: true,
++                        style: mediaStyle,
++                      },
++                      item.id,
++                    );
++                  }
++                  return /* @__PURE__ */ jsxRuntimeExports.jsx(
++                    "img",
++                    {
++                      src:
++                        item.mediaKind === "animated-image" && !playing
++                          ? item.poster
++                          : item.url,
++                      draggable: false,
++                      style: mediaStyle,
++                      alt: "",
++                    },
++                    item.id,
++                  );
++                }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                className: "x-cfg-note",
++                style: { marginTop: 10, textAlign: "center" },
++                children: [
++                  geometry.width,
++                  "×",
++                  geometry.height,
++                  " · ",
++                  playing ? t2("flow.svgaPlay") : t2("flow.collagePaused"),
++                ],
++              }),
++            ],
++          }),
++          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++            style: { display: "grid", gap: 10 },
++            children: files.map((item, index) =>
++              /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                "div",
++                {
++                  style: {
++                    border: "1px solid var(--border)",
++                    borderRadius: 12,
++                    padding: 12,
++                    background: "var(--bg-elevated)",
++                  },
++                  children: [
++                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                      style: {
++                        display: "flex",
++                        alignItems: "center",
++                        gap: 10,
++                        marginBottom: 10,
++                      },
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(Thumb, {
++                          f: item,
++                          className: "x-flow-row-thumb",
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                          style: { minWidth: 0, flex: 1 },
++                          children: [
++                            /* @__PURE__ */ jsxRuntimeExports.jsxs("b", {
++                              className: "x-flow-row-name",
++                              children: [index + 1, ". ", item.name],
++                            }),
++                            /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                              className: "x-flow-row-sub",
++                              children: dimOf(item),
++                            }),
++                          ],
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                          type: "button",
++                          className: "x-flow-remove",
++                          style: { position: "static", flex: "0 0 auto" },
++                          onClick: () => handlers2.removeFile(item.id),
++                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, {
++                            size: 13,
++                          }),
++                        }),
++                      ],
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                      style: {
++                        display: "grid",
++                        gridTemplateColumns: "90px 1fr",
++                        gap: "8px 10px",
++                        alignItems: "center",
++                      },
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                          className: "x-cfg-label",
++                          children: t2("flow.collageLayer"),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(InputNumber, {
++                          value: item.layer ?? index + 1,
++                          min: 1,
++                          max: 99,
++                          onChange: (value) =>
++                            patchItem(item.id, { layer: Number(value) || 1 }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                          className: "x-cfg-label",
++                          children: t2("flow.collageOffsetX"),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(Slider, {
++                          value: item.offsetX || 0,
++                          min: -50,
++                          max: 50,
++                          onChange: (value) =>
++                            patchItem(item.id, { offsetX: value }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                          className: "x-cfg-label",
++                          children: t2("flow.collageOffsetY"),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(Slider, {
++                          value: item.offsetY || 0,
++                          min: -50,
++                          max: 50,
++                          onChange: (value) =>
++                            patchItem(item.id, { offsetY: value }),
++                        }),
++                      ],
++                    }),
++                  ],
++                },
++                item.id,
++              ),
++            ),
++          }),
++        ],
++      }),
++    ],
++  });
++});
++const collage = {
++  key: "collage",
++  labelKey: "nav.collage",
++  verbKey: "flow.verb.collage",
++  mediaType: "image",
++  domain: PICTURE_DOMAIN,
++  accept: [...new Set([...convertReadAccept, ...vReadAccept])],
++  validation: { maxFiles: 4, minFiles: 2, requireActivation: true },
++  configKey: "collage",
++  updateConfig: updateCollageConfig,
++  showSaving: false,
++  singleOutput: true,
++  doneKey: "flow.doneCollage",
++  load: collageLoad,
++  StagingView: CollageStaging,
++  renderParams: ({ config, update, t: t2 }) => {
++    const count = store.getState().session.files.length;
++    const output = collageOutputSpec(config.toFormat);
++    return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++          label: t2("flow.collageLayout"),
++          value: config.layout,
++          options: collageLayoutOptions(count, t2),
++          onChange: (value) => update({ layout: value }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++          label: t2("flow.collageAspect"),
++          value: config.aspect || "auto",
++          options: [
++            { label: "Auto", value: "auto" },
++            { label: "1:1", value: "1" },
++            { label: "16:9", value: String(16 / 9) },
++            { label: "9:16", value: String(9 / 16) },
++            { label: "4:3", value: String(4 / 3) },
++            { label: "3:4", value: String(3 / 4) },
++          ],
++          onChange: (value) => update({ aspect: value }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++          label: t2("flow.outFormat"),
++          value: config.toFormat,
++          options: COLLAGE_OUTPUT_OPTIONS,
++          onChange: (value) => update({ toFormat: value }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.targetSize"),
++          value: targetSizeFor(config, config.toFormat),
++          min: 0,
++          onChange: (value) =>
++            update(updateTargetSizeFor(config, config.toFormat, value)),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.targetSizeHint"),
++        }),
++        !output.still
++          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                  label: t2("flow.fps"),
++                  value: config.fps,
++                  min: 1,
++                  max: 120,
++                  onChange: (value) => update({ fps: value }),
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                  label: t2("flow.collageDuration"),
++                  value: config.duration || 0,
++                  min: 0,
++                  step: 0.1,
++                  onChange: (value) => update({ duration: value }),
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                  label: t2("flow.loop"),
++                  value: config.loop || 0,
++                  min: 0,
++                  onChange: (value) => update({ loop: value }),
++                }),
++              ],
++            })
++          : null,
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++          label: t2("flow.quality"),
++          value: output.still
++            ? Number(config.quality) || 80
++            : Number(config.animationQuality) || 0,
++          min: 0,
++          max: output.still ? 100 : 2,
++          step: output.still ? 5 : 1,
++          onChange: (value) =>
++            update(
++              output.still ? { quality: value } : { animationQuality: value },
++            ),
++        }),
++      ],
++    });
+   },
++  panelSub: (config, count, t2) =>
++    count
++      ? t2("flow.sub.fmt", {
++          n: count,
++          fmt: String(collageOutputSpec(config.toFormat).ext).toUpperCase(),
++        })
++      : t2("flow.sub.idle"),
++  async processBatch({
++    files,
++    config,
++    outputDir,
++    setProgress: setProgress2,
++    jobId,
++  }) {
++    if (files.length < 2 || files.length > 4) {
++      throw new Error(t("flow.collageNeed"));
++    }
++    const spec = collageOutputSpec(config.toFormat);
++    const geometry = collageGeometry(files, config);
++    const configuredDuration = Math.max(0, Number(config.duration) || 0);
++    const detectedDuration = Math.max(
++      0,
++      ...files.map((item) => parseCollageDuration(item.meta?.duration)),
++    );
++    const duration = configuredDuration || detectedDuration || 3;
++    const fps = Math.max(1, Number(config.fps) || 24);
++    const name = optimizedStem(fileStem(files[0]?.name || "collage"));
++    const outputPath = window.pj(outputDir, `${name}.${spec.ext}`);
++    const cache = await window.x("getCachePath");
++    const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
++    const intermediatePath = window.pj(
++      cache,
++      `xpic_collage_${stamp}.${spec.still ? "png" : "mkv"}`,
++    );
++    await window.x("createDirIfNotExist", outputDir);
++    setProgress2(12);
++    let outSize = 0;
++    try {
++      await window.x("collageIntermediate", {
++        files: files.map((item, index) => {
++          const placement = geometry.placements[index];
++          return {
++            path: item.path,
++            still: item.still,
++            layer: item.layer,
++            x: placement.x,
++            y: placement.y,
++            width: placement.itemWidth,
++            height: placement.itemHeight,
++          };
++        }),
++        width: geometry.width,
++        height: geometry.height,
++        fps,
++        duration,
++        still: spec.still,
++        outPath: intermediatePath,
++        jobId,
++      });
++      setProgress2(58);
++      const targetKb = targetSizeFor(config, config.toFormat);
++      if (spec.still) {
++        const item = {
++          path: intermediatePath,
++          meta: { width: geometry.width, height: geometry.height },
++        };
++        const recipe = {
++          toFormat: spec.format,
++          formatOptions: {
++            quality: Math.max(1, Number(config.quality) || 80),
++            ...(spec.format === "png" ? { compressionLevel: 9 } : {}),
++          },
++        };
++        if (targetKb > 0) {
++          outSize = await writeSharpToTarget({
++            recipe,
++            item,
++            outPath: outputPath,
++            pureName: name,
++            outFormat: spec.format,
++            targetKb,
++            longestEdge: 0,
++          });
++        } else {
++          const info = await window.x("sharpToFile", {
++            ...recipe,
++            inputPath: intermediatePath,
++            outPath: outputPath,
++          });
++          outSize = info.size;
++        }
++      } else {
++        await window.x("vConvert", {
++          inputPath: intermediatePath,
++          toFormat: spec.format,
++          outPath: outputPath,
++          fps,
++          preparedInput: true,
++          longestEdge: 0,
++          quality: config.animationQuality,
++          loop: config.loop || 0,
++          targetFileSizeKb: targetKb,
++          jobId,
++        });
++        outSize = (await window.x("getFileInfo", outputPath)).size;
++      }
++    } finally {
++      await window.x("removeFile", intermediatePath);
++      await window.x("finishMediaJob", jobId);
++    }
++    setProgress2(100);
++    const totalFrom = files.reduce((sum, item) => sum + (item.size || 0), 0);
++    return {
++      count: files.length,
++      totalFrom,
++      totalTo: outSize,
++      saved: totalFrom - outSize,
++      savedPct: totalFrom > 0 ? Math.round((1 - outSize / totalFrom) * 100) : 0,
++      outDir: outputDir,
++      output: {
++        name: `${name}.${spec.ext}`,
++        path: outputPath,
++        size: outSize,
++        url: spec.still
++          ? `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(outputPath)}`
++          : files[0]?.poster || files[0]?.url,
++        dim: `${geometry.width}×${geometry.height}`,
++      },
++    };
++  },
+ };
+ async function mapWithConcurrency(items, concurrency, mapper) {
+   const results = new Array(items.length);
+@@ -40655,6 +41438,7 @@
+   vconvert,
+   vcompress,
+   v2image,
++  collage,
+   merge: merge$1,
+   crop,
+   "svga-preview": svgaPreview,
+@@ -41448,7 +42232,7 @@
+               : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+                   className: "x-flow-done-sub",
+                   children: mod2.singleOutput
+-                    ? t2("flow.doneMerged", { n: result.count })
++                    ? t2(mod2.doneKey || "flow.doneMerged", { n: result.count })
+                     : t2("flow.doneCount", { count: result.count }),
+                 }),
+             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {

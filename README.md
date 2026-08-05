@@ -74,6 +74,14 @@ video-to-animation, and every video output format exposed by xPic:
   successful encode, with rollback protection;
 - Video Compress always routes WebM through VP9 and explicitly uses the libvpx
   decoder so existing alpha is retained with or without a target file size;
+- Video → Collage accepts any supported mix of images, animated images, and
+  videos; it provides row, column, four-grid, and mirrored three-item layouts,
+  plus per-item layer order and horizontal/vertical offsets;
+- Collage previews are live and paused by default, with synchronized playback,
+  and can export still PNG/JPEG/WebP/AVIF/TIFF, animated GIF/WebP/APNG, or every
+  video container exposed by xPic. The same per-format target-size,
+  longest-edge, source-adjacent `_opt` naming, aspect, FPS, duration, and loop
+  controls apply;
 - fork builds do not download upstream app updates over the patch.
 
 The upstream repository publishes the website and releases, but not the

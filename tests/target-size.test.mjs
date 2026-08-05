@@ -317,3 +317,96 @@ test("Video Compress keeps WebM on the VP9 alpha path", async () => {
   assert.equal(patch.match(/^\+\s*\.\.\.inputDecodeArgs,$/gm)?.length, 2);
   assert.doesNotMatch(patch, /^\+.*targetKb > 0 \? \{ toFormat: fmt,/m);
 });
+
+test("Video navigation exposes a mixed-media Collage creation flow", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /"nav\.collage": "Collage"/);
+  assert.match(
+    patch,
+    /\{ key: "collage", labelKey: "nav\.collage", Icon: Layers \}/,
+  );
+  assert.match(patch, /accept: \[\.\.\.new Set\(\[\.\.\.convertReadAccept, \.\.\.vReadAccept\]\)\]/);
+  assert.match(patch, /validation: \{ maxFiles: 4, minFiles: 2/);
+  assert.match(patch, /const collageSlice = createConfigSlice/);
+  assert.match(patch, /collage: collageSlice\.reducer/);
+});
+
+test("Collage provides every requested two, three, and four item layout", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  for (const layout of [
+    "row",
+    "column",
+    "grid",
+    "top-pair",
+    "bottom-pair",
+    "left-pair",
+    "right-pair",
+  ]) {
+    assert.match(patch, new RegExp(`value: "${layout}"`));
+  }
+  assert.match(patch, /force_original_aspect_ratio=decrease/);
+  assert.match(patch, /pad=\$\{itemWidth\}:\$\{itemHeight\}/);
+});
+
+test("Collage preview starts paused and exposes synchronized playback and item transforms", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /useState\(false\)/);
+  assert.match(patch, /video\.play\(\)\.catch/);
+  assert.match(patch, /video\.pause\(\)/);
+  assert.match(patch, /video\.currentTime = 0/);
+  assert.match(patch, /layer: item\.layer/);
+  assert.match(patch, /offsetX: value/);
+  assert.match(patch, /offsetY: value/);
+  assert.match(patch, /sort\(/);
+  assert.match(patch, /overlay=x=\$\{x\}:y=\$\{y\}/);
+});
+
+test("Collage outputs stills, animations, and every xPic video container with universal sizing", async () => {
+  const [patch, build] = await Promise.all([
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(
+        new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+        "utf8",
+      ),
+    ),
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+    ),
+  ]);
+  for (const format of [
+    "png",
+    "jpeg",
+    "webp-still",
+    "avif",
+    "tiff",
+    "gif",
+    "webp",
+    "apng",
+  ]) {
+    assert.match(patch, new RegExp(`value: "${format}"`));
+  }
+  assert.match(patch, /\.\.\.vWriteOptions/);
+  assert.match(patch, /targetSizeFor\(config, config\.toFormat\)/);
+  assert.match(patch, /longestEdgeFor\(config\) \|\| sourceLongest/);
+  assert.match(patch, /writeSharpToTarget/);
+  assert.match(patch, /window\.x\("vConvert"/);
+  assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
+  assert.match(build, /xpic-2\.1\.3-collage\.patch/);
+  assert.match(build, /2\.1\.3-fork\.9/);
+  assert.match(build, /2\.1\.3\.9/);
+});
