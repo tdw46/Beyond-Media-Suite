@@ -465,6 +465,48 @@ test("Collage layer ordering and populated-canvas media controls remain interact
   assert.match(patch, /onPick,\s*\n\+\s*\}\)/);
 });
 
+test("GIF target size is a hard ceiling with palette, frame-rate, and dimension search", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /const minScale = toFormat === "gif" \? 8 : 20/);
+  assert.match(patch, /let currentFps = Math\.max/);
+  assert.match(patch, /targetFilters\.push\(`fps=\$\{currentFps\}`\)/);
+  assert.match(patch, /let low = toFormat === "gif" \? 2 : 1/);
+  assert.match(patch, /const balanced = Math\.cbrt\(ratio\) \* 0\.98/);
+  assert.match(patch, /currentFps = nextFps/);
+  assert.match(patch, /Smallest candidate was/);
+  assert.doesNotMatch(patch, /^\+.*moveInto\(fallbackPath\)/m);
+});
+
+test("completed jobs can return to editing without discarding inputs or settings", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /resumeEditing: \(state\) =>/);
+  assert.match(
+    patch,
+    /state\.stage = state\.files\.length \? "staging" : "empty"/,
+  );
+  assert.match(patch, /store\.dispatch\(resumeEditing\(\)\)/);
+  assert.match(patch, /^\+\s+edit,\n\s+reset,/m);
+  assert.match(patch, /"flow\.backToEdit": "Back to edit"/);
+  assert.match(patch, /"flow\.backToEditPanel": "Back to edit and re-export"/);
+  assert.match(patch, /onClick: handlers2\.edit/);
+  assert.match(patch, /onClick: handlers2\.reset/);
+  const resumeBlock = patch.match(
+    /^\+    resumeEditing: \(state\) => \{[\s\S]*?^\+    \},/m,
+  )?.[0];
+  assert.ok(resumeBlock);
+  assert.doesNotMatch(resumeBlock, /state\.config|initialState/);
+});
+
 test("Collage outputs stills, animations, and every xPic video container with universal sizing", async () => {
   const [patch, build] = await Promise.all([
     import("node:fs/promises").then(({ readFile }) =>
@@ -496,6 +538,6 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.12/);
-  assert.match(build, /2\.1\.3\.12/);
+  assert.match(build, /2\.1\.3-fork\.13/);
+  assert.match(build, /2\.1\.3\.13/);
 });

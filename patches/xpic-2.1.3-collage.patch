@@ -103,7 +103,119 @@
      execMedia: async (_, opt) => {
        const { cmd, jobId, tempPaths = [] } = opt || {};
        if (!Array.isArray(cmd) || !cmd.length) {
-@@ -3065,21 +3161,43 @@
+@@ -2766,18 +2862,26 @@
+         moveInto(tempPath);
+       };
+       const encodeAnimationTarget = async () => {
++        const minScale = toFormat === "gif" ? 8 : 20;
+         const targetBytes = Math.max(
+           10 * 1e3,
+           Math.floor(Number(targetFileSizeKb) * 1e3),
+         );
+         const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
+         const sourceLongest = Math.max(
+-          20,
++          minScale,
+           Number(media.width) || 0,
+           Number(media.height) || 0,
+         );
+-        const maxScale = Math.max(20, requestedLongestEdge || sourceLongest);
++        const maxScale = Math.max(
++          minScale,
++          requestedLongestEdge || sourceLongest,
++        );
+         let currentScale = maxScale;
++        let currentFps = Math.max(
++          1,
++          Math.round(Number(fps) || Number(media.fps) || 10),
++        );
+         if (toFormat === "webp") {
+           const outputFps = Math.max(1, Number(fps) || 10);
+           const estimatedFrames = Math.max(
+@@ -2794,7 +2898,7 @@
+             ),
+           );
+           currentScale = Math.max(
+-            20,
++            minScale,
+             Math.min(maxScale, targetAwareLongest || maxScale),
+           );
+         }
+@@ -2803,7 +2907,9 @@
+         const runCandidate = async (tuning) => {
+           const candidate = vtemp(`.${toFormat}`);
+           const targetFilters = [];
+-          if (!preparedInput) {
++          if (toFormat === "gif") {
++            targetFilters.push(`fps=${currentFps}`);
++          } else if (!preparedInput) {
+             targetFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
+           }
+           if (currentScale !== sourceLongest || !preparedInput) {
+@@ -2865,8 +2971,8 @@
+           return { path: candidate, size: fs.statSync(candidate).size };
+         };
+         try {
+-          for (let scaleAttempt = 0; scaleAttempt < 7; scaleAttempt += 1) {
+-            let low = toFormat === "gif" ? 16 : 1;
++          for (let scaleAttempt = 0; scaleAttempt < 10; scaleAttempt += 1) {
++            let low = toFormat === "gif" ? 2 : 1;
+             let high = toFormat === "gif" ? 256 : 100;
+             let best = null;
+             let smallest = null;
+@@ -2910,18 +3016,43 @@
+             } else {
+               safeUnlink(smallest?.path);
+             }
+-            if (!smallest || currentScale <= 20) break;
+-            const ratio = Math.min(
+-              0.92,
+-              Math.sqrt(targetBytes / smallest.size) * 0.96,
+-            );
+-            currentScale = Math.max(20, Math.floor(currentScale * ratio));
++            if (!smallest) break;
++            if (toFormat === "gif") {
++              const ratio = Math.max(
++                0.05,
++                Math.min(0.94, targetBytes / smallest.size),
++              );
++              const balanced = Math.cbrt(ratio) * 0.98;
++              let nextScale = Math.max(
++                minScale,
++                Math.floor(currentScale * balanced),
++              );
++              let nextFps = Math.max(1, Math.floor(currentFps * balanced));
++              if (nextScale === currentScale && currentScale > minScale) {
++                nextScale -= 1;
++              }
++              if (nextFps === currentFps && currentFps > 1) nextFps -= 1;
++              if (nextScale === currentScale && nextFps === currentFps) break;
++              currentScale = nextScale;
++              currentFps = nextFps;
++            } else {
++              if (currentScale <= minScale) break;
++              const ratio = Math.min(
++                0.92,
++                Math.sqrt(targetBytes / smallest.size) * 0.96,
++              );
++              currentScale = Math.max(
++                minScale,
++                Math.floor(currentScale * ratio),
++              );
++            }
+           }
+           if (!fallbackPath) {
+             throw new Error("Unable to produce a target-size animation.");
+           }
+-          moveInto(fallbackPath);
+-          fallbackPath = null;
++          throw new Error(
++            `Unable to encode ${toFormat.toUpperCase()} at or below ${targetFileSizeKb} KB. Smallest candidate was ${Math.ceil(fallbackSize / 1e3)} KB.`,
++          );
+         } finally {
+           safeUnlink(fallbackPath);
+         }
+@@ -3065,21 +3196,43 @@
                /Stream #0:0.*: Video: (\w+).*?, (\d+)x(\d+).*?, (\d+) kb\/s, ([\d.]+) fps/.exec(
                  stderr,
                );
@@ -152,7 +264,7 @@
        return new Promise((resolve, reject) => {
          ensureExecPerm(cwd)
            .then(() =>
-@@ -3088,25 +3206,28 @@
+@@ -3088,25 +3241,28 @@
                ffmpeg,
                [
                  "-hide_banner",
@@ -188,12 +300,40 @@
        });
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22871,6 +22871,24 @@
-   name: "vcompress",
-   initialConfig: {
+@@ -22766,6 +22766,21 @@
+         err: void 0,
+       }));
+     },
++    resumeEditing: (state) => {
++      state.runId += 1;
++      state.stage = state.files.length ? "staging" : "empty";
++      state.progress = 0;
++      state.result = null;
++      state.errors = [];
++      state.files = state.files.map((f2) => ({
++        ...f2,
++        status: void 0,
++        outName: void 0,
++        outPath: void 0,
++        outSize: void 0,
++        err: void 0,
++      }));
++    },
+     // 再来一批 / 复位；runId +1 使在途循环失效。保留其他 Tab 的缓存，只清掉当前 Tab 的完成快照。
+     resetSession: (state) => {
+       const nextRun = state.runId + 1;
+@@ -22793,6 +22808,7 @@
+   finishProcessing: finishProcessing$1,
+   retryStart: retryStart$1,
+   cancelProcessing: cancelProcessing$1,
++  resumeEditing: resumeEditing$1,
+   resetSession: resetSession$1,
+ } = sessionSlice.actions;
+ const convertSlice = createConfigSlice({
+@@ -22873,6 +22889,24 @@
      quality: "",
-+  },
-+});
+   },
+ });
 +const collageSlice = createConfigSlice({
 +  name: "collage",
 +  initialConfig: {
@@ -210,10 +350,12 @@
 +    loop: 0,
 +    longestEdge: 0,
 +    targetFileSizes: {},
-   },
- });
++  },
++});
  const globalSlice = createSlice({
-@@ -22900,6 +22918,7 @@
+   name: "global",
+   initialState: {
+@@ -22900,6 +22934,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -221,7 +363,15 @@
  const { updateGlobalConfig } = globalSlice.actions;
  const {
    switchTab,
-@@ -22929,6 +22948,7 @@
+@@ -22915,6 +22950,7 @@
+   finishProcessing,
+   retryStart,
+   cancelProcessing,
++  resumeEditing,
+   resetSession,
+ } = sessionSlice.actions;
+ const { createWorkflow, updateWorkflow, deleteWorkflow, restoreWorkflows } =
+@@ -22929,6 +22965,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -229,7 +379,7 @@
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
    },
-@@ -23305,6 +23325,7 @@
+@@ -23305,6 +23342,7 @@
    "nav.vconvert": "格式转换",
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
@@ -237,7 +387,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23404,10 +23425,12 @@
+@@ -23404,10 +23442,12 @@
    "flow.verb.vconvert": "转换",
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
@@ -250,7 +400,7 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23427,6 +23450,36 @@
+@@ -23427,6 +23467,36 @@
    "flow.overwriteSource": "覆盖源媒体",
    "flow.overwriteSourceHint": "仅在同格式处理成功后替换每个源文件。",
    "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
@@ -287,7 +437,16 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23699,6 +23752,7 @@
+@@ -23512,6 +23582,8 @@
+   "flow.doneSubUp": "{count} 个文件 · 共增大",
+   "flow.doneCount": "{count} 个文件",
+   "flow.reveal": "在文件夹中显示",
++  "flow.backToEdit": "返回编辑",
++  "flow.backToEditPanel": "返回编辑并重新导出",
+   "flow.again": "再来一批",
+   "flow.againPanel": "再处理一批",
+   "flow.start": "开始{verb} ({n})",
+@@ -23699,6 +23771,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -295,7 +454,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23849,12 @@
+@@ -23795,10 +23868,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -308,7 +467,7 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23822,6 +23878,36 @@
+@@ -23822,6 +23897,36 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
@@ -345,7 +504,16 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -26272,6 +26358,7 @@
+@@ -23896,6 +24001,8 @@
+   "flow.doneSubUp": "{count} file(s) · grew",
+   "flow.doneCount": "{count} file(s)",
+   "flow.reveal": "Reveal in Finder",
++  "flow.backToEdit": "Back to edit",
++  "flow.backToEditPanel": "Back to edit and re-export",
+   "flow.again": "New batch",
+   "flow.againPanel": "Process again",
+   "flow.start": "Start {verb} ({n})",
+@@ -26272,6 +26379,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -353,10 +521,11 @@
      ],
    },
  ];
-@@ -40007,7 +40094,996 @@
+@@ -40006,6 +40114,995 @@
+     });
      const info = await window.x("getFileInfo", outPath);
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
-   },
++  },
 +};
 +const COLLAGE_STILL_OUTPUTS = new Set([
 +  "png",
@@ -409,7 +578,7 @@
 +    { label: t2("flow.collageRow"), value: "row" },
 +    { label: t2("flow.collageColumn"), value: "column" },
 +  ];
- };
++};
 +const collagePackedLayout = (files, layout) => {
 +  const aspects = files.map((item) => {
 +    const width = Number(item.meta?.width || item.meta?.pixelWidth) || 1;
@@ -1345,12 +1514,10 @@
 +        dim: `${geometry.width}×${geometry.height}`,
 +      },
 +    };
-+  },
-+};
+   },
+ };
  async function mapWithConcurrency(items, concurrency, mapper) {
-   const results = new Array(items.length);
-   let nextIndex = 0;
-@@ -40655,6 +41731,7 @@
+@@ -40655,6 +41752,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -1358,7 +1525,25 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -41448,7 +42525,7 @@
+@@ -40928,6 +42026,9 @@
+   }, []);
+   const reset = reactExports.useCallback(() => {
+     store.dispatch(resetSession());
++  }, []);
++  const edit = reactExports.useCallback(() => {
++    store.dispatch(resumeEditing());
+   }, []);
+   const chooseOutputDir = reactExports.useCallback(async () => {
+     try {
+@@ -41122,6 +42223,7 @@
+     load,
+     removeFile: removeFile2,
+     clear,
++    edit,
+     reset,
+     start,
+     cancel,
+@@ -41448,7 +42550,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -1367,7 +1552,31 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41668,6 +42745,7 @@
+@@ -41465,6 +42567,12 @@
+                     " ",
+                     t2("flow.reveal"),
+                   ],
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                  type: "button",
++                  className: "x-flow-btn-ghost",
++                  onClick: handlers2.edit,
++                  children: t2("flow.backToEdit"),
+                 }),
+                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                   type: "button",
+@@ -41654,8 +42762,8 @@
+     return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+       type: "button",
+       className: "x-cfg-action is-secondary",
+-      onClick: handlers2.reset,
+-      children: t2("flow.againPanel"),
++      onClick: handlers2.edit,
++      children: t2("flow.backToEditPanel"),
+     });
+   return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+     type: "button",
+@@ -41668,6 +42776,7 @@
    mod: mod2,
    handlers: handlers2,
    t: t2,
@@ -1375,7 +1584,7 @@
  }) {
    const session = useSelector((s) => s.session);
    const config = useSelector((s) => s[mod2.configKey]?.config);
-@@ -41685,6 +42763,16 @@
+@@ -41685,6 +42794,16 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [
@@ -1392,7 +1601,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-head",
          children: [
-@@ -42284,6 +43372,7 @@
+@@ -42284,6 +43403,7 @@
                          mod: mod2,
                          handlers: handlers2,
                          t: t2,

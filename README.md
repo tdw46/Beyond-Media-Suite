@@ -96,6 +96,10 @@ video-to-animation, and every video output format exposed by xPic:
   video container exposed by xPic. The same per-format target-size,
   longest-edge, source-adjacent `_opt` naming, aspect, FPS, duration, and loop
   controls apply;
+- target-sized GIF creation now searches palette, dimensions, and frame rate
+  against a hard byte ceiling and never silently accepts an oversized result;
+- every completed creation flow offers **Back to edit**, restoring the same
+  inputs and settings for another export while keeping **New batch** separate;
 - fork builds do not download upstream app updates over the patch.
 
 The upstream repository publishes the website and releases, but not the
