@@ -330,13 +330,16 @@ test("Video navigation exposes a mixed-media Collage creation flow", async () =>
     patch,
     /\{ key: "collage", labelKey: "nav\.collage", Icon: Layers \}/,
   );
-  assert.match(patch, /accept: \[\.\.\.new Set\(\[\.\.\.convertReadAccept, \.\.\.vReadAccept\]\)\]/);
+  assert.match(
+    patch,
+    /accept: \[\.\.\.new Set\(\[\.\.\.convertReadAccept, \.\.\.vReadAccept\]\)\]/,
+  );
   assert.match(patch, /validation: \{ maxFiles: 4, minFiles: 2/);
   assert.match(patch, /const collageSlice = createConfigSlice/);
   assert.match(patch, /collage: collageSlice\.reducer/);
 });
 
-test("Collage provides every requested two, three, and four item layout", async () => {
+test("Collage packs every requested layout without distorting source aspect ratios", async () => {
   const patch = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
       new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
@@ -354,8 +357,20 @@ test("Collage provides every requested two, three, and four item layout", async 
   ]) {
     assert.match(patch, new RegExp(`value: "${layout}"`));
   }
+  assert.match(patch, /const collagePackedLayout = \(files, layout\)/);
+  assert.match(patch, /const packRows = \(groups\)/);
+  assert.match(patch, /const packColumns = \(groups\)/);
+  assert.match(patch, /const rowHeight =\s*\n\+\s*1 \/ group\.reduce/);
+  assert.match(patch, /const columnWidth =/);
+  assert.match(patch, /force_original_aspect_ratio=increase/);
+  assert.match(patch, /crop=\$\{itemWidth\}:\$\{itemHeight\}/);
   assert.match(patch, /force_original_aspect_ratio=decrease/);
   assert.match(patch, /pad=\$\{itemWidth\}:\$\{itemHeight\}/);
+  assert.match(
+    patch,
+    /objectFit: config\.aspect === "auto" \? "cover" : "contain"/,
+  );
+  assert.match(patch, /cover: config\.aspect === "auto"/);
 });
 
 test("Collage preview starts paused and exposes synchronized playback and item transforms", async () => {
@@ -372,8 +387,17 @@ test("Collage preview starts paused and exposes synchronized playback and item t
   assert.match(patch, /layer: item\.layer/);
   assert.match(patch, /offsetX: value/);
   assert.match(patch, /offsetY: value/);
+  assert.match(patch, /scale: value/);
+  assert.match(patch, /"flow\.collageScale": "Scale"/);
+  assert.match(
+    patch,
+    /Math\.min\(3, \(Number\(item\.scale\) \|\| 100\) \/ 100\)/,
+  );
   assert.match(patch, /sort\(/);
   assert.match(patch, /overlay=x=\$\{x\}:y=\$\{y\}/);
+  assert.match(patch, /renderPanelTop/);
+  assert.match(patch, /mod2\.renderPanelTop\(\{/);
+  assert.match(patch, /children: t2\("flow\.collageLayers"\)/);
 });
 
 test("Collage outputs stills, animations, and every xPic video container with universal sizing", async () => {
@@ -407,6 +431,6 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.9/);
-  assert.match(build, /2\.1\.3\.9/);
+  assert.match(build, /2\.1\.3-fork\.10/);
+  assert.match(build, /2\.1\.3\.10/);
 });

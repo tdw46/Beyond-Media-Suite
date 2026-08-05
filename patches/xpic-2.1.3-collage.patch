@@ -1,17 +1,15 @@
 --- a/out/main/index.js
 +++ b/out/main/index.js
-@@ -2018,7 +2018,103 @@
-         return fs.statSync(outPath).size;
-       } finally {
+@@ -2020,6 +2020,105 @@
          safeUnlink(listPath);
-+      }
-+    },
+       }
+     },
 +    collageIntermediate: async (_, opt) => {
 +      const { files, width, height, fps, duration, outPath, still, jobId } =
 +        opt || {};
 +      if (!Array.isArray(files) || files.length < 2 || files.length > 4) {
 +        throw new Error("Collage requires two to four source files.");
-       }
++      }
 +      const canvasWidth = Math.max(2, Math.round(Number(width) || 0));
 +      const canvasHeight = Math.max(2, Math.round(Number(height) || 0));
 +      const outputFps = Math.max(1, Math.round(Number(fps) || 24));
@@ -47,8 +45,11 @@
 +      files.forEach((file, index) => {
 +        const itemWidth = Math.max(2, Math.round(Number(file.width) || 0));
 +        const itemHeight = Math.max(2, Math.round(Number(file.height) || 0));
++        const fit = file.cover
++          ? `scale=${itemWidth}:${itemHeight}:force_original_aspect_ratio=increase:flags=lanczos,crop=${itemWidth}:${itemHeight}:(iw-ow)/2:(ih-oh)/2`
++          : `scale=${itemWidth}:${itemHeight}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${itemWidth}:${itemHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0.0`;
 +        filters.push(
-+          `[${index}:v:0]fps=${outputFps},scale=${itemWidth}:${itemHeight}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${itemWidth}:${itemHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0.0,format=rgba,setpts=PTS-STARTPTS[item${index}]`,
++          `[${index}:v:0]fps=${outputFps},${fit},format=rgba,setpts=PTS-STARTPTS[item${index}]`,
 +        );
 +      });
 +      const ordered = files
@@ -101,10 +102,11 @@
 +        { jobId },
 +      );
 +      return fs.statSync(outPath).size;
-     },
++    },
      execMedia: async (_, opt) => {
        const { cmd, jobId, tempPaths = [] } = opt || {};
-@@ -3065,13 +3161,25 @@
+       if (!Array.isArray(cmd) || !cmd.length) {
+@@ -3065,13 +3164,25 @@
                /Stream #0:0.*: Video: (\w+).*?, (\d+)x(\d+).*?, (\d+) kb\/s, ([\d.]+) fps/.exec(
                  stderr,
                );
@@ -136,12 +138,10 @@
            .catch((e) => reject(e));
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22871,6 +22871,21 @@
-   name: "vcompress",
-   initialConfig: {
+@@ -22873,6 +22873,21 @@
      quality: "",
-+  },
-+});
+   },
+ });
 +const collageSlice = createConfigSlice({
 +  name: "collage",
 +  initialConfig: {
@@ -155,9 +155,11 @@
 +    loop: 0,
 +    longestEdge: 0,
 +    targetFileSizes: {},
-   },
- });
++  },
++});
  const globalSlice = createSlice({
+   name: "global",
+   initialState: {
 @@ -22900,6 +22915,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
@@ -195,7 +197,7 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23427,6 +23447,23 @@
+@@ -23427,6 +23447,25 @@
    "flow.overwriteSource": "覆盖源媒体",
    "flow.overwriteSourceHint": "仅在同格式处理成功后替换每个源文件。",
    "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
@@ -204,7 +206,9 @@
 +  "flow.collageDuration": "时长(秒，0=自动)",
 +  "flow.collagePreview": "实时预览",
 +  "flow.collagePaused": "默认暂停",
++  "flow.collageLayers": "图层",
 +  "flow.collageLayer": "层级",
++  "flow.collageScale": "缩放",
 +  "flow.collageOffsetX": "左右偏移",
 +  "flow.collageOffsetY": "上下偏移",
 +  "flow.collageNeed": "请选择 2–4 个图片或视频文件",
@@ -219,7 +223,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23699,6 +23736,7 @@
+@@ -23699,6 +23738,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -227,7 +231,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23833,12 @@
+@@ -23795,10 +23835,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -240,7 +244,7 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23822,6 +23862,23 @@
+@@ -23822,6 +23864,25 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
@@ -249,7 +253,9 @@
 +  "flow.collageDuration": "Duration (seconds, 0=auto)",
 +  "flow.collagePreview": "Live preview",
 +  "flow.collagePaused": "Paused by default",
++  "flow.collageLayers": "Layers",
 +  "flow.collageLayer": "Layer order",
++  "flow.collageScale": "Scale",
 +  "flow.collageOffsetX": "Left / right offset",
 +  "flow.collageOffsetY": "Up / down offset",
 +  "flow.collageNeed": "Choose 2–4 image or video files",
@@ -264,7 +270,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -26272,6 +26329,7 @@
+@@ -26272,6 +26333,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -272,11 +278,10 @@
      ],
    },
  ];
-@@ -40006,7 +40064,732 @@
-     });
+@@ -40007,7 +40069,814 @@
      const info = await window.x("getFileInfo", outPath);
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
-+  },
+   },
 +};
 +const COLLAGE_STILL_OUTPUTS = new Set([
 +  "png",
@@ -330,57 +335,72 @@
 +    { label: t2("flow.collageColumn"), value: "column" },
 +  ];
 +};
-+const collageRects = (layout, count) => {
-+  if (layout === "row") {
-+    return Array.from({ length: count }, (_, i) => ({
-+      x: i / count,
-+      y: 0,
-+      width: 1 / count,
-+      height: 1,
-+    }));
-+  }
-+  if (layout === "column") {
-+    return Array.from({ length: count }, (_, i) => ({
-+      x: 0,
-+      y: i / count,
-+      width: 1,
-+      height: 1 / count,
-+    }));
-+  }
-+  if (count === 3 && layout === "bottom-pair") {
-+    return [
-+      { x: 0, y: 0, width: 1, height: 0.5 },
-+      { x: 0, y: 0.5, width: 0.5, height: 0.5 },
-+      { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
-+    ];
-+  }
-+  if (count === 3 && layout === "left-pair") {
-+    return [
-+      { x: 0, y: 0, width: 0.5, height: 0.5 },
-+      { x: 0, y: 0.5, width: 0.5, height: 0.5 },
-+      { x: 0.5, y: 0, width: 0.5, height: 1 },
-+    ];
-+  }
-+  if (count === 3 && layout === "right-pair") {
-+    return [
-+      { x: 0, y: 0, width: 0.5, height: 1 },
-+      { x: 0.5, y: 0, width: 0.5, height: 0.5 },
-+      { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
-+    ];
-+  }
-+  if (count === 3) {
-+    return [
-+      { x: 0, y: 0, width: 0.5, height: 0.5 },
-+      { x: 0.5, y: 0, width: 0.5, height: 0.5 },
-+      { x: 0, y: 0.5, width: 1, height: 0.5 },
-+    ];
-+  }
-+  return [
-+    { x: 0, y: 0, width: 0.5, height: 0.5 },
-+    { x: 0.5, y: 0, width: 0.5, height: 0.5 },
-+    { x: 0, y: 0.5, width: 0.5, height: 0.5 },
-+    { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
-+  ].slice(0, count);
++const collagePackedLayout = (files, layout) => {
++  const aspects = files.map((item) => {
++    const width = Number(item.meta?.width || item.meta?.pixelWidth) || 1;
++    const height = Number(item.meta?.height || item.meta?.pixelHeight) || 1;
++    return Math.max(0.01, width / height);
++  });
++  const packRows = (groups) => {
++    const rects = new Array(files.length);
++    let y = 0;
++    for (const group of groups) {
++      const rowHeight =
++        1 / group.reduce((sum, index) => sum + aspects[index], 0);
++      let x = 0;
++      for (const index of group) {
++        const itemWidth = aspects[index] * rowHeight;
++        rects[index] = { x, y, width: itemWidth, height: rowHeight };
++        x += itemWidth;
++      }
++      y += rowHeight;
++    }
++    return {
++      aspect: 1 / y,
++      rects: rects.map((rect) => ({
++        x: rect.x,
++        y: rect.y / y,
++        width: rect.width,
++        height: rect.height / y,
++      })),
++    };
++  };
++  const packColumns = (groups) => {
++    const rects = new Array(files.length);
++    let x = 0;
++    for (const group of groups) {
++      const columnWidth =
++        1 / group.reduce((sum, index) => sum + 1 / aspects[index], 0);
++      let y = 0;
++      for (const index of group) {
++        const itemHeight = columnWidth / aspects[index];
++        rects[index] = { x, y, width: columnWidth, height: itemHeight };
++        y += itemHeight;
++      }
++      x += columnWidth;
++    }
++    return {
++      aspect: x,
++      rects: rects.map((rect) => ({
++        x: rect.x / x,
++        y: rect.y,
++        width: rect.width / x,
++        height: rect.height,
++      })),
++    };
++  };
++  const indices = files.map((_, index) => index);
++  if (layout === "row") return packRows([indices]);
++  if (layout === "column") return packColumns([indices]);
++  if (layout === "bottom-pair") return packRows([[0], [1, 2]]);
++  if (layout === "left-pair") return packColumns([[0, 1], [2]]);
++  if (layout === "right-pair") return packColumns([[0], [1, 2]]);
++  if (files.length === 4)
++    return packRows([
++      [0, 1],
++      [2, 3],
++    ]);
++  return packRows([[0, 1], [2]]);
 +};
 +const parseCollageDuration = (value) => {
 +  const match = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(String(value || ""));
@@ -388,27 +408,14 @@
 +    ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
 +    : 0;
 +};
-+const collageAutoAspect = (files, layout) => {
-+  const aspects = files.map((item) => {
-+    const width = Number(item.meta?.width || item.meta?.pixelWidth) || 1;
-+    const height = Number(item.meta?.height || item.meta?.pixelHeight) || 1;
-+    return Math.max(0.1, width / height);
-+  });
-+  if (layout === "row") return aspects.reduce((sum, value) => sum + value, 0);
-+  if (layout === "column") {
-+    return 1 / aspects.reduce((sum, value) => sum + 1 / value, 0);
-+  }
-+  return 1;
-+};
 +const collageGeometry = (files, config) => {
 +  const options = collageLayoutOptions(files.length, (key) => key);
 +  const layout = options.some((option) => option.value === config.layout)
 +    ? config.layout
 +    : options[0]?.value || "grid";
++  const packed = collagePackedLayout(files, layout);
 +  const aspect =
-+    config.aspect === "auto"
-+      ? collageAutoAspect(files, layout)
-+      : Number(config.aspect) || 1;
++    config.aspect === "auto" ? packed.aspect : Number(config.aspect) || 1;
 +  const sourceLongest = Math.max(
 +    320,
 +    ...files.map((item) =>
@@ -421,29 +428,41 @@
 +  const edge = Math.max(2, longestEdgeFor(config) || sourceLongest);
 +  const width = Math.max(2, Math.round(aspect >= 1 ? edge : edge * aspect));
 +  const height = Math.max(2, Math.round(aspect >= 1 ? edge / aspect : edge));
-+  const rects = collageRects(layout, files.length);
++  const rects = packed.rects;
 +  return {
 +    layout,
 +    width,
 +    height,
 +    placements: files.map((item, index) => {
 +      const rect = rects[index];
-+      const itemWidth = Math.max(2, Math.round(rect.width * width));
-+      const itemHeight = Math.max(2, Math.round(rect.height * height));
++      const baseWidth = Math.max(2, Math.round(rect.width * width));
++      const baseHeight = Math.max(2, Math.round(rect.height * height));
++      const scale = Math.max(
++        0.25,
++        Math.min(3, (Number(item.scale) || 100) / 100),
++      );
++      const itemWidth = Math.max(2, Math.round(baseWidth * scale));
++      const itemHeight = Math.max(2, Math.round(baseHeight * scale));
++      const baseX = Math.round(rect.x * width);
++      const baseY = Math.round(rect.y * height);
 +      return {
 +        ...rect,
++        baseWidth,
++        baseHeight,
 +        itemWidth,
 +        itemHeight,
 +        x:
-+          Math.round(rect.x * width) +
-+          Math.round(((Number(item.offsetX) || 0) / 100) * itemWidth),
++          baseX -
++          Math.round((itemWidth - baseWidth) / 2) +
++          Math.round(((Number(item.offsetX) || 0) / 100) * baseWidth),
 +        y:
-+          Math.round(rect.y * height) +
-+          Math.round(((Number(item.offsetY) || 0) / 100) * itemHeight),
++          baseY -
++          Math.round((itemHeight - baseHeight) / 2) +
++          Math.round(((Number(item.offsetY) || 0) / 100) * baseHeight),
 +      };
 +    }),
 +  };
-+};
+ };
 +async function collageLoad(rawFiles, ctx) {
 +  try {
 +    await window.x("focus");
@@ -483,6 +502,7 @@
 +            mediaKind: animatedImages.has(ext) ? "animated-image" : "video",
 +            still: false,
 +            layer: (ctx.append ? ctx.existing.length : 0) + index + 1,
++            scale: 100,
 +            offsetX: 0,
 +            offsetY: 0,
 +          };
@@ -500,6 +520,7 @@
 +          mediaKind: "image",
 +          still: true,
 +          layer: (ctx.append ? ctx.existing.length : 0) + index + 1,
++          scale: 100,
 +          offsetX: 0,
 +          offsetY: 0,
 +        };
@@ -513,6 +534,163 @@
 +    return null;
 +  }
 +}
++const CollageLayerControls = reactExports.memo(function CollageLayerControls2({
++  files,
++  t: t2,
++  handlers: handlers2,
++}) {
++  const patchItem = (id2, patch2) =>
++    store.dispatch(updateSessionFile({ id: id2, ...patch2 }));
++  const control = (label, value, min, max, onChange, suffix = "") =>
++    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++      style: { display: "grid", gap: 5 },
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++          className: "x-cfg-row",
++          children: [
++            /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++              className: "x-cfg-label",
++              children: label,
++            }),
++            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
++              className: "x-cfg-value",
++              children: [value, suffix],
++            }),
++          ],
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(Slider, {
++          value,
++          min,
++          max,
++          step: suffix === "%" ? 5 : 1,
++          onChange,
++        }),
++      ],
++    });
++  return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", {
++    style: {
++      flex: "0 0 auto",
++      maxHeight: "42vh",
++      overflow: "auto",
++      padding: "16px 18px",
++      borderBottom: "1px solid var(--border)",
++      background: "color-mix(in srgb, var(--bg-elevated) 72%, transparent)",
++    },
++    children: [
++      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++        style: {
++          display: "flex",
++          alignItems: "baseline",
++          justifyContent: "space-between",
++          marginBottom: 10,
++        },
++        children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++            className: "x-config-title",
++            children: t2("flow.collageLayers"),
++          }),
++          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
++            className: "x-config-sub",
++            children: [files.length, "/4"],
++          }),
++        ],
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++        style: { display: "grid", gap: 9 },
++        children: files.map((item, index) =>
++          /* @__PURE__ */ jsxRuntimeExports.jsxs(
++            "div",
++            {
++              style: {
++                border: "1px solid var(--border)",
++                borderRadius: 11,
++                padding: 10,
++                background: "var(--bg-elevated)",
++              },
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                  style: {
++                    display: "grid",
++                    gridTemplateColumns: "38px minmax(0,1fr) 58px 26px",
++                    alignItems: "center",
++                    gap: 8,
++                    marginBottom: 10,
++                  },
++                  children: [
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(Thumb, {
++                      f: item,
++                      className: "x-flow-row-thumb",
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                      style: { minWidth: 0 },
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                          className: "x-flow-row-name",
++                          children: [index + 1, ". ", item.name],
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                          className: "x-flow-row-sub",
++                          children: dimOf(item),
++                        }),
++                      ],
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(InputNumber, {
++                      value: item.layer ?? index + 1,
++                      min: 1,
++                      max: 99,
++                      title: t2("flow.collageLayer"),
++                      style: { width: 58, minWidth: 0 },
++                      onChange: (value) =>
++                        patchItem(item.id, { layer: Number(value) || 1 }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                      type: "button",
++                      className: "x-flow-remove",
++                      style: { position: "static" },
++                      title: t2("flow.clear"),
++                      onClick: () => handlers2.removeFile(item.id),
++                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, {
++                        size: 13,
++                      }),
++                    }),
++                  ],
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                  style: { display: "grid", gap: 9 },
++                  children: [
++                    control(
++                      t2("flow.collageScale"),
++                      Math.max(25, Number(item.scale) || 100),
++                      25,
++                      300,
++                      (value) => patchItem(item.id, { scale: value }),
++                      "%",
++                    ),
++                    control(
++                      t2("flow.collageOffsetX"),
++                      Number(item.offsetX) || 0,
++                      -50,
++                      50,
++                      (value) => patchItem(item.id, { offsetX: value }),
++                    ),
++                    control(
++                      t2("flow.collageOffsetY"),
++                      Number(item.offsetY) || 0,
++                      -50,
++                      50,
++                      (value) => patchItem(item.id, { offsetY: value }),
++                    ),
++                  ],
++                }),
++              ],
++            },
++            item.id,
++          ),
++        ),
++      }),
++    ],
++  });
++});
 +const CollageStaging = reactExports.memo(function CollageStaging2({
 +  files,
 +  t: t2,
@@ -541,8 +719,6 @@
 +      }
 +    }
 +  }, [playing, files]);
-+  const patchItem = (id2, patch2) =>
-+    store.dispatch(updateSessionFile({ id: id2, ...patch2 }));
 +  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +    className: "x-flow-pane",
 +    style: { overflow: "auto" },
@@ -590,13 +766,13 @@
 +      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +        style: {
 +          display: "grid",
-+          gridTemplateColumns: "minmax(320px, 1.25fr) minmax(280px, .9fr)",
-+          gap: 18,
++          gridTemplateColumns: "minmax(320px, 1fr)",
 +          padding: 20,
 +          alignItems: "start",
 +        },
 +        children: [
 +          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++            style: { width: "100%", maxWidth: 960, margin: "0 auto" },
 +            children: [
 +              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
 +                style: {
@@ -622,7 +798,7 @@
 +                    top: `${(rect.y / geometry.height) * 100}%`,
 +                    width: `${(rect.itemWidth / geometry.width) * 100}%`,
 +                    height: `${(rect.itemHeight / geometry.height) * 100}%`,
-+                    objectFit: "contain",
++                    objectFit: config.aspect === "auto" ? "cover" : "contain",
 +                    zIndex: Number(item.layer) || index + 1,
 +                  };
 +                  if (item.mediaKind === "video") {
@@ -671,104 +847,6 @@
 +              }),
 +            ],
 +          }),
-+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
-+            style: { display: "grid", gap: 10 },
-+            children: files.map((item, index) =>
-+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-+                "div",
-+                {
-+                  style: {
-+                    border: "1px solid var(--border)",
-+                    borderRadius: 12,
-+                    padding: 12,
-+                    background: "var(--bg-elevated)",
-+                  },
-+                  children: [
-+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-+                      style: {
-+                        display: "flex",
-+                        alignItems: "center",
-+                        gap: 10,
-+                        marginBottom: 10,
-+                      },
-+                      children: [
-+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Thumb, {
-+                          f: item,
-+                          className: "x-flow-row-thumb",
-+                        }),
-+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-+                          style: { minWidth: 0, flex: 1 },
-+                          children: [
-+                            /* @__PURE__ */ jsxRuntimeExports.jsxs("b", {
-+                              className: "x-flow-row-name",
-+                              children: [index + 1, ". ", item.name],
-+                            }),
-+                            /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
-+                              className: "x-flow-row-sub",
-+                              children: dimOf(item),
-+                            }),
-+                          ],
-+                        }),
-+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
-+                          type: "button",
-+                          className: "x-flow-remove",
-+                          style: { position: "static", flex: "0 0 auto" },
-+                          onClick: () => handlers2.removeFile(item.id),
-+                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, {
-+                            size: 13,
-+                          }),
-+                        }),
-+                      ],
-+                    }),
-+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-+                      style: {
-+                        display: "grid",
-+                        gridTemplateColumns: "90px 1fr",
-+                        gap: "8px 10px",
-+                        alignItems: "center",
-+                      },
-+                      children: [
-+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
-+                          className: "x-cfg-label",
-+                          children: t2("flow.collageLayer"),
-+                        }),
-+                        /* @__PURE__ */ jsxRuntimeExports.jsx(InputNumber, {
-+                          value: item.layer ?? index + 1,
-+                          min: 1,
-+                          max: 99,
-+                          onChange: (value) =>
-+                            patchItem(item.id, { layer: Number(value) || 1 }),
-+                        }),
-+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
-+                          className: "x-cfg-label",
-+                          children: t2("flow.collageOffsetX"),
-+                        }),
-+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Slider, {
-+                          value: item.offsetX || 0,
-+                          min: -50,
-+                          max: 50,
-+                          onChange: (value) =>
-+                            patchItem(item.id, { offsetX: value }),
-+                        }),
-+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
-+                          className: "x-cfg-label",
-+                          children: t2("flow.collageOffsetY"),
-+                        }),
-+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Slider, {
-+                          value: item.offsetY || 0,
-+                          min: -50,
-+                          max: 50,
-+                          onChange: (value) =>
-+                            patchItem(item.id, { offsetY: value }),
-+                        }),
-+                      ],
-+                    }),
-+                  ],
-+                },
-+                item.id,
-+              ),
-+            ),
-+          }),
 +        ],
 +      }),
 +    ],
@@ -789,6 +867,14 @@
 +  doneKey: "flow.doneCollage",
 +  load: collageLoad,
 +  StagingView: CollageStaging,
++  renderPanelTop: ({ session, t: t2, handlers: handlers2 }) =>
++    session.stage === "staging" && session.files.length
++      ? /* @__PURE__ */ jsxRuntimeExports.jsx(CollageLayerControls, {
++          files: session.files,
++          t: t2,
++          handlers: handlers2,
++        })
++      : null,
 +  renderParams: ({ config, update, t: t2 }) => {
 +    const count = store.getState().session.files.length;
 +    const output = collageOutputSpec(config.toFormat);
@@ -871,7 +957,7 @@
 +        }),
 +      ],
 +    });
-   },
++  },
 +  panelSub: (config, count, t2) =>
 +    count
 +      ? t2("flow.sub.fmt", {
@@ -917,6 +1003,7 @@
 +            path: item.path,
 +            still: item.still,
 +            layer: item.layer,
++            cover: config.aspect === "auto",
 +            x: placement.x,
 +            y: placement.y,
 +            width: placement.itemWidth,
@@ -1002,10 +1089,11 @@
 +      },
 +    };
 +  },
- };
++};
  async function mapWithConcurrency(items, concurrency, mapper) {
    const results = new Array(items.length);
-@@ -40655,6 +41438,7 @@
+   let nextIndex = 0;
+@@ -40655,6 +41524,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -1013,7 +1101,7 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -41448,7 +42232,7 @@
+@@ -41448,7 +42318,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -1022,3 +1110,19 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+@@ -41685,6 +42555,15 @@
+   return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
+     className: "x-config",
+     children: [
++      config && mod2.renderPanelTop
++        ? mod2.renderPanelTop({
++            config,
++            update,
++            t: t2,
++            session,
++            handlers: handlers2,
++          })
++        : null,
+       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+         className: "x-config-head",
+         children: [

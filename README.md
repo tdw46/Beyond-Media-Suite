@@ -76,7 +76,11 @@ video-to-animation, and every video output format exposed by xPic:
   decoder so existing alpha is retained with or without a target file size;
 - Video → Collage accepts any supported mix of images, animated images, and
   videos; it provides row, column, four-grid, and mirrored three-item layouts,
-  plus per-item layer order and horizontal/vertical offsets;
+  plus per-item layer order, scale, and horizontal/vertical offsets in a
+  dedicated sidebar section above the creation settings;
+- automatic collage layouts proportionally size each cell from its source
+  aspect ratio—equal heights within rows and equal widths within columns—so
+  full media frames meet edge-to-edge without distortion or letterbox gaps;
 - Collage previews are live and paused by default, with synchronized playback,
   and can export still PNG/JPEG/WebP/AVIF/TIFF, animated GIF/WebP/APNG, or every
   video container exposed by xPic. The same per-format target-size,
