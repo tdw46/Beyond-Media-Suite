@@ -84,9 +84,11 @@ video-to-animation, and every video output format exposed by xPic:
 - exact collage target width and height can override the automatic canvas;
   media defaults to aspect-preserving Fill with the minimum centered crop,
   while complete-frame letterboxing is available as an opt-in placement mode;
-- Fill transforms retain the full source layer and constrain offsets so its
-  assigned cell never exposes transparency; scaled or panned overflow remains
-  visible on the canvas and obeys explicit front/back layer controls;
+- each auto-layout tile is only the starting position: media and text offsets
+  operate in whole-canvas coordinates from `-125%` to `125%`, allowing layers
+  to cross other tiles or move partially and fully beyond the canvas boundary;
+  preview and export use the same unrestricted coordinates and explicit
+  front/back layer order;
 - the populated Layers panel keeps Add, Remove, bring-forward, and
   send-backward controls available until the four-item limit is reached;
 - Collage previews are live and paused by default, with synchronized playback;

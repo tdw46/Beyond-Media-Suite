@@ -425,7 +425,13 @@ test("Collage preview starts paused and exposes synchronized playback and item t
   assert.match(patch, /offsetX: value/);
   assert.match(patch, /offsetY: value/);
   assert.match(patch, /scale: value/);
-  assert.match(patch, /const clampFillShift =/);
+  assert.doesNotMatch(patch, /^\+.*const clampFillShift =/m);
+  assert.match(patch, /const shiftX = \(offsetX \/ 100\) \* width/);
+  assert.match(patch, /const shiftY = \(offsetY \/ 100\) \* height/);
+  assert.match(patch, /Math\.min\(125, Number\(item\.offsetX\)/);
+  assert.match(patch, /Math\.min\(125, Number\(item\.offsetY\)/);
+  assert.match(patch, /"flow\.collageOffsetX": "Canvas left \/ right offset"/);
+  assert.match(patch, /"flow\.collageOffsetY": "Canvas up \/ down offset"/);
   assert.match(patch, /mediaX: centeredX \+ Math\.round\(shiftX\)/);
   assert.match(patch, /mediaY: centeredY \+ Math\.round\(shiftY\)/);
   assert.match(
@@ -566,8 +572,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.18/);
-  assert.match(build, /2\.1\.3\.18/);
+  assert.match(build, /2\.1\.3-fork\.19/);
+  assert.match(build, /2\.1\.3\.19/);
 });
 
 test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {

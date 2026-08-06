@@ -768,8 +768,8 @@
 +  "flow.collageBringForward": "上移一层",
 +  "flow.collageSendBackward": "下移一层",
 +  "flow.collageScale": "缩放",
-+  "flow.collageOffsetX": "左右偏移",
-+  "flow.collageOffsetY": "上下偏移",
++  "flow.collageOffsetX": "画布左右偏移",
++  "flow.collageOffsetY": "画布上下偏移",
 +  "flow.collageCropLeft": "从左裁切",
 +  "flow.collageCropRight": "从右裁切",
 +  "flow.collageCropTop": "从上裁切",
@@ -891,8 +891,8 @@
 +  "flow.collageBringForward": "Bring forward",
 +  "flow.collageSendBackward": "Send backward",
 +  "flow.collageScale": "Scale",
-+  "flow.collageOffsetX": "Left / right offset",
-+  "flow.collageOffsetY": "Up / down offset",
++  "flow.collageOffsetX": "Canvas left / right offset",
++  "flow.collageOffsetY": "Canvas up / down offset",
 +  "flow.collageCropLeft": "Crop from left",
 +  "flow.collageCropRight": "Crop from right",
 +  "flow.collageCropTop": "Crop from top",
@@ -1486,7 +1486,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.animQuality"),
            value: config.quality,
-@@ -40002,298 +40370,2190 @@
+@@ -40002,295 +40370,2178 @@
        ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
        loop: config.loop,
        targetFileSizeKb: targetSizeFor(config, toFormat),
@@ -1833,10 +1833,12 @@
 +  const vector = collageGradientVector(collageGradientAngle(config));
 +  const x =
 +    width *
-+    (0.5 + Math.max(-50, Math.min(50, Number(config.textOffsetX) || 0)) / 100);
++    (0.5 +
++      Math.max(-125, Math.min(125, Number(config.textOffsetX) || 0)) / 100);
 +  const y =
 +    height *
-+    (0.5 + Math.max(-50, Math.min(50, Number(config.textOffsetY) || 0)) / 100);
++    (0.5 +
++      Math.max(-125, Math.min(125, Number(config.textOffsetY) || 0)) / 100);
 +  const scale = Math.max(25, Math.min(300, Number(config.textScale) || 100));
 +  const fontSize = Math.max(8, (height * 0.12 * scale) / 100);
 +  const shadowColor = normalizeHexColor(config.textShadowColor, "#000000");
@@ -1999,8 +2001,6 @@
 -      totalFrom,
 -      totalTo: outSize,
 -      saved: totalFrom - outSize,
--      savedPct: totalFrom > 0 ? Math.round((1 - outSize / totalFrom) * 100) : 0,
--      outDir: outputDir,
 +      aspect: 1 / y,
 +      rects: rects.map((rect) => ({
 +        x: rect.x,
@@ -2170,27 +2170,16 @@
 +      );
 +      const centeredX = baseX + Math.round((baseWidth - mediaWidth) / 2);
 +      const centeredY = baseY + Math.round((baseHeight - mediaHeight) / 2);
-+      const offsetX = Math.max(-50, Math.min(50, Number(item.offsetX) || 0));
-+      const offsetY = Math.max(-50, Math.min(50, Number(item.offsetY) || 0));
-+      const clampFillShift = (
-+        offset,
-+        center,
-+        frameStart,
-+        frameSize,
-+        mediaSize,
-+      ) => {
-+        const minShift = frameStart + frameSize - (center + mediaSize);
-+        const maxShift = frameStart - center;
-+        return offset >= 0
-+          ? (offset / 50) * maxShift
-+          : (-offset / 50) * minShift;
-+      };
-+      const shiftX = fill
-+        ? clampFillShift(offsetX, centeredX, baseX, baseWidth, mediaWidth)
-+        : (offsetX / 100) * baseWidth;
-+      const shiftY = fill
-+        ? clampFillShift(offsetY, centeredY, baseY, baseHeight, mediaHeight)
-+        : (offsetY / 100) * baseHeight;
++      const offsetX = Math.max(
++        -125,
++        Math.min(125, Number(item.offsetX) || 0),
++      );
++      const offsetY = Math.max(
++        -125,
++        Math.min(125, Number(item.offsetY) || 0),
++      );
++      const shiftX = (offsetX / 100) * width;
++      const shiftY = (offsetY / 100) * height;
 +      return {
 +        ...rect,
 +        frameX: baseX,
@@ -2602,15 +2591,15 @@
 +                          control(
 +                            t2("flow.collageOffsetX"),
 +                            Number(config.textOffsetX) || 0,
-+                            -50,
-+                            50,
++                            -125,
++                            125,
 +                            (value) => update({ textOffsetX: value }),
 +                          ),
 +                          control(
 +                            t2("flow.collageOffsetY"),
 +                            Number(config.textOffsetY) || 0,
-+                            -50,
-+                            50,
++                            -125,
++                            125,
 +                            (value) => update({ textOffsetY: value }),
 +                          ),
 +                          /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -2798,15 +2787,15 @@
 +                    control(
 +                      t2("flow.collageOffsetX"),
 +                      Number(item.offsetX) || 0,
-+                      -50,
-+                      50,
++                      -125,
++                      125,
 +                      (value) => patchItem(item.id, { offsetX: value }),
 +                    ),
 +                    control(
 +                      t2("flow.collageOffsetY"),
 +                      Number(item.offsetY) || 0,
-+                      -50,
-+                      50,
++                      -125,
++                      125,
 +                      (value) => patchItem(item.id, { offsetY: value }),
 +                    ),
 +                    control(
@@ -3636,7 +3625,7 @@
 +      saved: totalFrom - outSize,
 +      savedPct: totalFrom > 0 ? Math.round((1 - outSize / totalFrom) * 100) : 0,
 +      outDir: outputDir,
-       output: {
++      output: {
 +        name: `${name}.${spec.ext}`,
 +        path: outputPath,
 +        size: outSize,
@@ -3950,13 +3939,10 @@
 +      totalFrom,
 +      totalTo: outSize,
 +      saved: totalFrom - outSize,
-+      savedPct: totalFrom > 0 ? Math.round((1 - outSize / totalFrom) * 100) : 0,
-+      outDir: outputDir,
-+      output: {
-         name: `${name}.${ext}`,
-         path: outputPath,
-         size: outSize,
-@@ -40334,7 +42594,7 @@
+       savedPct: totalFrom > 0 ? Math.round((1 - outSize / totalFrom) * 100) : 0,
+       outDir: outputDir,
+       output: {
+@@ -40334,7 +42585,7 @@
      }
      return { pass: true };
    },
@@ -3965,7 +3951,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -40430,6 +42690,13 @@
+@@ -40430,6 +42681,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -3979,7 +3965,7 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -40516,10 +42783,23 @@
+@@ -40516,10 +42774,23 @@
      } else {
        const targetBytes = Math.max(1, targetKb) * 1e3;
        const format = item.meta.format;
@@ -4004,7 +3990,7 @@
            toFormat: "png",
            formatOptions: { palette: true, quality: 50, effort: 10 },
          };
-@@ -40572,7 +42852,7 @@
+@@ -40572,7 +42843,7 @@
        }
      }
      if (finalResize) recipe = { ...recipe, resize: finalResize };
@@ -4013,7 +3999,7 @@
        const outSize = await writeSharpToTarget({
          recipe,
          item,
-@@ -40581,6 +42861,7 @@
+@@ -40581,6 +42852,7 @@
          outFormat: item.meta.format,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -4021,7 +4007,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -40655,6 +42936,7 @@
+@@ -40655,6 +42927,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -4029,7 +4015,7 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -40929,6 +43211,9 @@
+@@ -40929,6 +43202,9 @@
    const reset = reactExports.useCallback(() => {
      store.dispatch(resetSession());
    }, []);
@@ -4039,7 +4025,7 @@
    const chooseOutputDir = reactExports.useCallback(async () => {
      try {
        const dirs = await window.x("selectDir");
-@@ -41122,6 +43407,7 @@
+@@ -41122,6 +43398,7 @@
      load,
      removeFile: removeFile2,
      clear,
@@ -4047,7 +4033,7 @@
      reset,
      start,
      cancel,
-@@ -41448,7 +43734,7 @@
+@@ -41448,7 +43725,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -4056,7 +4042,7 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41469,6 +43755,12 @@
+@@ -41469,6 +43746,12 @@
                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
                    type: "button",
                    className: "x-flow-btn-ghost",
@@ -4069,7 +4055,7 @@
                    onClick: handlers2.reset,
                    children: t2("flow.again"),
                  }),
-@@ -41654,8 +43946,8 @@
+@@ -41654,8 +43937,8 @@
      return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
        type: "button",
        className: "x-cfg-action is-secondary",
@@ -4080,7 +4066,7 @@
      });
    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
      type: "button",
-@@ -41668,6 +43960,7 @@
+@@ -41668,6 +43951,7 @@
    mod: mod2,
    handlers: handlers2,
    t: t2,
@@ -4088,7 +4074,7 @@
  }) {
    const session = useSelector((s) => s.session);
    const config = useSelector((s) => s[mod2.configKey]?.config);
-@@ -41685,6 +43978,16 @@
+@@ -41685,6 +43969,16 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [
@@ -4105,7 +4091,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-head",
          children: [
-@@ -41701,7 +44004,7 @@
+@@ -41701,7 +43995,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-body",
          children: [
@@ -4114,7 +4100,7 @@
            config
              ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
                  jsxRuntimeExports.Fragment,
-@@ -42284,6 +44587,7 @@
+@@ -42284,6 +44578,7 @@
                          mod: mod2,
                          handlers: handlers2,
                          t: t2,
