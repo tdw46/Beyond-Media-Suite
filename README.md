@@ -92,7 +92,8 @@ video-to-animation, and every video output format exposed by xPic:
 - a distinct **Add overlay** action adds up to four extra image/video layers
   centered over the canvas without changing the existing 2–4 tile layout,
   canvas dimensions, or aligned tile positions. Overlay layers retain the same
-  scale, crop, canvas offset, playback, and layer-order controls;
+  scale, crop, canvas offset, playback, and layer-order controls; every tile,
+  overlay, and text layer can scale from 1% to 300% in 1% increments;
 - the populated Layers panel keeps Add, Remove, bring-forward, and
   send-backward controls available until the four-item limit is reached;
 - Collage previews are live and paused by default, with synchronized playback;

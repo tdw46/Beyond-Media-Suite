@@ -1,0 +1,90 @@
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -40519,8 +40519,8 @@
+     height *
+     (0.5 +
+       Math.max(-125, Math.min(125, Number(config.textOffsetY) || 0)) / 100);
+-  const scale = Math.max(25, Math.min(300, Number(config.textScale) || 100));
+-  const fontSize = Math.max(8, (height * 0.12 * scale) / 100);
++  const scale = Math.max(1, Math.min(300, Number(config.textScale) || 100));
++  const fontSize = Math.max(0.5, (height * 0.12 * scale) / 100);
+   const shadowColor = normalizeHexColor(config.textShadowColor, "#000000");
+   const shadowOpacity =
+     Math.max(0, Math.min(100, Number(config.textShadowOpacity) || 0)) / 100;
+@@ -40776,7 +40776,7 @@
+             baseHeight / croppedSourceHeight,
+           );
+       const userScale = Math.max(
+-        isOverlay ? 0.1 : fill ? 1 : 0.25,
++        0.01,
+         Math.min(3, (Number(item.scale) || 100) / 100),
+       );
+       const mediaWidth = Math.max(
+@@ -40949,7 +40949,15 @@
+     (item) => item.layoutRole !== "overlay",
+   ).length;
+   const overlayCount = files.length - tileCount;
+-  const control = (label, value, min, max, onChange, suffix = "") =>
++  const control = (
++    label,
++    value,
++    min,
++    max,
++    onChange,
++    suffix = "",
++    step = suffix === "%" ? 5 : 1,
++  ) =>
+     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+       style: { display: "grid", gap: 5 },
+       children: [
+@@ -40970,7 +40978,7 @@
+           value,
+           min,
+           max,
+-          step: suffix === "%" ? 5 : 1,
++          step,
+           onChange,
+         }),
+       ],
+@@ -41235,11 +41243,12 @@
+                             : null,
+                           control(
+                             t2("flow.collageScale"),
+-                            Math.max(25, Number(config.textScale) || 100),
+-                            25,
++                            Math.max(1, Number(config.textScale) || 100),
++                            1,
+                             300,
+                             (value) => update({ textScale: value }),
+                             "%",
++                            1,
+                           ),
+                           control(
+                             t2("flow.collageOffsetX"),
+@@ -41427,23 +41436,12 @@
+                   children: [
+                     control(
+                       t2("flow.collageScale"),
+-                      Math.max(
+-                        item.layoutRole === "overlay"
+-                          ? 10
+-                          : config.fitMode === "letterbox" ||
+-                              config.autoPadding
+-                          ? 25
+-                          : 100,
+-                        Number(item.scale) || 100,
+-                      ),
+-                      item.layoutRole === "overlay"
+-                        ? 10
+-                        : config.fitMode === "letterbox" || config.autoPadding
+-                        ? 25
+-                        : 100,
++                      Math.max(1, Number(item.scale) || 100),
++                      1,
+                       300,
+                       (value) => patchItem(item.id, { scale: value }),
+                       "%",
++                      1,
+                     ),
+                     control(
+                       t2("flow.collageOffsetX"),

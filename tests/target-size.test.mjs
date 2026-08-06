@@ -572,8 +572,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.20/);
-  assert.match(build, /2\.1\.3\.20/);
+  assert.match(build, /2\.1\.3-fork\.21/);
+  assert.match(build, /2\.1\.3\.21/);
 });
 
 test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {
@@ -683,6 +683,32 @@ test("Add overlay creates independent layers without repacking collage tiles", a
   assert.match(patch, /validation: \{ maxFiles: 8, minFiles: 2/);
   assert.match(build, /xpic-2\.1\.3-collage-overlay\.patch/);
   assert.match(build, /collageOverlayPatchPath/);
+});
+
+test("All collage media and text layers scale down to one percent", async () => {
+  const [patch, build] = await Promise.all([
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(
+        new URL(
+          "../patches/xpic-2.1.3-collage-tiny-scale.patch",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ),
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+    ),
+  ]);
+  assert.match(patch, /const scale = Math\.max\(1,/);
+  assert.match(patch, /const fontSize = Math\.max\(0\.5,/);
+  assert.match(patch, /const userScale = Math\.max\([\s\S]{0,80}\+\s+0\.01,/);
+  assert.match(patch, /Math\.max\(1, Number\(item\.scale\) \|\| 100\)/);
+  assert.match(patch, /Math\.max\(1, Number\(config\.textScale\) \|\| 100\)/);
+  assert.match(patch, /step = suffix === "%" \? 5 : 1/);
+  assert.match(patch, /\(value\) => patchItem\(item\.id, \{ scale: value \}\),[\s\S]{0,80}"%",\s*\+\s*1/);
+  assert.match(build, /xpic-2\.1\.3-collage-tiny-scale\.patch/);
+  assert.match(build, /collageTinyScalePatchPath/);
 });
 
 test("Collage keeps all text and gradient settings with the layer tiles", async () => {
