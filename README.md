@@ -98,8 +98,9 @@ video-to-animation, and every video output format exposed by xPic:
   controls apply;
 - Collage can add a transparent or two-color gradient canvas background using
   editable color stops, angle, and aesthetic presets including Sunset and
-  Electric Violet. Optional top-layer gradient text can match that background
-  or use independent colors, any installed macOS system font, media-style
+  Electric Violet. Optional top-layer gradient text has the same preset
+  library, can match the background or use independent colors, any installed
+  macOS system font, media-style
   scale and position controls, and a configurable drop shadow; preview and
   export share the same full-resolution composition. All text and background
   controls live in the Layers panel alongside the media tiles, ordered as

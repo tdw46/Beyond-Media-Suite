@@ -563,8 +563,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.16/);
-  assert.match(build, /2\.1\.3\.16/);
+  assert.match(build, /2\.1\.3-fork\.17/);
+  assert.match(build, /2\.1\.3\.17/);
 });
 
 test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {
@@ -626,4 +626,25 @@ test("Collage keeps all text and gradient settings with the layer tiles", async 
     patch,
     /children: t2\("flow\.collageBackgroundLayer"\)[\s\S]{0,2400}COLLAGE_GRADIENT_PRESETS/,
   );
+});
+
+test("Text gradients expose the shared aesthetic presets and retain custom stops", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /textGradientPreset: "custom"/);
+  assert.match(
+    patch,
+    /"flow\.collageTextGradientPreset": "Text gradient preset"/,
+  );
+  assert.match(
+    patch,
+    /value:\s*\n\+\s*config\.textGradientPreset \|\|\s*\n\+\s*"custom"/,
+  );
+  assert.match(patch, /textColorA:\s*\n\+\s*preset\.colors\[0\]/);
+  assert.match(patch, /textColorB:\s*\n\+\s*preset\.colors\[1\]/);
+  assert.ok((patch.match(/textGradientPreset: "custom"/g) || []).length >= 3);
 });

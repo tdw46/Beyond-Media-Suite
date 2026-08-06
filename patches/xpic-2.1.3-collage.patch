@@ -573,7 +573,7 @@
    },
  });
  const vConvertSlice = createConfigSlice({
-@@ -22865,6 +22876,7 @@
+@@ -22865,12 +22876,52 @@
    initialConfig: {
      toFormat: "mov",
      targetFileSizes: {},
@@ -581,10 +581,11 @@
    },
  });
  const vCompressSlice = createConfigSlice({
-@@ -22873,6 +22885,44 @@
+   name: "vcompress",
+   initialConfig: {
      quality: "",
-   },
- });
++  },
++});
 +const collageSlice = createConfigSlice({
 +  name: "collage",
 +  initialConfig: {
@@ -610,6 +611,7 @@
 +    textOverlay: "",
 +    textColorA: "#FFFFFF",
 +    textColorB: "#FFD6F6",
++    textGradientPreset: "custom",
 +    textMatchBackground: false,
 +    textFontFamily: "Helvetica Neue",
 +    textScale: 100,
@@ -621,12 +623,10 @@
 +    textShadowBlur: 12,
 +    textShadowX: 4,
 +    textShadowY: 6,
-+  },
-+});
+   },
+ });
  const globalSlice = createSlice({
-   name: "global",
-   initialState: {
-@@ -22900,6 +22950,7 @@
+@@ -22900,6 +22951,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -634,7 +634,7 @@
  const { updateGlobalConfig } = globalSlice.actions;
  const {
    switchTab,
-@@ -22915,6 +22966,7 @@
+@@ -22915,6 +22967,7 @@
    finishProcessing,
    retryStart,
    cancelProcessing,
@@ -642,7 +642,7 @@
    resetSession,
  } = sessionSlice.actions;
  const { createWorkflow, updateWorkflow, deleteWorkflow, restoreWorkflows } =
-@@ -22929,6 +22981,7 @@
+@@ -22929,6 +22982,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -650,7 +650,7 @@
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
    },
-@@ -23305,6 +23358,7 @@
+@@ -23305,6 +23359,7 @@
    "nav.vconvert": "格式转换",
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
@@ -658,7 +658,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23404,10 +23458,12 @@
+@@ -23404,10 +23459,12 @@
    "flow.verb.vconvert": "转换",
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
@@ -671,7 +671,7 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23422,11 +23478,68 @@
+@@ -23422,11 +23479,69 @@
    "flow.cropTargetHint": "通过调整质量逼近目标体积，PNG 格式效果有限。",
    "flow.targetSize": "目标输出大小(KB)",
    "flow.targetSizeHint": "填 0 关闭。每种输出格式会分别记住自己的目标值。",
@@ -708,6 +708,7 @@
 +  "flow.collageBackgroundLayer": "背景 · 底层",
 +  "flow.collageTextMatch": "匹配背景渐变",
 +  "flow.collageTextMatchDesc": "文字使用与画布背景相同的两个颜色。",
++  "flow.collageTextGradientPreset": "文字渐变预设",
 +  "flow.collageTextStart": "文字起始颜色",
 +  "flow.collageTextEnd": "文字结束颜色",
 +  "flow.collageTextFont": "系统字体",
@@ -740,7 +741,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23512,6 +23625,8 @@
+@@ -23512,6 +23627,8 @@
    "flow.doneSubUp": "{count} 个文件 · 共增大",
    "flow.doneCount": "{count} 个文件",
    "flow.reveal": "在文件夹中显示",
@@ -749,7 +750,7 @@
    "flow.again": "再来一批",
    "flow.againPanel": "再处理一批",
    "flow.start": "开始{verb} ({n})",
-@@ -23699,6 +23814,7 @@
+@@ -23699,6 +23816,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -757,7 +758,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23911,12 @@
+@@ -23795,10 +23913,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -770,7 +771,7 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23814,6 +23932,9 @@
+@@ -23814,6 +23934,9 @@
    "flow.targetSize": "Target output size (KB)",
    "flow.targetSizeHint":
      "Set 0 to disable. Each output format remembers its own target.",
@@ -780,7 +781,7 @@
    "flow.longestEdge": "Longest edge (px)",
    "flow.longestEdgeHint":
      "Set 0 to keep the original size. Aspect ratio is always preserved.",
-@@ -23822,6 +23943,62 @@
+@@ -23822,6 +23945,63 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
@@ -810,6 +811,7 @@
 +  "flow.collageTextMatch": "Match background gradient",
 +  "flow.collageTextMatchDesc":
 +    "Use the canvas background's two colors for the text.",
++  "flow.collageTextGradientPreset": "Text gradient preset",
 +  "flow.collageTextStart": "Text start color",
 +  "flow.collageTextEnd": "Text end color",
 +  "flow.collageTextFont": "System font",
@@ -843,7 +845,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -23896,6 +24073,8 @@
+@@ -23896,6 +24076,8 @@
    "flow.doneSubUp": "{count} file(s) · grew",
    "flow.doneCount": "{count} file(s)",
    "flow.reveal": "Reveal in Finder",
@@ -852,7 +854,7 @@
    "flow.again": "New batch",
    "flow.againPanel": "Process again",
    "flow.start": "Start {verb} ({n})",
-@@ -26272,6 +26451,7 @@
+@@ -26272,6 +26454,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -860,7 +862,7 @@
      ],
    },
  ];
-@@ -27661,10 +27841,10 @@
+@@ -27661,10 +27844,10 @@
                  return b2.w(
                    n3
                      .toDate()
@@ -875,7 +877,7 @@
                    n3,
                  );
                },
-@@ -28567,6 +28747,99 @@
+@@ -28567,6 +28750,99 @@
        ],
      }),
  );
@@ -975,7 +977,7 @@
  const SegmentedField = reactExports.memo(
    ({ label, value, options, onChange }) =>
      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -29691,7 +29964,6 @@
+@@ -29691,7 +29967,6 @@
                for (
                  var t3 = Object.keys(e2), r3 = new Array(t3.length), i2 = 0;
                  i2 < t3.length;
@@ -983,7 +985,7 @@
                )
                  r3[i2] = e2[t3[i2++]];
                return r3;
-@@ -30400,15 +30672,13 @@
+@@ -30400,15 +30675,13 @@
              throw Error("no such enum: " + e2);
            }),
            (n2.prototype.add = function (e2) {
@@ -1001,7 +1003,7 @@
                throw TypeError("object must be a valid nested object");
              if (this.nested) {
                var t3 = this.get(e2.name);
-@@ -30819,7 +31089,6 @@
+@@ -30819,7 +31092,6 @@
                  t3 = this.constructor.alloc(this.len),
                  r3 = 0;
                e2;
@@ -1009,7 +1011,7 @@
              )
                (e2.fn(e2.val, t3, r3), (r3 += e2.len), (e2 = e2.next));
              return t3;
-@@ -31152,7 +31421,6 @@
+@@ -31152,7 +31424,6 @@
              for (
                var e2 = new Array(arguments.length), t3 = 0;
                t3 < arguments.length;
@@ -1017,7 +1019,7 @@
              )
                e2[t3] = arguments[t3++];
              return function (t4, r3) {
-@@ -31378,7 +31646,6 @@
+@@ -31378,7 +31649,6 @@
            for (
              var r3 = new Array(arguments.length - 1), i = 0, n2 = 2, o = true;
              n2 < arguments.length;
@@ -1025,7 +1027,7 @@
            )
              r3[i++] = arguments[n2++];
            return new Promise(function (n3, s) {
-@@ -31389,7 +31656,6 @@
+@@ -31389,7 +31659,6 @@
                    for (
                      var t4 = new Array(arguments.length - 1), r4 = 0;
                      r4 < t4.length;
@@ -1033,7 +1035,7 @@
                    )
                      t4[r4++] = arguments[r4];
                    n3.apply(null, t4);
-@@ -33855,7 +34121,6 @@
+@@ -33855,7 +34124,6 @@
                      f2 = new Array(s.length),
                      l2 = 0;
                    l2 < s.length;
@@ -1041,7 +1043,7 @@
                  )
                    ((a[l2] = s[l2]), (f2[l2] = e3[s[l2++]]));
                  return ((a[l2] = t4), Function.apply(null, a).apply(null, f2));
-@@ -33865,7 +34130,6 @@
+@@ -33865,7 +34133,6 @@
              for (
                var u2 = new Array(arguments.length - 1), h = 0;
                h < u2.length;
@@ -1049,7 +1051,7 @@
              )
                u2[h] = arguments[++h];
              if (
-@@ -34439,7 +34703,6 @@
+@@ -34439,7 +34706,6 @@
              for (
                v2(b2, e2.lens, 0, 288, h, 0, e2.work, { bits: 9 }), t3 = 0;
                t3 < 32;
@@ -1057,7 +1059,7 @@
              )
                e2.lens[t3++] = 5;
              (v2(_2, e2.lens, 0, 32, c, 0, e2.work, { bits: 5 }), (de2 = false));
-@@ -34920,7 +35183,6 @@
+@@ -34920,7 +35186,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !((me2 = Se2 >>> 24) <= ue3);
@@ -1065,7 +1067,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35047,7 +35309,6 @@
+@@ -35047,7 +35312,6 @@
                        255),
                        (ge2 = 65535 & Se2),
                        !((me2 = Se2 >>> 24) <= ue3);
@@ -1073,7 +1075,7 @@
                    ) {
                      if (0 === f3) break e;
                      (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35064,7 +35325,6 @@
+@@ -35064,7 +35328,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !(be2 + (me2 = Se2 >>> 24) <= ue3);
@@ -1081,7 +1083,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35111,7 +35371,6 @@
+@@ -35111,7 +35374,6 @@
                        255),
                        (ge2 = 65535 & Se2),
                        !((me2 = Se2 >>> 24) <= ue3);
@@ -1089,7 +1091,7 @@
                    ) {
                      if (0 === f3) break e;
                      (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35128,7 +35387,6 @@
+@@ -35128,7 +35390,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !(be2 + (me2 = Se2 >>> 24) <= ue3);
@@ -1097,7 +1099,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35301,7 +35559,6 @@
+@@ -35301,7 +35562,6 @@
            for (
              var n2 = (65535 & e2) | 0, o = ((e2 >>> 16) & 65535) | 0, s = 0;
              0 !== r3;
@@ -1105,7 +1107,7 @@
            ) {
              r3 -= s = r3 > 2e3 ? 2e3 : r3;
              do {
-@@ -35614,7 +35871,6 @@
+@@ -35614,7 +35874,6 @@
                for (
                  0 === E2 && (E2 = j), v2 += A2, N2 = 1 << (T2 = x3 - E2);
                  T2 + E2 < S2 && !((N2 -= P2[T2 + E2]) <= 0);
@@ -1113,7 +1115,7 @@
                )
                  (T2++, (N2 <<= 1));
                if (
-@@ -35727,7 +35983,6 @@
+@@ -35727,7 +35986,6 @@
                  for (
                    o2 &= 2 === s2 ? 31 : 3 === s2 ? 15 : 7;
                    s2 > 1 && r3 < f3;
@@ -1121,7 +1123,7 @@
                  )
                    ((o2 = (o2 << 6) | (63 & e2[r3++])), s2--);
                  s2 > 1
-@@ -35746,7 +36001,6 @@
+@@ -35746,7 +36004,6 @@
                (t3 = t3 || e2.length) > e2.length && (t3 = e2.length),
                  r3 = t3 - 1;
                r3 >= 0 && 128 == (192 & e2[r3]);
@@ -1129,7 +1131,7 @@
              )
                r3--;
              return r3 < 0 ? t3 : 0 === r3 ? t3 : r3 + a[e2[r3]] > t3 ? r3 : t3;
-@@ -36492,7 +36746,6 @@
+@@ -36492,7 +36749,6 @@
                        n3 = i2.length,
                        o2 = new Uint8Array(n3);
                      n3--;
@@ -1137,7 +1139,7 @@
                    )
                      o2[n3] = i2.charCodeAt(n3);
                    return new Blob([o2], { type: r3 });
-@@ -39370,6 +39623,18 @@
+@@ -39370,6 +39626,18 @@
  };
  const updateSourceTargetSizeFor = (config, value) =>
    updateTargetSizeFor(config, "__source__", value);
@@ -1156,7 +1158,7 @@
  const longestEdgeFor = (config) =>
    Math.max(0, Number(config.longestEdge ?? config.scale) || 0);
  const longestEdgeResize = (config) => {
-@@ -39388,10 +39653,7 @@
+@@ -39388,10 +39656,7 @@
      const cachePath = await window.x("getCachePath");
      destination = window.pj(cachePath, `${pureName}.${outFormat}`);
    }
@@ -1168,7 +1170,7 @@
    if (destination !== outPath) {
      await window.x("moveFile", destination, outPath);
    }
-@@ -39405,8 +39667,11 @@
+@@ -39405,8 +39670,11 @@
    outFormat,
    targetKb,
    longestEdge,
@@ -1180,7 +1182,7 @@
    const sourceWidth = Math.max(1, Number(item.meta?.width) || 1);
    const sourceHeight = Math.max(1, Number(item.meta?.height) || 1);
    const sourceLongest = Math.max(sourceWidth, sourceHeight);
-@@ -39415,17 +39680,25 @@
+@@ -39415,17 +39683,25 @@
      Number(longestEdge) > 0 ? Number(longestEdge) : sourceLongest,
    );
    let lastSmallest = null;
@@ -1211,7 +1213,7 @@
          ...(currentLongest !== sourceLongest
            ? {
                resize: {
-@@ -39437,22 +39710,30 @@
+@@ -39437,22 +39713,30 @@
            : {}),
          formatOptions: {
            ...(recipe.formatOptions || {}),
@@ -1249,7 +1251,7 @@
        }
        if (low > high) break;
      }
-@@ -39465,14 +39746,23 @@
+@@ -39465,14 +39749,23 @@
          outFormat,
        );
      }
@@ -1276,7 +1278,7 @@
  }
  const compress = {
    key: "compress",
-@@ -39485,7 +39775,7 @@
+@@ -39485,7 +39778,7 @@
    configKey: "compress",
    updateConfig: updateCompressConfig,
    showSaving: true,
@@ -1285,7 +1287,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-@@ -39508,6 +39798,13 @@
+@@ -39508,6 +39801,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -1299,7 +1301,7 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -39518,18 +39815,16 @@
+@@ -39518,18 +39818,16 @@
      const fmt = item.meta.format;
      let recipe;
      if ((fmt === "webp" || fmt === "gif") && item.meta.loop >= 0) {
@@ -1307,12 +1309,13 @@
 -        quality: config.quality,
 -        ...(fmt === "webp"
 -          ? {}
+-          : {
+-              colors: 32,
+-              dither: 0,
 +      const opt =
 +        fmt === "webp"
 +          ? { quality: config.quality }
-           : {
--              colors: 32,
--              dither: 0,
++          : {
 +              colors: config.gifColorReduction ? 32 : 256,
 +              dither: config.gifColorReduction ? 0 : 1,
                effort: 10,
@@ -1326,7 +1329,7 @@
        recipe = {
          inputOptions: { animated: true, limitInputPixels: false },
          toFormat: fmt,
-@@ -39574,6 +39869,7 @@
+@@ -39574,6 +39872,7 @@
          outFormat: fmt,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -1334,7 +1337,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -39634,6 +39930,13 @@
+@@ -39634,6 +39933,13 @@
                ],
              })
            : null,
@@ -1348,7 +1351,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.quality"),
            value: config.quality,
-@@ -39713,18 +40016,16 @@
+@@ -39713,18 +40019,16 @@
        ((fmt === "gif" || item.meta.loop >= 0) && toFormat === "webp") ||
        ((fmt === "webp" || item.meta.loop >= 0) && toFormat === "gif")
      ) {
@@ -1376,7 +1379,7 @@
        recipe = {
          inputOptions: { animated: true, limitInputPixels: false },
          toFormat,
-@@ -39770,6 +40071,7 @@
+@@ -39770,6 +40074,7 @@
          outFormat: toFormat,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -1384,7 +1387,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -39818,6 +40120,13 @@
+@@ -39818,6 +40123,13 @@
                className: "x-cfg-note",
                children: t2("flow.targetSizeHint"),
              }),
@@ -1398,7 +1401,7 @@
            ],
          }),
        ],
-@@ -39842,6 +40151,7 @@
+@@ -39842,6 +40154,7 @@
        outPath,
        targetFileSizeKb: targetSizeFor(config, config.toFormat),
        longestEdge: longestEdgeFor(config),
@@ -1406,7 +1409,7 @@
        jobId,
      });
      const info = await window.x("getFileInfo", outPath);
-@@ -39949,6 +40259,13 @@
+@@ -39949,6 +40262,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -1420,7 +1423,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.animQuality"),
            value: config.quality,
-@@ -40002,11 +40319,1477 @@
+@@ -40002,175 +40322,1696 @@
        ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
        loop: config.loop,
        targetFileSizeKb: targetSizeFor(config, toFormat),
@@ -1429,8 +1432,20 @@
      });
      const info = await window.x("getFileInfo", outPath);
      return { outName: `${pureName}.${toFormat}`, outPath, outSize: info.size };
-+  },
-+};
+   },
+ };
+-async function mapWithConcurrency(items, concurrency, mapper) {
+-  const results = new Array(items.length);
+-  let nextIndex = 0;
+-  const workers = Array.from(
+-    { length: Math.min(concurrency, items.length) },
+-    async () => {
+-      while (nextIndex < items.length) {
+-        const index = nextIndex;
+-        nextIndex += 1;
+-        results[index] = await mapper(items[index], index);
+-      }
+-    },
 +const COLLAGE_STILL_OUTPUTS = new Set([
 +  "png",
 +  "jpeg",
@@ -1529,7 +1544,46 @@
 +  const shadowBlur = Math.max(
 +    0,
 +    Math.min(100, Number(config.textShadowBlur) || 0),
-+  );
+   );
+-  await Promise.all(workers);
+-  return results;
+-}
+-async function mergeLoad(rawFiles, ctx) {
+-  try {
+-    await window.x("focus");
+-    const actived = true;
+-    let list = rawFiles;
+-    if (rawFiles.length === 1) {
+-      const f2 = rawFiles[0];
+-      const isDir =
+-        f2.type === "" && f2.name?.split(".").length < 2
+-          ? await window.x("isDir", f2.path)
+-          : false;
+-      if (isDir) {
+-        if (!actived);
+-        const names = await window.x("readDir", {
+-          dir: f2.path,
+-          recursive: false,
+-        });
+-        let notified = false;
+-        list = (
+-          await mapWithConcurrency(names, 8, async (name) => {
+-            const filePath = window.pj(f2.path, name);
+-            const ext = (await window.x("getFileExt", filePath))?.toLowerCase();
+-            if (!mergeAccept.includes(ext) || !ext) {
+-              if (!notified) {
+-                toast.warning(t("mod.folderExcluded"));
+-                notified = true;
+-              }
+-              return null;
+-            }
+-            const info = await window.x("getFileInfo", filePath);
+-            return { ext, dir: f2.path, ...info };
+-          })
+-        ).filter(Boolean);
+-      } else if (!ctx.append) {
+-        toast.error(t("mod.mergeMin2"));
+-        return null;
 +  const shadowX = Math.max(
 +    -100,
 +    Math.min(100, Number(config.textShadowX) || 0),
@@ -1594,9 +1648,11 @@
 +        const itemWidth = aspects[index] * rowHeight;
 +        rects[index] = { x, y, width: itemWidth, height: rowHeight };
 +        x += itemWidth;
-+      }
+       }
 +      y += rowHeight;
-+    }
+     }
+-    const mapped = (
+-      await mapWithConcurrency(list, 6, async (file) => {
 +    return {
 +      aspect: 1 / y,
 +      rects: rects.map((rect) => ({
@@ -1784,7 +1840,13 @@
 +      rawFiles,
 +      4,
 +      async (file, index) => {
-+        const path = file.path || window.xGetFilePath(file);
+         const path = file.path || window.xGetFilePath(file);
+-        const ext = file.ext
+-          ? `.${file.ext}`
+-          : (await window.x("getFileExt", path))?.toLowerCase();
+-        if (!mergeAccept.includes(ext)) return null;
+-        const _dir = file.dir || (await window.x("getFileDir", path));
+-        const meta = await window.x("sharpMetadata", { path: `${path}` });
 +        const ext = (await window.x("getFileExt", path))?.toLowerCase();
 +        if (!accepted.has(ext)) return null;
 +        const info =
@@ -1819,14 +1881,18 @@
 +          };
 +        }
 +        const meta = await window.x("sharpMetadata", { path });
-+        return {
-+          id: uuid(),
-+          name: file.name,
-+          path,
-+          ext,
+         return {
+           id: uuid(),
+           name: file.name,
+           path,
+           ext,
+-          dir: _dir,
+-          url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
+-          thumb: `xpic://${THUMBNAIL_DOMAIN}/${encodeURIComponent(path)}`,
+-          size: file.size,
 +          dir,
 +          size: info.size,
-+          meta: removeUnSerializable(meta),
+           meta: removeUnSerializable(meta),
 +          url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
 +          mediaKind: "image",
 +          still: true,
@@ -1834,7 +1900,35 @@
 +          scale: 100,
 +          offsetX: 0,
 +          offsetY: 0,
-+        };
+         };
+-      })
+-    ).filter(Boolean);
+-    const expectedDir = ctx.existing[0]?.dir ?? mapped[0]?.dir;
+-    const expectedWidth =
+-      ctx.existing[0]?.meta?.width ?? mapped[0]?.meta?.width;
+-    const expectedHeight =
+-      ctx.existing[0]?.meta?.height ?? mapped[0]?.meta?.height;
+-    for (const item of mapped) {
+-      if (item.dir !== expectedDir) {
+-        throw new Error(t("mod.sameDirOnly"));
+-      }
+-      if (
+-        item.meta?.width !== expectedWidth ||
+-        item.meta?.height !== expectedHeight
+-      ) {
+-        throw new Error(t("mod.sameSizeOnly"));
+-      }
+-    }
+-    const total = (ctx.append ? ctx.existing.length : 0) + mapped.length;
+-    if (total < 2) {
+-      toast.error(t("mod.mergeMin2Same"));
+-      return null;
+-    }
+-    if (!actived && total > 20);
+-    sortedFilenames(mapped, "name");
+-    return mapped;
+-  } catch (e) {
+-    toast.error(e?.message || t("mod.unknownError"));
 +      },
 +    );
 +    const result = mapped.filter(Boolean);
@@ -1842,9 +1936,66 @@
 +    return result;
 +  } catch (error) {
 +    toast.error(error?.message || t("val.unknownError"));
-+    return null;
-+  }
-+}
+     return null;
+   }
+ }
+-const FORMAT_SEG = [
+-  { label: "WebP", value: "webp" },
+-  { label: "GIF", value: "gif" },
+-  { label: "WebM", value: "webm" },
+-];
+-const merge$1 = {
+-  key: "merge",
+-  labelKey: "nav.merge",
+-  verbKey: "flow.verb.merge",
+-  mediaType: "image",
+-  domain: PICTURE_DOMAIN,
+-  accept: mergeAccept,
+-  validation: { maxFiles: 5e3, minFiles: 2, requireActivation: true },
+-  configKey: "merge",
+-  updateConfig: updateMergeConfig,
+-  showSaving: false,
+-  singleOutput: true,
+-  load: mergeLoad,
+-  renderParams: ({ config, update, t: t2 }) => {
+-    const zl = config.zl || 10;
+-    const firstName = store.getState().session.files[0]?.name || "animation";
+-    const defaultName = optimizedStem(fileStem(firstName));
+-    const configuredName = config.o === "x_animate" ? "" : config.o;
+-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
+-      children: [
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
+-          label: t2("flow.mergeName"),
+-          value: configuredName ?? "",
+-          placeholder: defaultName,
+-          onChange: (v2) => update({ o: v2 }),
+-        }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
+-          label: t2("flow.outFormat"),
+-          value: config.ext || "webp",
+-          options: FORMAT_SEG,
+-          onChange: (v2) => update({ ext: v2 }),
+-        }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-          label: t2("flow.targetSize"),
+-          value: targetSizeFor(config, config.ext || "webp"),
+-          min: 0,
+-          onChange: (v2) =>
+-            update(updateTargetSizeFor(config, config.ext || "webp", v2)),
+-        }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
+-          className: "x-cfg-note",
+-          children: t2("flow.targetSizeHint"),
+-        }),
+-        config.ext !== "webm"
+-          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+-              label: t2("flow.quality"),
+-              value: config.q,
+-              min: 0,
+-              max: 100,
+-              step: 5,
+-              onChange: (v2) => update({ q: v2 }),
+-            })
 +const CollageLayerControls = reactExports.memo(function CollageLayerControls2({
 +  files,
 +  config,
@@ -2028,6 +2179,48 @@
 +                                {
 +                                  children: [
 +                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                      SelectField,
++                                      {
++                                        label: t2(
++                                          "flow.collageTextGradientPreset",
++                                        ),
++                                        value:
++                                          config.textGradientPreset ||
++                                          "custom",
++                                        options: [
++                                          ...COLLAGE_GRADIENT_PRESETS.map(
++                                            ({ label, value }) => ({
++                                              label,
++                                              value,
++                                            }),
++                                          ),
++                                          {
++                                            label: t2(
++                                              "flow.collageCustomGradient",
++                                            ),
++                                            value: "custom",
++                                          },
++                                        ],
++                                        onChange: (value) => {
++                                          const preset =
++                                            COLLAGE_GRADIENT_PRESETS.find(
++                                              (item) => item.value === value,
++                                            );
++                                          update({
++                                            textGradientPreset: value,
++                                            ...(preset
++                                              ? {
++                                                  textColorA:
++                                                    preset.colors[0],
++                                                  textColorB:
++                                                    preset.colors[1],
++                                                }
++                                              : {}),
++                                          });
++                                        },
++                                      },
++                                    ),
++                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
 +                                      ColorField,
 +                                      {
 +                                        label: t2("flow.collageTextStart"),
@@ -2035,7 +2228,10 @@
 +                                          config.textColorA || "#FFFFFF",
 +                                        fallback: "#FFFFFF",
 +                                        onChange: (value) =>
-+                                          update({ textColorA: value }),
++                                          update({
++                                            textColorA: value,
++                                            textGradientPreset: "custom",
++                                          }),
 +                                      },
 +                                    ),
 +                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -2046,7 +2242,10 @@
 +                                          config.textColorB || "#FFD6F6",
 +                                        fallback: "#FFD6F6",
 +                                        onChange: (value) =>
-+                                          update({ textColorB: value }),
++                                          update({
++                                            textColorB: value,
++                                            textGradientPreset: "custom",
++                                          }),
 +                                      },
 +                                    ),
 +                                  ],
@@ -2684,7 +2883,7 @@
 +              update,
 +              t: t2,
 +            })
-+          : null,
+           : null,
 +        !output.still
 +          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
 +              children: [
@@ -2726,7 +2925,7 @@
 +        }),
 +      ],
 +    });
-   },
++  },
 +  panelSub: (config, count, t2) =>
 +    count
 +      ? t2("flow.sub.fmt", {
@@ -2895,13 +3094,160 @@
 +      },
 +    };
 +  },
- };
- async function mapWithConcurrency(items, concurrency, mapper) {
-   const results = new Array(items.length);
-@@ -40161,6 +41944,13 @@
-           className: "x-cfg-note",
-           children: t2("flow.targetSizeHint"),
-         }),
++};
++async function mapWithConcurrency(items, concurrency, mapper) {
++  const results = new Array(items.length);
++  let nextIndex = 0;
++  const workers = Array.from(
++    { length: Math.min(concurrency, items.length) },
++    async () => {
++      while (nextIndex < items.length) {
++        const index = nextIndex;
++        nextIndex += 1;
++        results[index] = await mapper(items[index], index);
++      }
++    },
++  );
++  await Promise.all(workers);
++  return results;
++}
++async function mergeLoad(rawFiles, ctx) {
++  try {
++    await window.x("focus");
++    const actived = true;
++    let list = rawFiles;
++    if (rawFiles.length === 1) {
++      const f2 = rawFiles[0];
++      const isDir =
++        f2.type === "" && f2.name?.split(".").length < 2
++          ? await window.x("isDir", f2.path)
++          : false;
++      if (isDir) {
++        if (!actived);
++        const names = await window.x("readDir", {
++          dir: f2.path,
++          recursive: false,
++        });
++        let notified = false;
++        list = (
++          await mapWithConcurrency(names, 8, async (name) => {
++            const filePath = window.pj(f2.path, name);
++            const ext = (await window.x("getFileExt", filePath))?.toLowerCase();
++            if (!mergeAccept.includes(ext) || !ext) {
++              if (!notified) {
++                toast.warning(t("mod.folderExcluded"));
++                notified = true;
++              }
++              return null;
++            }
++            const info = await window.x("getFileInfo", filePath);
++            return { ext, dir: f2.path, ...info };
++          })
++        ).filter(Boolean);
++      } else if (!ctx.append) {
++        toast.error(t("mod.mergeMin2"));
++        return null;
++      }
++    }
++    const mapped = (
++      await mapWithConcurrency(list, 6, async (file) => {
++        const path = file.path || window.xGetFilePath(file);
++        const ext = file.ext
++          ? `.${file.ext}`
++          : (await window.x("getFileExt", path))?.toLowerCase();
++        if (!mergeAccept.includes(ext)) return null;
++        const _dir = file.dir || (await window.x("getFileDir", path));
++        const meta = await window.x("sharpMetadata", { path: `${path}` });
++        return {
++          id: uuid(),
++          name: file.name,
++          path,
++          ext,
++          dir: _dir,
++          url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
++          thumb: `xpic://${THUMBNAIL_DOMAIN}/${encodeURIComponent(path)}`,
++          size: file.size,
++          meta: removeUnSerializable(meta),
++        };
++      })
++    ).filter(Boolean);
++    const expectedDir = ctx.existing[0]?.dir ?? mapped[0]?.dir;
++    const expectedWidth =
++      ctx.existing[0]?.meta?.width ?? mapped[0]?.meta?.width;
++    const expectedHeight =
++      ctx.existing[0]?.meta?.height ?? mapped[0]?.meta?.height;
++    for (const item of mapped) {
++      if (item.dir !== expectedDir) {
++        throw new Error(t("mod.sameDirOnly"));
++      }
++      if (
++        item.meta?.width !== expectedWidth ||
++        item.meta?.height !== expectedHeight
++      ) {
++        throw new Error(t("mod.sameSizeOnly"));
++      }
++    }
++    const total = (ctx.append ? ctx.existing.length : 0) + mapped.length;
++    if (total < 2) {
++      toast.error(t("mod.mergeMin2Same"));
++      return null;
++    }
++    if (!actived && total > 20);
++    sortedFilenames(mapped, "name");
++    return mapped;
++  } catch (e) {
++    toast.error(e?.message || t("mod.unknownError"));
++    return null;
++  }
++}
++const FORMAT_SEG = [
++  { label: "WebP", value: "webp" },
++  { label: "GIF", value: "gif" },
++  { label: "WebM", value: "webm" },
++];
++const merge$1 = {
++  key: "merge",
++  labelKey: "nav.merge",
++  verbKey: "flow.verb.merge",
++  mediaType: "image",
++  domain: PICTURE_DOMAIN,
++  accept: mergeAccept,
++  validation: { maxFiles: 5e3, minFiles: 2, requireActivation: true },
++  configKey: "merge",
++  updateConfig: updateMergeConfig,
++  showSaving: false,
++  singleOutput: true,
++  load: mergeLoad,
++  renderParams: ({ config, update, t: t2 }) => {
++    const zl = config.zl || 10;
++    const firstName = store.getState().session.files[0]?.name || "animation";
++    const defaultName = optimizedStem(fileStem(firstName));
++    const configuredName = config.o === "x_animate" ? "" : config.o;
++    return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
++          label: t2("flow.mergeName"),
++          value: configuredName ?? "",
++          placeholder: defaultName,
++          onChange: (v2) => update({ o: v2 }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
++          label: t2("flow.outFormat"),
++          value: config.ext || "webp",
++          options: FORMAT_SEG,
++          onChange: (v2) => update({ ext: v2 }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.targetSize"),
++          value: targetSizeFor(config, config.ext || "webp"),
++          min: 0,
++          onChange: (v2) =>
++            update(updateTargetSizeFor(config, config.ext || "webp", v2)),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++          className: "x-cfg-note",
++          children: t2("flow.targetSizeHint"),
++        }),
 +        config.ext === "gif"
 +          ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
 +              config,
@@ -2909,10 +3255,20 @@
 +              t: t2,
 +            })
 +          : null,
-         config.ext !== "webm"
-           ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-               label: t2("flow.quality"),
-@@ -40244,6 +42034,7 @@
++        config.ext !== "webm"
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++              label: t2("flow.quality"),
++              value: config.q,
++              min: 0,
++              max: 100,
++              step: 5,
++              onChange: (v2) => update({ q: v2 }),
++            })
++          : null,
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+           label: t2("flow.fps"),
+           value: zl,
+@@ -40244,6 +42085,7 @@
            preparedInput: true,
            loop,
            targetFileSizeKb: targetKb,
@@ -2920,7 +3276,7 @@
            jobId,
          });
          info = await window.x("getFileInfo", outputPath);
-@@ -40270,7 +42061,18 @@
+@@ -40270,7 +42112,18 @@
              ? { resize: longestEdgeResize(config) }
              : {}),
            toFormat: ext,
@@ -2940,7 +3296,7 @@
            outPath: outputPath,
          });
        }
-@@ -40334,7 +42136,7 @@
+@@ -40334,7 +42187,7 @@
      }
      return { pass: true };
    },
@@ -2949,7 +3305,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -40430,6 +42232,13 @@
+@@ -40430,6 +42283,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -2963,15 +3319,15 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -40516,10 +42325,23 @@
+@@ -40516,7 +42376,20 @@
      } else {
        const targetBytes = Math.max(1, targetKb) * 1e3;
        const format = item.meta.format;
 -      if (format === "png") {
 +      if (format === "gif") {
-         recipe = {
-           inputPath: item.path,
-           inputOptions: sharpOpt,
++        recipe = {
++          inputPath: item.path,
++          inputOptions: sharpOpt,
 +          toFormat: "gif",
 +          formatOptions: {
 +            colors: config.gifColorReduction ? 64 : 256,
@@ -2982,13 +3338,10 @@
 +          },
 +        };
 +      } else if (format === "png") {
-+        recipe = {
-+          inputPath: item.path,
-+          inputOptions: sharpOpt,
-           toFormat: "png",
-           formatOptions: { palette: true, quality: 50, effort: 10 },
-         };
-@@ -40572,7 +42394,7 @@
+         recipe = {
+           inputPath: item.path,
+           inputOptions: sharpOpt,
+@@ -40572,7 +42445,7 @@
        }
      }
      if (finalResize) recipe = { ...recipe, resize: finalResize };
@@ -2997,7 +3350,7 @@
        const outSize = await writeSharpToTarget({
          recipe,
          item,
-@@ -40581,6 +42403,7 @@
+@@ -40581,6 +42454,7 @@
          outFormat: item.meta.format,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -3005,7 +3358,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -40655,6 +42478,7 @@
+@@ -40655,6 +42529,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -3013,17 +3366,17 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -40928,6 +42752,9 @@
-   }, []);
+@@ -40929,6 +42804,9 @@
    const reset = reactExports.useCallback(() => {
      store.dispatch(resetSession());
-+  }, []);
+   }, []);
 +  const edit = reactExports.useCallback(() => {
 +    store.dispatch(resumeEditing());
-   }, []);
++  }, []);
    const chooseOutputDir = reactExports.useCallback(async () => {
      try {
-@@ -41122,6 +42949,7 @@
+       const dirs = await window.x("selectDir");
+@@ -41122,6 +43000,7 @@
      load,
      removeFile: removeFile2,
      clear,
@@ -3031,7 +3384,7 @@
      reset,
      start,
      cancel,
-@@ -41448,7 +43276,7 @@
+@@ -41448,7 +43327,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -3040,20 +3393,20 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41469,6 +43297,12 @@
-                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
-                   type: "button",
-                   className: "x-flow-btn-ghost",
-+                  onClick: handlers2.edit,
-+                  children: t2("flow.backToEdit"),
+@@ -41465,6 +43344,12 @@
+                     " ",
+                     t2("flow.reveal"),
+                   ],
 +                }),
 +                /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
 +                  type: "button",
 +                  className: "x-flow-btn-ghost",
-                   onClick: handlers2.reset,
-                   children: t2("flow.again"),
++                  onClick: handlers2.edit,
++                  children: t2("flow.backToEdit"),
                  }),
-@@ -41654,8 +43488,8 @@
+                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                   type: "button",
+@@ -41654,8 +43539,8 @@
      return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
        type: "button",
        className: "x-cfg-action is-secondary",
@@ -3064,7 +3417,7 @@
      });
    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
      type: "button",
-@@ -41668,6 +43502,7 @@
+@@ -41668,6 +43553,7 @@
    mod: mod2,
    handlers: handlers2,
    t: t2,
@@ -3072,7 +3425,7 @@
  }) {
    const session = useSelector((s) => s.session);
    const config = useSelector((s) => s[mod2.configKey]?.config);
-@@ -41685,6 +43520,16 @@
+@@ -41685,6 +43571,16 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [
@@ -3089,7 +3442,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-head",
          children: [
-@@ -41701,7 +43546,7 @@
+@@ -41701,7 +43597,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-body",
          children: [
@@ -3098,7 +3451,7 @@
            config
              ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
                  jsxRuntimeExports.Fragment,
-@@ -42284,6 +44129,7 @@
+@@ -42284,6 +44180,7 @@
                          mod: mod2,
                          handlers: handlers2,
                          t: t2,
