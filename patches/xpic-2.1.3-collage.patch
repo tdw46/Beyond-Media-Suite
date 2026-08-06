@@ -1,6 +1,49 @@
 --- a/out/main/index.js
 +++ b/out/main/index.js
-@@ -1732,6 +1732,12 @@
+@@ -1518,6 +1518,42 @@
+         },
+       );
+     });
++  let systemFontFamiliesPromise = null;
++  const getSystemFontFamilies = () => {
++    if (systemFontFamiliesPromise) return systemFontFamiliesPromise;
++    const fallback = [
++      "Helvetica Neue",
++      "Arial",
++      "Avenir Next",
++      "Futura",
++      "Georgia",
++      "Times New Roman",
++      "Courier New",
++    ];
++    if (os.platform() !== "darwin") {
++      systemFontFamiliesPromise = Promise.resolve(fallback);
++      return systemFontFamiliesPromise;
++    }
++    systemFontFamiliesPromise = execFileP(
++      "/usr/sbin/system_profiler",
++      ["SPFontsDataType", "-json"],
++      { timeout: 30000 },
++    )
++      .then(({ stdout }) => {
++        const report = JSON.parse(stdout);
++        const families = new Set(fallback);
++        for (const font of report.SPFontsDataType || []) {
++          if (font.enabled === "no") continue;
++          for (const face of font.typefaces || []) {
++            const family = String(face.family || "").trim();
++            if (family && !family.startsWith(".")) families.add(family);
++          }
++        }
++        return [...families].sort((a, b) => a.localeCompare(b));
++      })
++      .catch(() => fallback);
++    return systemFontFamiliesPromise;
++  };
+   const mediaJobs = app2.__xpicMediaJobs || new Map();
+   const mediaTemps = app2.__xpicMediaTemps || new Map();
+   app2.__xpicMediaJobs = mediaJobs;
+@@ -1732,6 +1768,12 @@
        const enc = new TextDecoder("utf-8");
        return enc.decode(buffer);
      },
@@ -13,13 +56,31 @@
      createDirIfNotExist: (_, dirPath) => {
        if (!fs.existsSync(dirPath)) {
          fs.mkdirSync(dirPath, { recursive: true });
-@@ -2020,6 +2026,102 @@
+@@ -1783,6 +1825,7 @@
+         __dirname,
+       };
+     },
++    getSystemFontFamilies: () => getSystemFontFamilies(),
+     getCachePath: () => {
+       return app2.getPath("temp");
+     },
+@@ -2020,6 +2063,145 @@
          safeUnlink(listPath);
        }
      },
 +    collageIntermediate: async (_, opt) => {
-+      const { files, width, height, fps, duration, outPath, still, jobId } =
-+        opt || {};
++      const {
++        files,
++        width,
++        height,
++        fps,
++        duration,
++        outPath,
++        still,
++        backgroundPath,
++        textPath,
++        jobId,
++      } = opt || {};
 +      if (!Array.isArray(files) || files.length < 2 || files.length > 4) {
 +        throw new Error("Collage requires two to four source files.");
 +      }
@@ -52,9 +113,34 @@
 +          args.push("-i", inputPath);
 +        }
 +      }
-+      const filters = [
-+        `color=c=black@0.0:s=${canvasWidth}x${canvasHeight}:r=${outputFps}:d=${outputDuration},format=rgba[canvas]`,
-+      ];
++      const addStillInput = (inputPath, label) => {
++        if (!inputPath) return -1;
++        if (!fs.existsSync(inputPath)) {
++          throw new Error(`Missing collage ${label}: ${inputPath}`);
++        }
++        const index = args.filter((value) => value === "-i").length;
++        args.push(
++          "-loop",
++          "1",
++          "-framerate",
++          String(outputFps),
++          "-i",
++          inputPath,
++        );
++        return index;
++      };
++      const backgroundIndex = addStillInput(backgroundPath, "background");
++      const textIndex = addStillInput(textPath, "text overlay");
++      const filters = [];
++      if (backgroundIndex >= 0) {
++        filters.push(
++          `[${backgroundIndex}:v:0]fps=${outputFps},scale=${canvasWidth}:${canvasHeight}:flags=lanczos,format=rgba,setpts=PTS-STARTPTS[canvas]`,
++        );
++      } else {
++        filters.push(
++          `color=c=black@0.0:s=${canvasWidth}x${canvasHeight}:r=${outputFps}:d=${outputDuration},format=rgba[canvas]`,
++        );
++      }
 +      files.forEach((file, index) => {
 +        const itemWidth = Math.max(2, Math.round(Number(file.width) || 0));
 +        const itemHeight = Math.max(2, Math.round(Number(file.height) || 0));
@@ -71,8 +157,7 @@
 +        );
 +      let previous = "canvas";
 +      ordered.forEach(({ file, index }, layerIndex) => {
-+        const next =
-+          layerIndex === ordered.length - 1 ? "collage" : `layer${layerIndex}`;
++        const next = `layer${layerIndex}`;
 +        const x = Math.round(Number(file.x) || 0);
 +        const y = Math.round(Number(file.y) || 0);
 +        filters.push(
@@ -80,6 +165,15 @@
 +        );
 +        previous = next;
 +      });
++      if (textIndex >= 0) {
++        filters.push(
++          `[${textIndex}:v:0]fps=${outputFps},scale=${canvasWidth}:${canvasHeight}:flags=lanczos,format=rgba,setpts=PTS-STARTPTS[textoverlay]`,
++        );
++        filters.push(
++          `[${previous}][textoverlay]overlay=x=0:y=0:eof_action=repeat:shortest=0:format=auto[collage]`,
++        );
++        previous = "collage";
++      }
 +      trackMediaTemp(jobId, outPath);
 +      await ensureExecPerm(cwd);
 +      await runMediaProcess(
@@ -116,7 +210,7 @@
      execMedia: async (_, opt) => {
        const { cmd, jobId, tempPaths = [] } = opt || {};
        if (!Array.isArray(cmd) || !cmd.length) {
-@@ -2441,6 +2543,7 @@
+@@ -2441,6 +2623,7 @@
          loop,
          loseless,
          targetFileSizeKb,
@@ -124,7 +218,7 @@
          jobId,
        } = opt;
        const cwd = binDir();
-@@ -2766,18 +2869,26 @@
+@@ -2766,18 +2949,26 @@
          moveInto(tempPath);
        };
        const encodeAnimationTarget = async () => {
@@ -153,7 +247,7 @@
          if (toFormat === "webp") {
            const outputFps = Math.max(1, Number(fps) || 10);
            const estimatedFrames = Math.max(
-@@ -2794,7 +2905,7 @@
+@@ -2794,7 +2985,7 @@
              ),
            );
            currentScale = Math.max(
@@ -162,7 +256,7 @@
              Math.min(maxScale, targetAwareLongest || maxScale),
            );
          }
-@@ -2803,7 +2914,9 @@
+@@ -2803,7 +2994,9 @@
          const runCandidate = async (tuning) => {
            const candidate = vtemp(`.${toFormat}`);
            const targetFilters = [];
@@ -173,7 +267,7 @@
              targetFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
            }
            if (currentScale !== sourceLongest || !preparedInput) {
-@@ -2865,15 +2978,23 @@
+@@ -2865,15 +3058,23 @@
            return { path: candidate, size: fs.statSync(candidate).size };
          };
          try {
@@ -201,7 +295,7 @@
                const result = await runCandidate(tuning);
                if (result.size <= targetBytes) {
                  if (best && best.path !== result.path) safeUnlink(best.path);
-@@ -2910,18 +3031,43 @@
+@@ -2910,18 +3111,43 @@
              } else {
                safeUnlink(smallest?.path);
              }
@@ -253,7 +347,7 @@
          } finally {
            safeUnlink(fallbackPath);
          }
-@@ -2964,7 +3110,9 @@
+@@ -2964,7 +3190,9 @@
                ).then(() => resolve(true));
              }
              if (toFormat === "gif") {
@@ -264,7 +358,7 @@
                return runMediaProcess(
                  ffmpeg,
                  [
-@@ -3065,21 +3213,43 @@
+@@ -3065,21 +3293,43 @@
                /Stream #0:0.*: Video: (\w+).*?, (\d+)x(\d+).*?, (\d+) kb\/s, ([\d.]+) fps/.exec(
                  stderr,
                );
@@ -313,7 +407,7 @@
        return new Promise((resolve, reject) => {
          ensureExecPerm(cwd)
            .then(() =>
-@@ -3088,25 +3258,28 @@
+@@ -3088,25 +3338,28 @@
                ffmpeg,
                [
                  "-hide_banner",
@@ -349,10 +443,71 @@
        });
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22752,6 +22752,21 @@
+@@ -768,7 +768,6 @@
+       for (
+         v2 = h(r2);
+         null !== v2 && (!(v2.expirationTime > b2) || (a && !M2()));
+-
+       ) {
+         var d = v2.callback;
+         if ("function" === typeof d) {
+@@ -1252,7 +1251,6 @@
+           g2 = e.length - 1,
+           h = f2.length - 1;
+         1 <= g2 && 0 <= h && e[g2] !== f2[h];
+-
+       )
+         h--;
+       for (; 1 <= g2 && 0 <= h; g2--, h--)
+@@ -1525,12 +1523,10 @@
+ function db(a, b2, c) {
+   if (b2.hasOwnProperty("value") || b2.hasOwnProperty("defaultValue")) {
+     var d = b2.type;
+-    if (
+-      !(
++    if (!(
+         ("submit" !== d && "reset" !== d) ||
+         (void 0 !== b2.value && null !== b2.value)
+-      )
+-    )
++    ))
+       return;
+     b2 = "" + a._wrapperState.initialValue;
+     c || b2 === a.value || (a.value = b2);
+@@ -2160,7 +2156,6 @@
+       e = a.expirationTimes,
+       f2 = a.pendingLanes;
+     0 < f2;
+-
+   ) {
+     var g2 = 31 - oc(f2),
+       h = 1 << g2,
+@@ -8786,7 +8781,6 @@
+                 c = Vg(b2, null, d, c),
+                 b2.child = c;
+               c;
+-
+             )
+               ((c.flags = (c.flags & -3) | 4096), (c = c.sibling));
+         else {
+@@ -8852,11 +8846,7 @@
+               break a;
+             }
+           } else
+-            for (
+-              f2 = b2.child, null !== f2 && (f2.return = b2);
+-              null !== f2;
+-
+-            ) {
++            for (f2 = b2.child, null !== f2 && (f2.return = b2); null !== f2;) {
+               var h = f2.dependencies;
+               if (null !== h) {
+                 g2 = f2.child;
+@@ -22766,6 +22756,21 @@
+         err: void 0,
+       }));
      },
-     // 手动取消当前处理：runId +1 让在途循环丢弃迟到回调；回到待处理（保留文件，清掉处理/结果态）
-     cancelProcessing: (state) => {
++    resumeEditing: (state) => {
 +      state.runId += 1;
 +      state.stage = state.files.length ? "staging" : "empty";
 +      state.progress = 0;
@@ -367,11 +522,10 @@
 +        err: void 0,
 +      }));
 +    },
-+    resumeEditing: (state) => {
-       state.runId += 1;
-       state.stage = state.files.length ? "staging" : "empty";
-       state.progress = 0;
-@@ -22793,6 +22808,7 @@
+     // 再来一批 / 复位；runId +1 使在途循环失效。保留其他 Tab 的缓存，只清掉当前 Tab 的完成快照。
+     resetSession: (state) => {
+       const nextRun = state.runId + 1;
+@@ -22793,6 +22798,7 @@
    finishProcessing: finishProcessing$1,
    retryStart: retryStart$1,
    cancelProcessing: cancelProcessing$1,
@@ -379,7 +533,7 @@
    resetSession: resetSession$1,
  } = sessionSlice.actions;
  const convertSlice = createConfigSlice({
-@@ -22801,6 +22817,7 @@
+@@ -22801,6 +22807,7 @@
      toFormat: "webp",
      quality: 80,
      targetFileSizes: {},
@@ -387,7 +541,7 @@
      compressionLevel: 6,
      palette: true,
      lossless: false,
-@@ -22815,6 +22832,7 @@
+@@ -22815,6 +22822,7 @@
    initialConfig: {
      quality: 80,
      overwrite: false,
@@ -395,7 +549,7 @@
    },
  });
  const cropSlice = createConfigSlice({
-@@ -22827,6 +22845,7 @@
+@@ -22827,6 +22835,7 @@
      lockAspect: true,
      targetFileSize: 500,
      quality: 80,
@@ -403,7 +557,7 @@
      // 单窗流：裁剪框像素坐标（由画布编辑器实时写入）
      cropX: 0,
      cropY: 0,
-@@ -22846,6 +22865,7 @@
+@@ -22846,6 +22855,7 @@
      lossless: true,
      ext: "webp",
      targetFileSizes: {},
@@ -411,7 +565,7 @@
    },
  });
  const v2ImageSlice = createConfigSlice({
-@@ -22858,6 +22878,7 @@
+@@ -22858,6 +22868,7 @@
      loop: 0,
      toFormat: "gif",
      targetFileSizes: {},
@@ -419,7 +573,7 @@
    },
  });
  const vConvertSlice = createConfigSlice({
-@@ -22865,6 +22886,7 @@
+@@ -22865,12 +22876,51 @@
    initialConfig: {
      toFormat: "mov",
      targetFileSizes: {},
@@ -427,10 +581,11 @@
    },
  });
  const vCompressSlice = createConfigSlice({
-@@ -22873,6 +22895,25 @@
+   name: "vcompress",
+   initialConfig: {
      quality: "",
-   },
- });
++  },
++});
 +const collageSlice = createConfigSlice({
 +  name: "collage",
 +  initialConfig: {
@@ -448,12 +603,29 @@
 +    longestEdge: 0,
 +    targetFileSizes: {},
 +    gifColorReduction: false,
-+  },
-+});
++    backgroundMode: "transparent",
++    gradientPreset: "sunset",
++    backgroundColorA: "#FE2C2B",
++    backgroundColorB: "#FF9B60",
++    gradientAngle: 135,
++    textOverlay: "",
++    textColorA: "#FFFFFF",
++    textColorB: "#FFD6F6",
++    textMatchBackground: false,
++    textFontFamily: "Helvetica Neue",
++    textScale: 100,
++    textOffsetX: 0,
++    textOffsetY: 0,
++    textShadow: false,
++    textShadowColor: "#000000",
++    textShadowOpacity: 55,
++    textShadowBlur: 12,
++    textShadowX: 4,
++    textShadowY: 6,
+   },
+ });
  const globalSlice = createSlice({
-   name: "global",
-   initialState: {
-@@ -22900,6 +22941,7 @@
+@@ -22900,6 +22950,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -461,7 +633,7 @@
  const { updateGlobalConfig } = globalSlice.actions;
  const {
    switchTab,
-@@ -22915,6 +22957,7 @@
+@@ -22915,6 +22966,7 @@
    finishProcessing,
    retryStart,
    cancelProcessing,
@@ -469,7 +641,7 @@
    resetSession,
  } = sessionSlice.actions;
  const { createWorkflow, updateWorkflow, deleteWorkflow, restoreWorkflows } =
-@@ -22929,6 +22972,7 @@
+@@ -22929,6 +22981,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -477,7 +649,7 @@
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
    },
-@@ -23305,6 +23349,7 @@
+@@ -23305,6 +23358,7 @@
    "nav.vconvert": "格式转换",
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
@@ -485,7 +657,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23404,10 +23449,12 @@
+@@ -23404,10 +23458,12 @@
    "flow.verb.vconvert": "转换",
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
@@ -498,7 +670,7 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23422,11 +23469,44 @@
+@@ -23422,11 +23478,67 @@
    "flow.cropTargetHint": "通过调整质量逼近目标体积，PNG 格式效果有限。",
    "flow.targetSize": "目标输出大小(KB)",
    "flow.targetSizeHint": "填 0 关闭。每种输出格式会分别记住自己的目标值。",
@@ -521,6 +693,29 @@
 +  "flow.collageLetterbox": "完整显示（留边）",
 +  "flow.collageFitHint":
 +    "默认填满每个区域并使用最少的居中裁切；留边模式会显示完整画面。",
++  "flow.collageBackground": "画布背景",
++  "flow.collageTransparent": "透明",
++  "flow.collageGradient": "渐变",
++  "flow.collageGradientPreset": "渐变预设",
++  "flow.collageCustomGradient": "自定义",
++  "flow.collageGradientStart": "起始颜色",
++  "flow.collageGradientEnd": "结束颜色",
++  "flow.collageGradientAngle": "渐变角度",
++  "flow.collageText": "文字叠加",
++  "flow.collageTextPlaceholder": "输入叠加文字",
++  "flow.collageTextLayer": "文字 · 顶层",
++  "flow.collageTextMatch": "匹配背景渐变",
++  "flow.collageTextMatchDesc": "文字使用与画布背景相同的两个颜色。",
++  "flow.collageTextStart": "文字起始颜色",
++  "flow.collageTextEnd": "文字结束颜色",
++  "flow.collageTextFont": "系统字体",
++  "flow.collageTextShadow": "文字阴影",
++  "flow.collageTextShadowDesc": "在实时预览和导出中添加可调投影。",
++  "flow.collageShadowColor": "阴影颜色",
++  "flow.collageShadowOpacity": "阴影不透明度",
++  "flow.collageShadowBlur": "阴影模糊",
++  "flow.collageShadowX": "阴影左右偏移",
++  "flow.collageShadowY": "阴影上下偏移",
 +  "flow.collageDuration": "时长(秒，0=自动)",
 +  "flow.collagePreview": "实时预览",
 +  "flow.collagePaused": "默认暂停",
@@ -543,7 +738,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23512,6 +23592,8 @@
+@@ -23512,6 +23624,8 @@
    "flow.doneSubUp": "{count} 个文件 · 共增大",
    "flow.doneCount": "{count} 个文件",
    "flow.reveal": "在文件夹中显示",
@@ -552,7 +747,7 @@
    "flow.again": "再来一批",
    "flow.againPanel": "再处理一批",
    "flow.start": "开始{verb} ({n})",
-@@ -23699,6 +23781,7 @@
+@@ -23699,6 +23813,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -560,7 +755,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23878,12 @@
+@@ -23795,10 +23910,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -573,7 +768,7 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23814,6 +23899,9 @@
+@@ -23814,6 +23931,9 @@
    "flow.targetSize": "Target output size (KB)",
    "flow.targetSizeHint":
      "Set 0 to disable. Each output format remembers its own target.",
@@ -583,7 +778,7 @@
    "flow.longestEdge": "Longest edge (px)",
    "flow.longestEdgeHint":
      "Set 0 to keep the original size. Aspect ratio is always preserved.",
-@@ -23822,6 +23910,36 @@
+@@ -23822,6 +23942,61 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
@@ -598,6 +793,31 @@
 +  "flow.collageLetterbox": "Fit (letterbox)",
 +  "flow.collageFitHint":
 +    "Fill is the default and uses the smallest centered crop needed. Fit shows the complete frame with letterboxing.",
++  "flow.collageBackground": "Canvas background",
++  "flow.collageTransparent": "Transparent",
++  "flow.collageGradient": "Gradient",
++  "flow.collageGradientPreset": "Gradient preset",
++  "flow.collageCustomGradient": "Custom",
++  "flow.collageGradientStart": "Start color",
++  "flow.collageGradientEnd": "End color",
++  "flow.collageGradientAngle": "Gradient angle",
++  "flow.collageText": "Text overlay",
++  "flow.collageTextPlaceholder": "Enter overlay text",
++  "flow.collageTextLayer": "Text · top layer",
++  "flow.collageTextMatch": "Match background gradient",
++  "flow.collageTextMatchDesc":
++    "Use the canvas background's two colors for the text.",
++  "flow.collageTextStart": "Text start color",
++  "flow.collageTextEnd": "Text end color",
++  "flow.collageTextFont": "System font",
++  "flow.collageTextShadow": "Text drop shadow",
++  "flow.collageTextShadowDesc":
++    "Add an adjustable shadow in the live preview and export.",
++  "flow.collageShadowColor": "Shadow color",
++  "flow.collageShadowOpacity": "Shadow opacity",
++  "flow.collageShadowBlur": "Shadow blur",
++  "flow.collageShadowX": "Shadow left / right",
++  "flow.collageShadowY": "Shadow up / down",
 +  "flow.collageDuration": "Duration (seconds, 0=auto)",
 +  "flow.collagePreview": "Live preview",
 +  "flow.collagePaused": "Paused by default",
@@ -620,7 +840,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -23896,6 +24014,8 @@
+@@ -23896,6 +24071,8 @@
    "flow.doneSubUp": "{count} file(s) · grew",
    "flow.doneCount": "{count} file(s)",
    "flow.reveal": "Reveal in Finder",
@@ -629,7 +849,7 @@
    "flow.again": "New batch",
    "flow.againPanel": "Process again",
    "flow.start": "Start {verb} ({n})",
-@@ -26272,6 +26392,7 @@
+@@ -26272,6 +26449,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -637,7 +857,284 @@
      ],
    },
  ];
-@@ -39370,6 +39491,18 @@
+@@ -27661,10 +27839,10 @@
+                 return b2.w(
+                   n3
+                     .toDate()
+-                    [
+-                      t4
+-                    ].apply(n3.toDate("s"), (r3 ? [0, 0, 0, 0] : [23, 59, 59,
+-                            999]).slice(e3)),
++                    [t4].apply(
++                      n3.toDate("s"),
++                      (r3 ? [0, 0, 0, 0] : [23, 59, 59, 999]).slice(e3),
++                    ),
+                   n3,
+                 );
+               },
+@@ -28567,6 +28745,99 @@
+       ],
+     }),
+ );
++const normalizeHexColor = (value, fallback = "#000000") => {
++  const text = String(value || "").trim();
++  return /^#[0-9a-f]{6}$/i.test(text) ? text.toUpperCase() : fallback;
++};
++const ColorField = reactExports.memo(
++  ({ label, value, onChange, fallback = "#000000" }) => {
++    const normalized = normalizeHexColor(value, fallback);
++    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++      className: "x-cfg-field",
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++          className: "x-cfg-label x-cfg-label-block",
++          children: label,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++          style: {
++            display: "grid",
++            gridTemplateColumns: "44px minmax(0,1fr)",
++            gap: 8,
++            alignItems: "center",
++          },
++          children: [
++            /* @__PURE__ */ jsxRuntimeExports.jsx("input", {
++              type: "color",
++              value: normalized,
++              onChange: (event) => onChange(event.target.value.toUpperCase()),
++              style: {
++                width: 44,
++                height: 34,
++                padding: 2,
++                borderRadius: 8,
++                border: "1px solid var(--border)",
++                background: "var(--bg-elevated)",
++                cursor: "pointer",
++              },
++        }),
++            /* @__PURE__ */ jsxRuntimeExports.jsx(Input, {
++              value,
++              onChange: (event) => onChange(event.target.value),
++              onBlur: () => onChange(normalized),
++              placeholder: fallback,
++              spellCheck: false,
++            }),
++      ],
++    }),
++      ],
++    });
++  },
++);
++const SystemFontField = reactExports.memo(function SystemFontField2({
++  label,
++  value,
++  onChange,
++}) {
++  const [fonts, setFonts] = reactExports.useState([]);
++  const listId = reactExports.useId().replaceAll(":", "-");
++  reactExports.useEffect(() => {
++    let active = true;
++    window
++      .x("getSystemFontFamilies")
++      .then((items) => active && setFonts(Array.isArray(items) ? items : []))
++      .catch(() => {});
++    return () => {
++      active = false;
++    };
++  }, []);
++  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++    className: "x-cfg-field",
++    children: [
++      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++        className: "x-cfg-label x-cfg-label-block",
++        children: label,
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsx(Input, {
++        value,
++        list: listId,
++        placeholder: "Helvetica Neue",
++        onChange: (event) => onChange(event.target.value),
++        style: { fontFamily: value || "Helvetica Neue" },
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsx("datalist", {
++        id: listId,
++        children: fonts.map((font) =>
++          /* @__PURE__ */ jsxRuntimeExports.jsx(
++            "option",
++            { value: font },
++            font,
++          ),
++        ),
++      }),
++    ],
++  });
++});
+ const SegmentedField = reactExports.memo(
+   ({ label, value, options, onChange }) =>
+     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+@@ -29691,7 +29962,6 @@
+               for (
+                 var t3 = Object.keys(e2), r3 = new Array(t3.length), i2 = 0;
+                 i2 < t3.length;
+-
+               )
+                 r3[i2] = e2[t3[i2++]];
+               return r3;
+@@ -30400,15 +30670,13 @@
+             throw Error("no such enum: " + e2);
+           }),
+           (n2.prototype.add = function (e2) {
+-            if (
+-              !(
++            if (!(
+                 (e2 instanceof u2 && void 0 !== e2.extend) ||
+                 e2 instanceof a ||
+                 e2 instanceof l2 ||
+                 e2 instanceof f2 ||
+                 e2 instanceof n2
+-              )
+-            )
++            ))
+               throw TypeError("object must be a valid nested object");
+             if (this.nested) {
+               var t3 = this.get(e2.name);
+@@ -30819,7 +31087,6 @@
+                 t3 = this.constructor.alloc(this.len),
+                 r3 = 0;
+               e2;
+-
+             )
+               (e2.fn(e2.val, t3, r3), (r3 += e2.len), (e2 = e2.next));
+             return t3;
+@@ -31152,7 +31419,6 @@
+             for (
+               var e2 = new Array(arguments.length), t3 = 0;
+               t3 < arguments.length;
+-
+             )
+               e2[t3] = arguments[t3++];
+             return function (t4, r3) {
+@@ -31378,7 +31644,6 @@
+           for (
+             var r3 = new Array(arguments.length - 1), i = 0, n2 = 2, o = true;
+             n2 < arguments.length;
+-
+           )
+             r3[i++] = arguments[n2++];
+           return new Promise(function (n3, s) {
+@@ -31389,7 +31654,6 @@
+                   for (
+                     var t4 = new Array(arguments.length - 1), r4 = 0;
+                     r4 < t4.length;
+-
+                   )
+                     t4[r4++] = arguments[r4];
+                   n3.apply(null, t4);
+@@ -33855,7 +34119,6 @@
+                     f2 = new Array(s.length),
+                     l2 = 0;
+                   l2 < s.length;
+-
+                 )
+                   ((a[l2] = s[l2]), (f2[l2] = e3[s[l2++]]));
+                 return ((a[l2] = t4), Function.apply(null, a).apply(null, f2));
+@@ -33865,7 +34128,6 @@
+             for (
+               var u2 = new Array(arguments.length - 1), h = 0;
+               h < u2.length;
+-
+             )
+               u2[h] = arguments[++h];
+             if (
+@@ -34439,7 +34701,6 @@
+             for (
+               v2(b2, e2.lens, 0, 288, h, 0, e2.work, { bits: 9 }), t3 = 0;
+               t3 < 32;
+-
+             )
+               e2.lens[t3++] = 5;
+             (v2(_2, e2.lens, 0, 32, c, 0, e2.work, { bits: 5 }), (de2 = false));
+@@ -34920,7 +35181,6 @@
+                         255),
+                         (ge2 = 65535 & Se2),
+                         !((me2 = Se2 >>> 24) <= ue3);
+-
+                     ) {
+                       if (0 === f3) break e;
+                       (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
+@@ -35047,7 +35307,6 @@
+                       255),
+                       (ge2 = 65535 & Se2),
+                       !((me2 = Se2 >>> 24) <= ue3);
+-
+                   ) {
+                     if (0 === f3) break e;
+                     (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
+@@ -35064,7 +35323,6 @@
+                         255),
+                         (ge2 = 65535 & Se2),
+                         !(be2 + (me2 = Se2 >>> 24) <= ue3);
+-
+                     ) {
+                       if (0 === f3) break e;
+                       (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
+@@ -35111,7 +35369,6 @@
+                       255),
+                       (ge2 = 65535 & Se2),
+                       !((me2 = Se2 >>> 24) <= ue3);
+-
+                   ) {
+                     if (0 === f3) break e;
+                     (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
+@@ -35128,7 +35385,6 @@
+                         255),
+                         (ge2 = 65535 & Se2),
+                         !(be2 + (me2 = Se2 >>> 24) <= ue3);
+-
+                     ) {
+                       if (0 === f3) break e;
+                       (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
+@@ -35301,7 +35557,6 @@
+           for (
+             var n2 = (65535 & e2) | 0, o = ((e2 >>> 16) & 65535) | 0, s = 0;
+             0 !== r3;
+-
+           ) {
+             r3 -= s = r3 > 2e3 ? 2e3 : r3;
+             do {
+@@ -35614,7 +35869,6 @@
+               for (
+                 0 === E2 && (E2 = j), v2 += A2, N2 = 1 << (T2 = x3 - E2);
+                 T2 + E2 < S2 && !((N2 -= P2[T2 + E2]) <= 0);
+-
+               )
+                 (T2++, (N2 <<= 1));
+               if (
+@@ -35727,7 +35981,6 @@
+                 for (
+                   o2 &= 2 === s2 ? 31 : 3 === s2 ? 15 : 7;
+                   s2 > 1 && r3 < f3;
+-
+                 )
+                   ((o2 = (o2 << 6) | (63 & e2[r3++])), s2--);
+                 s2 > 1
+@@ -35746,7 +35999,6 @@
+               (t3 = t3 || e2.length) > e2.length && (t3 = e2.length),
+                 r3 = t3 - 1;
+               r3 >= 0 && 128 == (192 & e2[r3]);
+-
+             )
+               r3--;
+             return r3 < 0 ? t3 : 0 === r3 ? t3 : r3 + a[e2[r3]] > t3 ? r3 : t3;
+@@ -36492,7 +36744,6 @@
+                       n3 = i2.length,
+                       o2 = new Uint8Array(n3);
+                     n3--;
+-
+                   )
+                     o2[n3] = i2.charCodeAt(n3);
+                   return new Blob([o2], { type: r3 });
+@@ -39370,6 +39621,18 @@
  };
  const updateSourceTargetSizeFor = (config, value) =>
    updateTargetSizeFor(config, "__source__", value);
@@ -656,7 +1153,7 @@
  const longestEdgeFor = (config) =>
    Math.max(0, Number(config.longestEdge ?? config.scale) || 0);
  const longestEdgeResize = (config) => {
-@@ -39388,10 +39521,7 @@
+@@ -39388,10 +39651,7 @@
      const cachePath = await window.x("getCachePath");
      destination = window.pj(cachePath, `${pureName}.${outFormat}`);
    }
@@ -668,7 +1165,7 @@
    if (destination !== outPath) {
      await window.x("moveFile", destination, outPath);
    }
-@@ -39405,8 +39535,11 @@
+@@ -39405,8 +39665,11 @@
    outFormat,
    targetKb,
    longestEdge,
@@ -680,7 +1177,7 @@
    const sourceWidth = Math.max(1, Number(item.meta?.width) || 1);
    const sourceHeight = Math.max(1, Number(item.meta?.height) || 1);
    const sourceLongest = Math.max(sourceWidth, sourceHeight);
-@@ -39415,17 +39548,25 @@
+@@ -39415,17 +39678,25 @@
      Number(longestEdge) > 0 ? Number(longestEdge) : sourceLongest,
    );
    let lastSmallest = null;
@@ -711,7 +1208,7 @@
          ...(currentLongest !== sourceLongest
            ? {
                resize: {
-@@ -39437,22 +39578,30 @@
+@@ -39437,22 +39708,30 @@
            : {}),
          formatOptions: {
            ...(recipe.formatOptions || {}),
@@ -749,7 +1246,7 @@
        }
        if (low > high) break;
      }
-@@ -39465,14 +39614,23 @@
+@@ -39465,14 +39744,23 @@
          outFormat,
        );
      }
@@ -776,7 +1273,7 @@
  }
  const compress = {
    key: "compress",
-@@ -39485,7 +39643,7 @@
+@@ -39485,7 +39773,7 @@
    configKey: "compress",
    updateConfig: updateCompressConfig,
    showSaving: true,
@@ -785,7 +1282,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-@@ -39508,6 +39666,13 @@
+@@ -39508,6 +39796,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -799,7 +1296,7 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -39518,18 +39683,16 @@
+@@ -39518,18 +39813,16 @@
      const fmt = item.meta.format;
      let recipe;
      if ((fmt === "webp" || fmt === "gif") && item.meta.loop >= 0) {
@@ -826,7 +1323,7 @@
        recipe = {
          inputOptions: { animated: true, limitInputPixels: false },
          toFormat: fmt,
-@@ -39574,6 +39737,7 @@
+@@ -39574,6 +39867,7 @@
          outFormat: fmt,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -834,7 +1331,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -39634,6 +39798,13 @@
+@@ -39634,6 +39928,13 @@
                ],
              })
            : null,
@@ -848,7 +1345,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.quality"),
            value: config.quality,
-@@ -39713,18 +39884,16 @@
+@@ -39713,18 +40014,16 @@
        ((fmt === "gif" || item.meta.loop >= 0) && toFormat === "webp") ||
        ((fmt === "webp" || item.meta.loop >= 0) && toFormat === "gif")
      ) {
@@ -876,7 +1373,7 @@
        recipe = {
          inputOptions: { animated: true, limitInputPixels: false },
          toFormat,
-@@ -39770,6 +39939,7 @@
+@@ -39770,6 +40069,7 @@
          outFormat: toFormat,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -884,7 +1381,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -39818,6 +39988,13 @@
+@@ -39818,6 +40118,13 @@
                className: "x-cfg-note",
                children: t2("flow.targetSizeHint"),
              }),
@@ -898,7 +1395,7 @@
            ],
          }),
        ],
-@@ -39842,6 +40019,7 @@
+@@ -39842,6 +40149,7 @@
        outPath,
        targetFileSizeKb: targetSizeFor(config, config.toFormat),
        longestEdge: longestEdgeFor(config),
@@ -906,7 +1403,7 @@
        jobId,
      });
      const info = await window.x("getFileInfo", outPath);
-@@ -39949,6 +40127,13 @@
+@@ -39949,6 +40257,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -920,7 +1417,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.animQuality"),
            value: config.quality,
-@@ -40002,11 +40187,1009 @@
+@@ -40002,12 +40317,1423 @@
        ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
        loop: config.loop,
        targetFileSizeKb: targetSizeFor(config, toFormat),
@@ -949,6 +1446,100 @@
 +  { label: "APNG", value: "apng" },
 +  ...vWriteOptions,
 +];
++const COLLAGE_GRADIENT_PRESETS = [
++  { label: "Sunset", value: "sunset", colors: ["#FE2C2B", "#FF9B60"] },
++  {
++    label: "Electric Violet",
++    value: "electric-violet",
++    colors: ["#E50FC8", "#542AC6"],
+   },
++  { label: "Ocean", value: "ocean", colors: ["#00C6FF", "#0072FF"] },
++  { label: "Aurora", value: "aurora", colors: ["#00F5A0", "#00D9F5"] },
++  {
++    label: "Twilight",
++    value: "twilight",
++    colors: ["#FF61D2", "#7A5CFA"],
++  },
++  { label: "Golden Hour", value: "gold", colors: ["#F7971E", "#FFD200"] },
++  {
++    label: "Midnight",
++    value: "midnight",
++    colors: ["#141E30", "#243B55"],
++  },
++  { label: "Rosewater", value: "rosewater", colors: ["#FF9A9E", "#FAD0C4"] },
++];
++const collageGradientColors = (config, text = false) => {
++  if (text && !config.textMatchBackground) {
++    return [
++      normalizeHexColor(config.textColorA, "#FFFFFF"),
++      normalizeHexColor(config.textColorB, "#FFD6F6"),
++    ];
++  }
++  return [
++    normalizeHexColor(config.backgroundColorA, "#FE2C2B"),
++    normalizeHexColor(config.backgroundColorB, "#FF9B60"),
++  ];
+ };
++const collageGradientAngle = (config) =>
++  Math.max(0, Math.min(360, Number(config.gradientAngle) || 0));
++const collageCssGradient = (config, text = false) => {
++  const [colorA, colorB] = collageGradientColors(config, text);
++  return `linear-gradient(${collageGradientAngle(config)}deg, ${colorA}, ${colorB})`;
++};
++const collageGradientVector = (angle) => {
++  const radians = (Number(angle) * Math.PI) / 180;
++  const dx = Math.sin(radians);
++  const dy = -Math.cos(radians);
++  return {
++    x1: `${(50 - dx * 50).toFixed(3)}%`,
++    y1: `${(50 - dy * 50).toFixed(3)}%`,
++    x2: `${(50 + dx * 50).toFixed(3)}%`,
++    y2: `${(50 + dy * 50).toFixed(3)}%`,
++  };
++};
++const escapeSvgValue = (value) =>
++  String(value || "")
++    .replaceAll("&", "&amp;")
++    .replaceAll("<", "&lt;")
++    .replaceAll(">", "&gt;")
++    .replaceAll('"', "&quot;")
++    .replaceAll("'", "&apos;");
++const collageBackgroundSvg = (config, width, height) => {
++  const [colorA, colorB] = collageGradientColors(config);
++  const vector = collageGradientVector(collageGradientAngle(config));
++  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="gradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#gradient)"/></svg>`;
++};
++const collageTextSvg = (config, width, height) => {
++  const [colorA, colorB] = collageGradientColors(config, true);
++  const vector = collageGradientVector(collageGradientAngle(config));
++  const x =
++    width *
++    (0.5 + Math.max(-50, Math.min(50, Number(config.textOffsetX) || 0)) / 100);
++  const y =
++    height *
++    (0.5 + Math.max(-50, Math.min(50, Number(config.textOffsetY) || 0)) / 100);
++  const scale = Math.max(25, Math.min(300, Number(config.textScale) || 100));
++  const fontSize = Math.max(8, (height * 0.12 * scale) / 100);
++  const shadowColor = normalizeHexColor(config.textShadowColor, "#000000");
++  const shadowOpacity =
++    Math.max(0, Math.min(100, Number(config.textShadowOpacity) || 0)) / 100;
++  const shadowBlur = Math.max(
++    0,
++    Math.min(100, Number(config.textShadowBlur) || 0),
++  );
++  const shadowX = Math.max(
++    -100,
++    Math.min(100, Number(config.textShadowX) || 0),
++  );
++  const shadowY = Math.max(
++    -100,
++    Math.min(100, Number(config.textShadowY) || 0),
++  );
++  const shadow = config.textShadow
++    ? `<filter id="shadow" x="-100%" y="-100%" width="300%" height="300%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="${shadowBlur}" result="blur"/><feOffset in="blur" dx="${shadowX}" dy="${shadowY}" result="offset"/><feFlood flood-color="${shadowColor}" flood-opacity="${shadowOpacity}" result="color"/><feComposite in="color" in2="offset" operator="in" result="shadowColor"/><feMerge><feMergeNode in="shadowColor"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`
++    : "";
++  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="textGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${shadow}</defs><text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="${escapeSvgValue(config.textFontFamily || "Helvetica Neue")}" font-size="${fontSize}" font-weight="800" fill="url(#textGradient)"${config.textShadow ? ' filter="url(#shadow)"' : ""}>${escapeSvgValue(config.textOverlay)}</text></svg>`;
++};
 +const collageOutputSpec = (value) => {
 +  if (value === "webp-still") {
 +    return { format: "webp", ext: "webp", still: true };
@@ -1356,6 +1947,83 @@
 +        ],
 +      }),
 +      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++        style: { display: "grid", gap: 9, marginBottom: 9 },
++        children: String(config.textOverlay || "").trim()
++          ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++              style: {
++                border: "1px solid var(--border)",
++                borderRadius: 11,
++                padding: 10,
++                background: "var(--bg-elevated)",
++              },
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                  style: {
++                    display: "flex",
++                    alignItems: "center",
++                    justifyContent: "space-between",
++                    gap: 8,
++                    marginBottom: 10,
++                  },
++                  children: [
++                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                      className: "x-flow-row-name",
++                      style: {
++                        minWidth: 0,
++                        overflow: "hidden",
++                        textOverflow: "ellipsis",
++                        whiteSpace: "nowrap",
++                        fontFamily: config.textFontFamily || "Helvetica Neue",
++                      },
++                      children: config.textOverlay,
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                      className: "x-config-sub",
++                      children: t2("flow.collageTextLayer"),
++                    }),
++                  ],
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++        style: { display: "grid", gap: 9 },
++                  children: [
++                    control(
++                      t2("flow.collageScale"),
++                      Math.max(25, Number(config.textScale) || 100),
++                      25,
++                      300,
++                      (value) =>
++                        store.dispatch(
++                          updateCollageConfig({ textScale: value }),
++                        ),
++                      "%",
++                    ),
++                    control(
++                      t2("flow.collageOffsetX"),
++                      Number(config.textOffsetX) || 0,
++                      -50,
++                      50,
++                      (value) =>
++                        store.dispatch(
++                          updateCollageConfig({ textOffsetX: value }),
++                        ),
++                    ),
++                    control(
++                      t2("flow.collageOffsetY"),
++                      Number(config.textOffsetY) || 0,
++                      -50,
++                      50,
++                      (value) =>
++                        store.dispatch(
++                          updateCollageConfig({ textOffsetY: value }),
++                        ),
++                    ),
++                  ],
++                }),
++              ],
++            })
++          : null,
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
 +        style: { display: "grid", gap: 9 },
 +        children: frontToBack.map((item, index) =>
 +          /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -1569,9 +2237,10 @@
 +          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +            style: { width: "100%", maxWidth: 960, margin: "0 auto" },
 +            children: [
-+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +                style: {
 +                  position: "relative",
++                  containerType: "size",
 +                  width: "100%",
 +                  aspectRatio: `${geometry.width} / ${geometry.height}`,
 +                  maxHeight: "calc(100vh - 250px)",
@@ -1580,12 +2249,21 @@
 +                  border: "1px solid var(--border)",
 +                  backgroundColor: "var(--bg-elevated)",
 +                  backgroundImage:
-+                    "linear-gradient(45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(-45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(128,128,128,.12) 75%),linear-gradient(-45deg,transparent 75%,rgba(128,128,128,.12) 75%)",
-+                  backgroundSize: "22px 22px",
-+                  backgroundPosition: "0 0,0 11px,11px -11px,-11px 0",
++                    config.backgroundMode === "gradient"
++                      ? collageCssGradient(config)
++                      : "linear-gradient(45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(-45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(128,128,128,.12) 75%),linear-gradient(-45deg,transparent 75%,rgba(128,128,128,.12) 75%)",
++                  backgroundSize:
++                    config.backgroundMode === "gradient"
++                      ? "cover"
++                      : "22px 22px",
++                  backgroundPosition:
++                    config.backgroundMode === "gradient"
++                      ? "center"
++                      : "0 0,0 11px,11px -11px,-11px 0",
 +                  boxShadow: "0 18px 50px rgba(0,0,0,.18)",
 +                },
-+                children: files.map((item, index) => {
++                children: [
++                  files.map((item, index) => {
 +                  const rect = geometry.placements[index];
 +                  const mediaStyle = {
 +                    position: "absolute",
@@ -1631,6 +2309,34 @@
 +                    item.id,
 +                  );
 +                }),
++                  String(config.textOverlay || "").trim()
++                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                        style: {
++                          position: "absolute",
++                          left: `${50 + Math.max(-50, Math.min(50, Number(config.textOffsetX) || 0))}%`,
++                          top: `${50 + Math.max(-50, Math.min(50, Number(config.textOffsetY) || 0))}%`,
++                          transform: "translate(-50%, -50%)",
++                          zIndex: 9999,
++                          maxWidth: "200%",
++                          whiteSpace: "nowrap",
++                          textAlign: "center",
++                          fontFamily: config.textFontFamily || "Helvetica Neue",
++                          fontWeight: 800,
++                          fontSize: `${12 * (Math.max(25, Math.min(300, Number(config.textScale) || 100)) / 100)}cqh`,
++                          lineHeight: 1,
++                          color: "transparent",
++                          backgroundImage: collageCssGradient(config, true),
++                          backgroundClip: "text",
++                          WebkitBackgroundClip: "text",
++                          textShadow: config.textShadow
++                            ? `${Number(config.textShadowX) || 0}px ${Number(config.textShadowY) || 0}px ${Math.max(0, Number(config.textShadowBlur) || 0)}px color-mix(in srgb, ${normalizeHexColor(config.textShadowColor, "#000000")} ${Math.max(0, Math.min(100, Number(config.textShadowOpacity) || 0))}%, transparent)`
++                            : "none",
++                          pointerEvents: "none",
++                        },
++                        children: config.textOverlay,
++                      })
++                    : null,
++                ],
 +              }),
 +              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +                className: "x-cfg-note",
@@ -1730,6 +2436,173 @@
 +          className: "x-cfg-note",
 +          children: t2("flow.collageFitHint"),
 +        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
++          label: t2("flow.collageBackground"),
++          value: config.backgroundMode || "transparent",
++          options: [
++            { label: t2("flow.collageTransparent"), value: "transparent" },
++            { label: t2("flow.collageGradient"), value: "gradient" },
++          ],
++          onChange: (value) => update({ backgroundMode: value }),
++        }),
++        config.backgroundMode === "gradient"
++          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                  label: t2("flow.collageGradientPreset"),
++                  value: config.gradientPreset || "custom",
++                  options: [
++                    ...COLLAGE_GRADIENT_PRESETS.map(({ label, value }) => ({
++                      label,
++                      value,
++                    })),
++                    {
++                      label: t2("flow.collageCustomGradient"),
++                      value: "custom",
++                    },
++                  ],
++                  onChange: (value) => {
++                    const preset = COLLAGE_GRADIENT_PRESETS.find(
++                      (item) => item.value === value,
++                    );
++                    update({
++                      gradientPreset: value,
++                      ...(preset
++                        ? {
++                            backgroundColorA: preset.colors[0],
++                            backgroundColorB: preset.colors[1],
++                          }
++                        : {}),
++                    });
++                  },
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                  label: t2("flow.collageGradientStart"),
++                  value: config.backgroundColorA || "#FE2C2B",
++                  fallback: "#FE2C2B",
++                  onChange: (value) =>
++                    update({
++                      backgroundColorA: value,
++                      gradientPreset: "custom",
++        }),
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                  label: t2("flow.collageGradientEnd"),
++                  value: config.backgroundColorB || "#FF9B60",
++                  fallback: "#FF9B60",
++                  onChange: (value) =>
++                    update({
++                      backgroundColorB: value,
++                      gradientPreset: "custom",
++                    }),
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++                  label: t2("flow.collageGradientAngle"),
++                  value: collageGradientAngle(config),
++                  min: 0,
++                  max: 360,
++                  step: 1,
++                  onChange: (value) => update({ gradientAngle: value }),
++                }),
++              ],
++            })
++          : null,
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
++          label: t2("flow.collageText"),
++          value: config.textOverlay || "",
++          placeholder: t2("flow.collageTextPlaceholder"),
++          onChange: (value) => update({ textOverlay: value }),
++        }),
++        String(config.textOverlay || "").trim()
++          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsx(SystemFontField, {
++                  label: t2("flow.collageTextFont"),
++                  value: config.textFontFamily || "Helvetica Neue",
++                  onChange: (value) => update({ textFontFamily: value }),
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++                  label: t2("flow.collageTextMatch"),
++                  desc: t2("flow.collageTextMatchDesc"),
++                  checked: Boolean(config.textMatchBackground),
++                  onChange: (value) => update({ textMatchBackground: value }),
++                }),
++                !config.textMatchBackground
++                  ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                      jsxRuntimeExports.Fragment,
++                      {
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                            label: t2("flow.collageTextStart"),
++                            value: config.textColorA || "#FFFFFF",
++                            fallback: "#FFFFFF",
++                            onChange: (value) => update({ textColorA: value }),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                            label: t2("flow.collageTextEnd"),
++                            value: config.textColorB || "#FFD6F6",
++                            fallback: "#FFD6F6",
++                            onChange: (value) => update({ textColorB: value }),
++                          }),
++                        ],
++                      },
++                    )
++                  : null,
++                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++                  label: t2("flow.collageTextShadow"),
++                  desc: t2("flow.collageTextShadowDesc"),
++                  checked: Boolean(config.textShadow),
++                  onChange: (value) => update({ textShadow: value }),
++                }),
++                config.textShadow
++                  ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                      jsxRuntimeExports.Fragment,
++                      {
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                            label: t2("flow.collageShadowColor"),
++                            value: config.textShadowColor || "#000000",
++                            fallback: "#000000",
++                            onChange: (value) =>
++                              update({ textShadowColor: value }),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++                            label: t2("flow.collageShadowOpacity"),
++                            value: Number(config.textShadowOpacity) || 0,
++                            min: 0,
++                            max: 100,
++                            onChange: (value) =>
++                              update({ textShadowOpacity: value }),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++                            label: t2("flow.collageShadowBlur"),
++                            value: Number(config.textShadowBlur) || 0,
++                            min: 0,
++                            max: 100,
++                            onChange: (value) =>
++                              update({ textShadowBlur: value }),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++                            label: t2("flow.collageShadowX"),
++                            value: Number(config.textShadowX) || 0,
++                            min: -100,
++                            max: 100,
++                            onChange: (value) => update({ textShadowX: value }),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++                            label: t2("flow.collageShadowY"),
++                            value: Number(config.textShadowY) || 0,
++                            min: -100,
++                            max: 100,
++                            onChange: (value) => update({ textShadowY: value }),
++                          }),
++                        ],
++                      },
++                    )
++                  : null,
++              ],
++            })
++          : null,
 +        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
 +          label: t2("flow.outFormat"),
 +          value: config.toFormat,
@@ -1795,7 +2668,7 @@
 +        }),
 +      ],
 +    });
-   },
++  },
 +  panelSub: (config, count, t2) =>
 +    count
 +      ? t2("flow.sub.fmt", {
@@ -1830,10 +2703,41 @@
 +      cache,
 +      `xpic_collage_${stamp}.${spec.still ? "png" : "mkv"}`,
 +    );
++    const backgroundPath =
++      config.backgroundMode === "gradient"
++        ? window.pj(cache, `xpic_collage_background_${stamp}.png`)
++        : null;
++    const textPath = String(config.textOverlay || "").trim()
++      ? window.pj(cache, `xpic_collage_text_${stamp}.png`)
++      : null;
 +    await window.x("createDirIfNotExist", outputDir);
 +    setProgress2(12);
 +    let outSize = 0;
 +    try {
++      const overlayRenders = [];
++      if (backgroundPath) {
++        overlayRenders.push(
++          window.x("sharpToFile", {
++            inputBuffer: new TextEncoder().encode(
++              collageBackgroundSvg(config, geometry.width, geometry.height),
++            ),
++            toFormat: "png",
++            outPath: backgroundPath,
++          }),
++        );
++      }
++      if (textPath) {
++        overlayRenders.push(
++          window.x("sharpToFile", {
++            inputBuffer: new TextEncoder().encode(
++              collageTextSvg(config, geometry.width, geometry.height),
++            ),
++            toFormat: "png",
++            outPath: textPath,
++          }),
++        );
++      }
++      await Promise.all(overlayRenders);
 +      await window.x("collageIntermediate", {
 +        files: files.map((item, index) => {
 +          const placement = geometry.placements[index];
@@ -1852,6 +2756,8 @@
 +        fps,
 +        duration,
 +        still: spec.still,
++        backgroundPath,
++        textPath,
 +        outPath: intermediatePath,
 +        jobId,
 +      });
@@ -1904,7 +2810,11 @@
 +        outSize = (await window.x("getFileInfo", outputPath)).size;
 +      }
 +    } finally {
-+      await window.x("removeFile", intermediatePath);
++      await Promise.all(
++        [intermediatePath, backgroundPath, textPath]
++          .filter(Boolean)
++          .map((filePath) => window.x("removeFile", filePath)),
++      );
 +      await window.x("finishMediaJob", jobId);
 +    }
 +    setProgress2(100);
@@ -1927,10 +2837,11 @@
 +      },
 +    };
 +  },
- };
++};
  async function mapWithConcurrency(items, concurrency, mapper) {
    const results = new Array(items.length);
-@@ -40161,6 +41344,13 @@
+   let nextIndex = 0;
+@@ -40161,6 +41887,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -1944,7 +2855,7 @@
          config.ext !== "webm"
            ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
                label: t2("flow.quality"),
-@@ -40244,6 +41434,7 @@
+@@ -40244,6 +41977,7 @@
            preparedInput: true,
            loop,
            targetFileSizeKb: targetKb,
@@ -1952,7 +2863,7 @@
            jobId,
          });
          info = await window.x("getFileInfo", outputPath);
-@@ -40270,7 +41461,18 @@
+@@ -40270,7 +42004,18 @@
              ? { resize: longestEdgeResize(config) }
              : {}),
            toFormat: ext,
@@ -1972,7 +2883,7 @@
            outPath: outputPath,
          });
        }
-@@ -40334,7 +41536,7 @@
+@@ -40334,7 +42079,7 @@
      }
      return { pass: true };
    },
@@ -1981,7 +2892,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -40430,6 +41632,13 @@
+@@ -40430,6 +42175,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -1995,15 +2906,15 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -40516,10 +41725,23 @@
+@@ -40516,7 +42268,20 @@
      } else {
        const targetBytes = Math.max(1, targetKb) * 1e3;
        const format = item.meta.format;
 -      if (format === "png") {
 +      if (format === "gif") {
-         recipe = {
-           inputPath: item.path,
-           inputOptions: sharpOpt,
++        recipe = {
++          inputPath: item.path,
++          inputOptions: sharpOpt,
 +          toFormat: "gif",
 +          formatOptions: {
 +            colors: config.gifColorReduction ? 64 : 256,
@@ -2014,13 +2925,10 @@
 +          },
 +        };
 +      } else if (format === "png") {
-+        recipe = {
-+          inputPath: item.path,
-+          inputOptions: sharpOpt,
-           toFormat: "png",
-           formatOptions: { palette: true, quality: 50, effort: 10 },
-         };
-@@ -40572,7 +41794,7 @@
+         recipe = {
+           inputPath: item.path,
+           inputOptions: sharpOpt,
+@@ -40572,7 +42337,7 @@
        }
      }
      if (finalResize) recipe = { ...recipe, resize: finalResize };
@@ -2029,7 +2937,7 @@
        const outSize = await writeSharpToTarget({
          recipe,
          item,
-@@ -40581,6 +41803,7 @@
+@@ -40581,6 +42346,7 @@
          outFormat: item.meta.format,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -2037,7 +2945,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -40655,6 +41878,7 @@
+@@ -40655,6 +42421,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -2045,7 +2953,7 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -40929,6 +42153,9 @@
+@@ -40929,6 +42696,9 @@
    const reset = reactExports.useCallback(() => {
      store.dispatch(resetSession());
    }, []);
@@ -2055,7 +2963,7 @@
    const chooseOutputDir = reactExports.useCallback(async () => {
      try {
        const dirs = await window.x("selectDir");
-@@ -41122,6 +42349,7 @@
+@@ -41122,6 +42892,7 @@
      load,
      removeFile: removeFile2,
      clear,
@@ -2063,7 +2971,7 @@
      reset,
      start,
      cancel,
-@@ -41448,7 +42676,7 @@
+@@ -41448,7 +43219,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -2072,7 +2980,7 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41469,6 +42697,12 @@
+@@ -41469,6 +43240,12 @@
                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
                    type: "button",
                    className: "x-flow-btn-ghost",
@@ -2085,7 +2993,7 @@
                    onClick: handlers2.reset,
                    children: t2("flow.again"),
                  }),
-@@ -41654,8 +42888,8 @@
+@@ -41654,8 +43431,8 @@
      return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
        type: "button",
        className: "x-cfg-action is-secondary",
@@ -2096,7 +3004,7 @@
      });
    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
      type: "button",
-@@ -41668,6 +42902,7 @@
+@@ -41668,6 +43445,7 @@
    mod: mod2,
    handlers: handlers2,
    t: t2,
@@ -2104,7 +3012,7 @@
  }) {
    const session = useSelector((s) => s.session);
    const config = useSelector((s) => s[mod2.configKey]?.config);
-@@ -41685,6 +42920,16 @@
+@@ -41685,6 +43463,16 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [
@@ -2121,7 +3029,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-head",
          children: [
-@@ -41701,7 +42946,7 @@
+@@ -41701,7 +43489,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-body",
          children: [
@@ -2130,7 +3038,7 @@
            config
              ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
                  jsxRuntimeExports.Fragment,
-@@ -42284,6 +43529,7 @@
+@@ -42284,6 +44072,7 @@
                          mod: mod2,
                          handlers: handlers2,
                          t: t2,

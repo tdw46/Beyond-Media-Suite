@@ -137,7 +137,7 @@ try {
   );
 
   packagedJson.productName = "xPic Fork";
-  packagedJson.version = "2.1.3-fork.14";
+  packagedJson.version = "2.1.3-fork.15";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -162,7 +162,7 @@ try {
         fork: "tdw46/xPic",
         baseVersion: "2.1.3",
         feature:
-          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction",
+          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow",
         rendererAsset: cacheBustedName,
       },
       null,
@@ -193,7 +193,7 @@ try {
     "com.tdw46.xpic.fork",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.14", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.15", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

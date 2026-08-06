@@ -563,6 +563,37 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.14/);
-  assert.match(build, /2\.1\.3\.14/);
+  assert.match(build, /2\.1\.3-fork\.15/);
+  assert.match(build, /2\.1\.3\.15/);
+});
+
+test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /backgroundMode: "transparent"/);
+  assert.match(patch, /colors: \["#FE2C2B", "#FF9B60"\]/);
+  assert.match(patch, /colors: \["#E50FC8", "#542AC6"\]/);
+  assert.match(patch, /const COLLAGE_GRADIENT_PRESETS =/);
+  assert.match(patch, /const ColorField =/);
+  assert.match(patch, /const SystemFontField =/);
+  assert.match(patch, /getSystemFontFamilies/);
+  assert.match(patch, /SPFontsDataType/);
+  assert.match(patch, /textMatchBackground: false/);
+  assert.match(patch, /textFontFamily: "Helvetica Neue"/);
+  assert.match(patch, /textScale: 100/);
+  assert.match(patch, /textOffsetX: 0/);
+  assert.match(patch, /textOffsetY: 0/);
+  assert.match(patch, /textShadow: false/);
+  assert.match(patch, /children: t2\("flow\.collageTextLayer"\)/);
+  assert.match(patch, /const collageBackgroundSvg =/);
+  assert.match(patch, /const collageTextSvg =/);
+  assert.match(patch, /feGaussianBlur/);
+  assert.match(patch, /backgroundPath,/);
+  assert.match(patch, /textPath,/);
+  assert.match(patch, /\[\$\{previous\}\]\[textoverlay\]overlay/);
+  assert.match(patch, /collageCssGradient\(config, true\)/);
 });
