@@ -1,0 +1,396 @@
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -23552,6 +23552,9 @@
+   "flow.collagePreview": "实时预览",
+   "flow.collagePaused": "默认暂停",
+   "flow.collageLayers": "图层",
++  "flow.collageAddOverlay": "添加叠加层",
++  "flow.collageOverlayLayer": "叠加层",
++  "flow.collageTileCount": "{tiles}/4 拼贴 · {overlays}/4 叠加",
+   "flow.collageLayer": "层级",
+   "flow.collageBringForward": "上移一层",
+   "flow.collageSendBackward": "下移一层",
+@@ -23564,6 +23567,7 @@
+   "flow.collageCropBottom": "从下裁切",
+   "flow.collageNeed": "请选择 2–4 个图片或视频文件",
+   "flow.collageMax": "拼贴最多支持 4 个项目。",
++  "flow.collageOverlayMax": "拼贴最多支持 4 个拼贴项目和 4 个叠加层。",
+   "flow.collageRow": "左右排列",
+   "flow.collageColumn": "上下排列",
+   "flow.collageGrid": "四宫格",
+@@ -24031,6 +24035,9 @@
+   "flow.collagePreview": "Live preview",
+   "flow.collagePaused": "Paused by default",
+   "flow.collageLayers": "Layers",
++  "flow.collageAddOverlay": "Add overlay",
++  "flow.collageOverlayLayer": "Overlay",
++  "flow.collageTileCount": "{tiles}/4 tiles · {overlays}/4 overlays",
+   "flow.collageLayer": "Layer order",
+   "flow.collageBringForward": "Bring forward",
+   "flow.collageSendBackward": "Send backward",
+@@ -24043,6 +24050,8 @@
+   "flow.collageCropBottom": "Crop from bottom",
+   "flow.collageNeed": "Choose 2–4 image or video files",
+   "flow.collageMax": "A collage supports up to 4 items.",
++  "flow.collageOverlayMax":
++    "A collage supports up to 4 layout tiles and 4 overlays.",
+   "flow.collageRow": "Side by side",
+   "flow.collageColumn": "Top to bottom",
+   "flow.collageGrid": "4-item grid",
+@@ -40663,11 +40672,15 @@
+   bottom: Math.max(0, Math.min(0.45, (Number(item.cropBottom) || 0) / 100)),
+ });
+ const collageGeometry = (files, config) => {
+-  const options = collageLayoutOptions(files.length, (key) => key);
++  const tileFiles = files.filter((item) => item.layoutRole !== "overlay");
++  const options = collageLayoutOptions(tileFiles.length, (key) => key);
+   const layout = options.some((option) => option.value === config.layout)
+     ? config.layout
+     : options[0]?.value || "grid";
+-  const packed = collagePackedLayout(files, layout);
++  const packed = collagePackedLayout(tileFiles, layout);
++  const tileRects = new Map(
++    tileFiles.map((item, index) => [item.id, packed.rects[index]]),
++  );
+   const requestedWidth = Math.max(
+     0,
+     Math.min(16384, Math.round(Number(config.targetWidth) || 0)),
+@@ -40684,7 +40697,7 @@
+         : Number(config.aspect) || 1;
+   const sourceLongest = Math.max(
+     320,
+-    ...files.map((item) =>
++    ...tileFiles.map((item) =>
+       Math.max(
+         Number(item.meta?.width || item.meta?.pixelWidth) || 0,
+         Number(item.meta?.height || item.meta?.pixelHeight) || 0,
+@@ -40708,18 +40721,20 @@
+         ? Math.round(requestedWidth / aspect)
+         : automaticHeight),
+   );
+-  const rects = packed.rects;
+   return {
+     layout,
+     width,
+     height,
+     placements: files.map((item, index) => {
+-      const rect = rects[index];
++      const isOverlay = item.layoutRole === "overlay";
++      const rect = isOverlay
++        ? { x: 0, y: 0, width: 1, height: 1 }
++        : tileRects.get(item.id);
+       const rawX = Math.round(rect.x * width);
+       const rawY = Math.round(rect.y * height);
+       const rawRight = Math.round((rect.x + rect.width) * width);
+       const rawBottom = Math.round((rect.y + rect.height) * height);
+-      const requestedPadding = config.autoPadding
++      const requestedPadding = config.autoPadding && !isOverlay
+         ? Math.max(0, Math.round(Number(config.tilePadding) || 0))
+         : 0;
+       const slotPadding = Math.min(
+@@ -40749,7 +40764,8 @@
+         1,
+         sourceHeight * (1 - crop.top - crop.bottom),
+       );
+-      const fill = !config.autoPadding && config.fitMode !== "letterbox";
++      const fill =
++        !isOverlay && !config.autoPadding && config.fitMode !== "letterbox";
+       const fitScale = fill
+         ? Math.max(
+             baseWidth / croppedSourceWidth,
+@@ -40760,7 +40776,7 @@
+             baseHeight / croppedSourceHeight,
+           );
+       const userScale = Math.max(
+-        fill ? 1 : 0.25,
++        isOverlay ? 0.1 : fill ? 1 : 0.25,
+         Math.min(3, (Number(item.scale) || 100) / 100),
+       );
+       const mediaWidth = Math.max(
+@@ -40801,9 +40817,21 @@
+ async function collageLoad(rawFiles, ctx) {
+   try {
+     await window.x("focus");
+-    const total = (ctx.append ? ctx.existing.length : 0) + rawFiles.length;
+-    if (total > 4) {
+-      toast.error(t("flow.collageMax"));
++    const existing = ctx.append ? ctx.existing : [];
++    const tileCount = existing.filter(
++      (item) => item.layoutRole !== "overlay",
++    ).length;
++    const overlayCount = existing.filter(
++      (item) => item.layoutRole === "overlay",
++    ).length;
++    if (
++      (ctx.overlay && overlayCount + rawFiles.length > 4) ||
++      (!ctx.overlay && tileCount + rawFiles.length > 4) ||
++      existing.length + rawFiles.length > 8
++    ) {
++      toast.error(
++        ctx.overlay ? t("flow.collageOverlayMax") : t("flow.collageMax"),
++      );
+       return null;
+     }
+     const accepted = new Set([...convertReadAccept, ...vReadAccept]);
+@@ -40841,7 +40869,8 @@
+             mediaKind: animatedImages.has(ext) ? "animated-image" : "video",
+             still: false,
+             layer: (ctx.append ? ctx.existing.length : 0) + index + 1,
+-            scale: 100,
++            layoutRole: ctx.overlay ? "overlay" : "tile",
++            scale: ctx.overlay ? 50 : 100,
+             offsetX: 0,
+             offsetY: 0,
+             cropLeft: 0,
+@@ -40863,7 +40892,8 @@
+           mediaKind: "image",
+           still: true,
+           layer: (ctx.append ? ctx.existing.length : 0) + index + 1,
+-          scale: 100,
++          layoutRole: ctx.overlay ? "overlay" : "tile",
++          scale: ctx.overlay ? 50 : 100,
+           offsetX: 0,
+           offsetY: 0,
+           cropLeft: 0,
+@@ -40915,6 +40945,10 @@
+   const moveLayer = (id2, delta) =>
+     setLayerPosition(id2, layerPosition(id2) + delta);
+   const frontToBack = [...backToFront].reverse();
++  const tileCount = files.filter(
++    (item) => item.layoutRole !== "overlay",
++  ).length;
++  const overlayCount = files.length - tileCount;
+   const control = (label, value, min, max, onChange, suffix = "") =>
+     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+       style: { display: "grid", gap: 5 },
+@@ -40966,7 +41000,7 @@
+           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+             style: { display: "flex", alignItems: "center", gap: 8 },
+             children: [
+-              files.length < 4
++              tileCount < 4 && files.length < 8
+                 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
+                     type: "button",
+                     className: "x-flow-chip",
+@@ -40978,9 +41012,25 @@
+                     ],
+                   })
+                 : null,
+-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
++              overlayCount < 4 && files.length < 8
++                ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
++                    type: "button",
++                    className: "x-flow-chip",
++                    onClick: () =>
++                      onPick({ append: true, overlay: true }),
++                    children: [
++                      /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 13 }),
++                      " ",
++                      t2("flow.collageAddOverlay"),
++                    ],
++                  })
++                : null,
++              /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
+                 className: "x-config-sub",
+-                children: [files.length, "/4"],
++                children: t2("flow.collageTileCount", {
++                  tiles: tileCount,
++                  overlays: overlayCount,
++                }),
+               }),
+             ],
+           }),
+@@ -41312,7 +41362,10 @@
+                         }),
+                         /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+                           className: "x-flow-row-sub",
+-                          children: dimOf(item),
++                          children:
++                            item.layoutRole === "overlay"
++                              ? `${dimOf(item)} · ${t2("flow.collageOverlayLayer")}`
++                              : dimOf(item),
+                         }),
+                       ],
+                     }),
+@@ -41375,12 +41428,17 @@
+                     control(
+                       t2("flow.collageScale"),
+                       Math.max(
+-                        config.fitMode === "letterbox" || config.autoPadding
++                        item.layoutRole === "overlay"
++                          ? 10
++                          : config.fitMode === "letterbox" ||
++                              config.autoPadding
+                           ? 25
+                           : 100,
+                         Number(item.scale) || 100,
+                       ),
+-                      config.fitMode === "letterbox" || config.autoPadding
++                      item.layoutRole === "overlay"
++                        ? 10
++                        : config.fitMode === "letterbox" || config.autoPadding
+                         ? 25
+                         : 100,
+                       300,
+@@ -41616,7 +41674,11 @@
+   });
+   const overlayUrls = reactExports.useRef({ background: null, text: null });
+   const videoRefs = reactExports.useRef(new Map());
+-  const layouts = collageLayoutOptions(files.length, t2);
++  const tileCount = files.filter(
++    (item) => item.layoutRole !== "overlay",
++  ).length;
++  const overlayCount = files.length - tileCount;
++  const layouts = collageLayoutOptions(tileCount, t2);
+   const geometry = collageGeometry(files, config);
+   const overlaySignature = JSON.stringify({
+     width: geometry.width,
+@@ -41703,7 +41765,7 @@
+         updateCollageConfig({ layout: layouts[0]?.value || "grid" }),
+       );
+     }
+-  }, [config.layout, files.length]);
++  }, [config.layout, tileCount]);
+   reactExports.useEffect(() => {
+     for (const video of videoRefs.current.values()) {
+       if (playing) {
+@@ -41723,7 +41785,14 @@
+         children: [
+           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
+             className: "x-flow-bar-title",
+-            children: [t2("flow.collagePreview"), " · ", files.length, "/4"],
++            children: [
++              t2("flow.collagePreview"),
++              " · ",
++              t2("flow.collageTileCount", {
++                tiles: tileCount,
++                overlays: overlayCount,
++              }),
++            ],
+           }),
+           /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
+             type: "button",
+@@ -41738,7 +41807,7 @@
+               playing ? t2("flow.svgaPause") : t2("flow.svgaPlay"),
+             ],
+           }),
+-          files.length < 4
++          tileCount < 4 && files.length < 8
+             ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
+                 type: "button",
+                 className: "x-flow-chip",
+@@ -41747,6 +41816,18 @@
+                   /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 13 }),
+                   " ",
+                   t2("flow.addMore"),
++                ],
++              })
++            : null,
++          overlayCount < 4 && files.length < 8
++            ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
++                type: "button",
++                className: "x-flow-chip",
++                onClick: () => onPick({ append: true, overlay: true }),
++                children: [
++                  /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 13 }),
++                  " ",
++                  t2("flow.collageAddOverlay"),
+                 ],
+               })
+             : null,
+@@ -41913,7 +41994,7 @@
+   mediaType: "image",
+   domain: PICTURE_DOMAIN,
+   accept: [...new Set([...convertReadAccept, ...vReadAccept])],
+-  validation: { maxFiles: 4, minFiles: 2, requireActivation: true },
++  validation: { maxFiles: 8, minFiles: 2, requireActivation: true },
+   configKey: "collage",
+   updateConfig: updateCollageConfig,
+   showSaving: false,
+@@ -41932,7 +42013,9 @@
+         })
+       : null,
+   renderParams: ({ config, update, t: t2 }) => {
+-    const count = store.getState().session.files.length;
++    const count = store
++      .getState()
++      .session.files.filter((item) => item.layoutRole !== "overlay").length;
+     const output = collageOutputSpec(config.toFormat);
+     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
+       children: [
+@@ -42081,7 +42164,16 @@
+     setProgress: setProgress2,
+     jobId,
+   }) {
+-    if (files.length < 2 || files.length > 4) {
++    const tileCount = files.filter(
++      (item) => item.layoutRole !== "overlay",
++    ).length;
++    const overlayCount = files.length - tileCount;
++    if (
++      tileCount < 2 ||
++      tileCount > 4 ||
++      overlayCount > 4 ||
++      files.length > 8
++    ) {
+       throw new Error(t("flow.collageNeed"));
+     }
+     const spec = collageOutputSpec(config.toFormat);
+@@ -43145,12 +43237,14 @@
+     async (rawFiles, opt) => {
+       if (!mod2 || !rawFiles?.length) return;
+       const append = !!opt?.append;
++      const overlay = !!opt?.overlay;
+       !!opt?.forceCount;
+       setLoading(true);
+       if (mod2.load) {
+         try {
+           const mapped = await mod2.load(rawFiles, {
+             append,
++            overlay,
+             existing: store.getState().session.files,
+           });
+           if (mapped && mapped.length) {
+@@ -44372,7 +44466,7 @@
+   const [dragging, setDragging] = reactExports.useState(false);
+   const dragDepth = reactExports.useRef(0);
+   const inputRef = reactExports.useRef(null);
+-  const appendRef = reactExports.useRef(false);
++  const pickOptionsRef = reactExports.useRef({ append: false, overlay: false });
+   const [alert, setAlert] = reactExports.useState(null);
+   const [pendingTab, setPendingTab] = reactExports.useState(null);
+   const modalVisible =
+@@ -44440,12 +44534,18 @@
+       document.removeEventListener("drop", onDrop);
+     };
+   }, [modalVisible, mod2]);
+-  const onPick = reactExports.useCallback((append = false) => {
++  const onPick = reactExports.useCallback((options = false) => {
+     if (store.getState().session.stage === "processing") {
+       toast.warning(tRef.current("flow.busyHint"));
+       return;
+     }
+-    appendRef.current = append;
++    pickOptionsRef.current =
++      options && typeof options === "object"
++        ? {
++            append: !!options.append,
++            overlay: !!options.overlay,
++          }
++        : { append: !!options, overlay: false };
+     if (inputRef.current) inputRef.current.value = "";
+     inputRef.current?.click();
+   }, []);
+@@ -44460,10 +44560,10 @@
+   const onInputChange = reactExports.useCallback((e) => {
+     const files = e.target.files;
+     if (files?.length) {
+-      loadRef.current(Array.from(files), { append: appendRef.current });
++      loadRef.current(Array.from(files), pickOptionsRef.current);
+     }
+     e.target.value = "";
+-    appendRef.current = false;
++    pickOptionsRef.current = { append: false, overlay: false };
+   }, []);
+   reactExports.useEffect(() => {
+     window.openSetting = () => window.x("openSettingsWindow");

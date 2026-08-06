@@ -48,6 +48,11 @@ const collagePatchPath = path.join(
   "patches",
   "xpic-2.1.3-collage.patch",
 );
+const collageOverlayPatchPath = path.join(
+  repoRoot,
+  "patches",
+  "xpic-2.1.3-collage-overlay.patch",
+);
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xpic-fork-build-"));
 const extracted = path.join(tempRoot, "app");
 const packedAsar = path.join(tempRoot, "app.asar");
@@ -115,6 +120,7 @@ try {
     overwriteSourceWebmAlphaPatchPath,
   ]);
   run("patch", ["-p1", "-d", extracted, "-i", collagePatchPath]);
+  run("patch", ["-p1", "-d", extracted, "-i", collageOverlayPatchPath]);
 
   const rendererHtml = path.join(extracted, "out", "renderer", "index.html");
   const rendererName = path.basename(rendererBundle);
@@ -137,7 +143,7 @@ try {
   );
 
   packagedJson.productName = "xPic Fork";
-  packagedJson.version = "2.1.3-fork.19";
+  packagedJson.version = "2.1.3-fork.20";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -162,7 +168,7 @@ try {
         fork: "tdw46/xPic",
         baseVersion: "2.1.3",
         feature:
-          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow, unified-collage-layer-controls, text-gradient-presets, exact-collage-preview-export-svg, collage-background-text-patterns, per-media-edge-crop, auto-padded-no-crop-layout, unrestricted-canvas-space-layer-offsets",
+          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow, unified-collage-layer-controls, text-gradient-presets, exact-collage-preview-export-svg, collage-background-text-patterns, per-media-edge-crop, auto-padded-no-crop-layout, unrestricted-canvas-space-layer-offsets, non-displacing-media-overlay-layers",
         rendererAsset: cacheBustedName,
       },
       null,
@@ -193,7 +199,7 @@ try {
     "com.tdw46.xpic.fork",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.19", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.20", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

@@ -572,8 +572,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.19/);
-  assert.match(build, /2\.1\.3\.19/);
+  assert.match(build, /2\.1\.3-fork\.20/);
+  assert.match(build, /2\.1\.3\.20/);
 });
 
 test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {
@@ -647,6 +647,42 @@ test("Collage edge crops and optional equal padding use one preview/export geome
   assert.match(patch, /const requestedPadding = config\.autoPadding/);
   assert.match(patch, /label: t2\("flow\.collageAutoPadding"\)/);
   assert.match(patch, /label: t2\("flow\.collageTilePadding"\)/);
+});
+
+test("Add overlay creates independent layers without repacking collage tiles", async () => {
+  const [patch, build] = await Promise.all([
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(
+        new URL(
+          "../patches/xpic-2.1.3-collage-overlay.patch",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ),
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+    ),
+  ]);
+  assert.match(patch, /"flow\.collageAddOverlay": "Add overlay"/);
+  assert.match(patch, /onPick\(\{ append: true, overlay: true \}\)/);
+  assert.match(patch, /const pickOptionsRef =/);
+  assert.match(patch, /overlay: !!options\.overlay/);
+  assert.match(patch, /layoutRole: ctx\.overlay \? "overlay" : "tile"/);
+  assert.match(patch, /scale: ctx\.overlay \? 50 : 100/);
+  assert.match(
+    patch,
+    /const tileFiles = files\.filter\(\(item\) => item\.layoutRole !== "overlay"\)/,
+  );
+  assert.match(patch, /collagePackedLayout\(tileFiles, layout\)/);
+  assert.match(patch, /\.\.\.tileFiles\.map\(\(item\) =>/);
+  assert.match(
+    patch,
+    /isOverlay\s*\n\+\s*\? \{ x: 0, y: 0, width: 1, height: 1 \}/,
+  );
+  assert.match(patch, /validation: \{ maxFiles: 8, minFiles: 2/);
+  assert.match(build, /xpic-2\.1\.3-collage-overlay\.patch/);
+  assert.match(build, /collageOverlayPatchPath/);
 });
 
 test("Collage keeps all text and gradient settings with the layer tiles", async () => {
