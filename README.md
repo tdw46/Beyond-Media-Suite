@@ -101,7 +101,9 @@ video-to-animation, and every video output format exposed by xPic:
   Electric Violet. Optional top-layer gradient text can match that background
   or use independent colors, any installed macOS system font, media-style
   scale and position controls, and a configurable drop shadow; preview and
-  export share the same full-resolution composition;
+  export share the same full-resolution composition. All text and background
+  controls live in the Layers panel alongside the media tiles, ordered as
+  Text (top), media, and Background (bottom);
 - target-sized GIF creation now searches palette, dimensions, and frame rate
   against a hard byte ceiling and never silently accepts an oversized result;
 - GIF output preserves the full 256-color palette by default. **Reduce GIF

@@ -563,8 +563,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.15/);
-  assert.match(build, /2\.1\.3\.15/);
+  assert.match(build, /2\.1\.3-fork\.16/);
+  assert.match(build, /2\.1\.3\.16/);
 });
 
 test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {
@@ -596,4 +596,34 @@ test("Collage gradients and top-layer text render consistently with system fonts
   assert.match(patch, /textPath,/);
   assert.match(patch, /\[\$\{previous\}\]\[textoverlay\]overlay/);
   assert.match(patch, /collageCssGradient\(config, true\)/);
+});
+
+test("Collage keeps all text and gradient settings with the layer tiles", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(
+    patch,
+    /"flow\.collageBackgroundLayer": "Background · bottom layer"/,
+  );
+  assert.match(patch, /"flow\.collageTextLayer": "Text · top layer"/);
+  assert.match(
+    patch,
+    /const update = \(patch2\) => store\.dispatch\(updateCollageConfig\(patch2\)\)/,
+  );
+  assert.equal(
+    (patch.match(/label: t2\("flow\.collageBackground"\)/g) || []).length,
+    1,
+  );
+  assert.equal(
+    (patch.match(/label: t2\("flow\.collageText"\)/g) || []).length,
+    1,
+  );
+  assert.match(
+    patch,
+    /children: t2\("flow\.collageBackgroundLayer"\)[\s\S]{0,2400}COLLAGE_GRADIENT_PRESETS/,
+  );
 });

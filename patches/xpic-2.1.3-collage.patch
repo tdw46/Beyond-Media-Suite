@@ -573,7 +573,7 @@
    },
  });
  const vConvertSlice = createConfigSlice({
-@@ -22865,12 +22876,51 @@
+@@ -22865,6 +22876,7 @@
    initialConfig: {
      toFormat: "mov",
      targetFileSizes: {},
@@ -581,11 +581,10 @@
    },
  });
  const vCompressSlice = createConfigSlice({
-   name: "vcompress",
-   initialConfig: {
+@@ -22873,6 +22885,44 @@
      quality: "",
-+  },
-+});
+   },
+ });
 +const collageSlice = createConfigSlice({
 +  name: "collage",
 +  initialConfig: {
@@ -622,9 +621,11 @@
 +    textShadowBlur: 12,
 +    textShadowX: 4,
 +    textShadowY: 6,
-   },
- });
++  },
++});
  const globalSlice = createSlice({
+   name: "global",
+   initialState: {
 @@ -22900,6 +22950,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
@@ -670,7 +671,7 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23422,11 +23478,67 @@
+@@ -23422,11 +23478,68 @@
    "flow.cropTargetHint": "通过调整质量逼近目标体积，PNG 格式效果有限。",
    "flow.targetSize": "目标输出大小(KB)",
    "flow.targetSizeHint": "填 0 关闭。每种输出格式会分别记住自己的目标值。",
@@ -704,6 +705,7 @@
 +  "flow.collageText": "文字叠加",
 +  "flow.collageTextPlaceholder": "输入叠加文字",
 +  "flow.collageTextLayer": "文字 · 顶层",
++  "flow.collageBackgroundLayer": "背景 · 底层",
 +  "flow.collageTextMatch": "匹配背景渐变",
 +  "flow.collageTextMatchDesc": "文字使用与画布背景相同的两个颜色。",
 +  "flow.collageTextStart": "文字起始颜色",
@@ -738,7 +740,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23512,6 +23624,8 @@
+@@ -23512,6 +23625,8 @@
    "flow.doneSubUp": "{count} 个文件 · 共增大",
    "flow.doneCount": "{count} 个文件",
    "flow.reveal": "在文件夹中显示",
@@ -747,7 +749,7 @@
    "flow.again": "再来一批",
    "flow.againPanel": "再处理一批",
    "flow.start": "开始{verb} ({n})",
-@@ -23699,6 +23813,7 @@
+@@ -23699,6 +23814,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -755,7 +757,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23910,12 @@
+@@ -23795,10 +23911,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -768,7 +770,7 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23814,6 +23931,9 @@
+@@ -23814,6 +23932,9 @@
    "flow.targetSize": "Target output size (KB)",
    "flow.targetSizeHint":
      "Set 0 to disable. Each output format remembers its own target.",
@@ -778,7 +780,7 @@
    "flow.longestEdge": "Longest edge (px)",
    "flow.longestEdgeHint":
      "Set 0 to keep the original size. Aspect ratio is always preserved.",
-@@ -23822,6 +23942,61 @@
+@@ -23822,6 +23943,62 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
@@ -804,6 +806,7 @@
 +  "flow.collageText": "Text overlay",
 +  "flow.collageTextPlaceholder": "Enter overlay text",
 +  "flow.collageTextLayer": "Text · top layer",
++  "flow.collageBackgroundLayer": "Background · bottom layer",
 +  "flow.collageTextMatch": "Match background gradient",
 +  "flow.collageTextMatchDesc":
 +    "Use the canvas background's two colors for the text.",
@@ -840,7 +843,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -23896,6 +24071,8 @@
+@@ -23896,6 +24073,8 @@
    "flow.doneSubUp": "{count} file(s) · grew",
    "flow.doneCount": "{count} file(s)",
    "flow.reveal": "Reveal in Finder",
@@ -849,7 +852,7 @@
    "flow.again": "New batch",
    "flow.againPanel": "Process again",
    "flow.start": "Start {verb} ({n})",
-@@ -26272,6 +26449,7 @@
+@@ -26272,6 +26451,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -857,7 +860,7 @@
      ],
    },
  ];
-@@ -27661,10 +27839,10 @@
+@@ -27661,10 +27841,10 @@
                  return b2.w(
                    n3
                      .toDate()
@@ -872,7 +875,7 @@
                    n3,
                  );
                },
-@@ -28567,6 +28745,99 @@
+@@ -28567,6 +28747,99 @@
        ],
      }),
  );
@@ -972,7 +975,7 @@
  const SegmentedField = reactExports.memo(
    ({ label, value, options, onChange }) =>
      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -29691,7 +29962,6 @@
+@@ -29691,7 +29964,6 @@
                for (
                  var t3 = Object.keys(e2), r3 = new Array(t3.length), i2 = 0;
                  i2 < t3.length;
@@ -980,7 +983,7 @@
                )
                  r3[i2] = e2[t3[i2++]];
                return r3;
-@@ -30400,15 +30670,13 @@
+@@ -30400,15 +30672,13 @@
              throw Error("no such enum: " + e2);
            }),
            (n2.prototype.add = function (e2) {
@@ -998,7 +1001,7 @@
                throw TypeError("object must be a valid nested object");
              if (this.nested) {
                var t3 = this.get(e2.name);
-@@ -30819,7 +31087,6 @@
+@@ -30819,7 +31089,6 @@
                  t3 = this.constructor.alloc(this.len),
                  r3 = 0;
                e2;
@@ -1006,7 +1009,7 @@
              )
                (e2.fn(e2.val, t3, r3), (r3 += e2.len), (e2 = e2.next));
              return t3;
-@@ -31152,7 +31419,6 @@
+@@ -31152,7 +31421,6 @@
              for (
                var e2 = new Array(arguments.length), t3 = 0;
                t3 < arguments.length;
@@ -1014,7 +1017,7 @@
              )
                e2[t3] = arguments[t3++];
              return function (t4, r3) {
-@@ -31378,7 +31644,6 @@
+@@ -31378,7 +31646,6 @@
            for (
              var r3 = new Array(arguments.length - 1), i = 0, n2 = 2, o = true;
              n2 < arguments.length;
@@ -1022,7 +1025,7 @@
            )
              r3[i++] = arguments[n2++];
            return new Promise(function (n3, s) {
-@@ -31389,7 +31654,6 @@
+@@ -31389,7 +31656,6 @@
                    for (
                      var t4 = new Array(arguments.length - 1), r4 = 0;
                      r4 < t4.length;
@@ -1030,7 +1033,7 @@
                    )
                      t4[r4++] = arguments[r4];
                    n3.apply(null, t4);
-@@ -33855,7 +34119,6 @@
+@@ -33855,7 +34121,6 @@
                      f2 = new Array(s.length),
                      l2 = 0;
                    l2 < s.length;
@@ -1038,7 +1041,7 @@
                  )
                    ((a[l2] = s[l2]), (f2[l2] = e3[s[l2++]]));
                  return ((a[l2] = t4), Function.apply(null, a).apply(null, f2));
-@@ -33865,7 +34128,6 @@
+@@ -33865,7 +34130,6 @@
              for (
                var u2 = new Array(arguments.length - 1), h = 0;
                h < u2.length;
@@ -1046,7 +1049,7 @@
              )
                u2[h] = arguments[++h];
              if (
-@@ -34439,7 +34701,6 @@
+@@ -34439,7 +34703,6 @@
              for (
                v2(b2, e2.lens, 0, 288, h, 0, e2.work, { bits: 9 }), t3 = 0;
                t3 < 32;
@@ -1054,7 +1057,7 @@
              )
                e2.lens[t3++] = 5;
              (v2(_2, e2.lens, 0, 32, c, 0, e2.work, { bits: 5 }), (de2 = false));
-@@ -34920,7 +35181,6 @@
+@@ -34920,7 +35183,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !((me2 = Se2 >>> 24) <= ue3);
@@ -1062,7 +1065,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35047,7 +35307,6 @@
+@@ -35047,7 +35309,6 @@
                        255),
                        (ge2 = 65535 & Se2),
                        !((me2 = Se2 >>> 24) <= ue3);
@@ -1070,7 +1073,7 @@
                    ) {
                      if (0 === f3) break e;
                      (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35064,7 +35323,6 @@
+@@ -35064,7 +35325,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !(be2 + (me2 = Se2 >>> 24) <= ue3);
@@ -1078,7 +1081,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35111,7 +35369,6 @@
+@@ -35111,7 +35371,6 @@
                        255),
                        (ge2 = 65535 & Se2),
                        !((me2 = Se2 >>> 24) <= ue3);
@@ -1086,7 +1089,7 @@
                    ) {
                      if (0 === f3) break e;
                      (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35128,7 +35385,6 @@
+@@ -35128,7 +35387,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !(be2 + (me2 = Se2 >>> 24) <= ue3);
@@ -1094,7 +1097,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35301,7 +35557,6 @@
+@@ -35301,7 +35559,6 @@
            for (
              var n2 = (65535 & e2) | 0, o = ((e2 >>> 16) & 65535) | 0, s = 0;
              0 !== r3;
@@ -1102,7 +1105,7 @@
            ) {
              r3 -= s = r3 > 2e3 ? 2e3 : r3;
              do {
-@@ -35614,7 +35869,6 @@
+@@ -35614,7 +35871,6 @@
                for (
                  0 === E2 && (E2 = j), v2 += A2, N2 = 1 << (T2 = x3 - E2);
                  T2 + E2 < S2 && !((N2 -= P2[T2 + E2]) <= 0);
@@ -1110,7 +1113,7 @@
                )
                  (T2++, (N2 <<= 1));
                if (
-@@ -35727,7 +35981,6 @@
+@@ -35727,7 +35983,6 @@
                  for (
                    o2 &= 2 === s2 ? 31 : 3 === s2 ? 15 : 7;
                    s2 > 1 && r3 < f3;
@@ -1118,7 +1121,7 @@
                  )
                    ((o2 = (o2 << 6) | (63 & e2[r3++])), s2--);
                  s2 > 1
-@@ -35746,7 +35999,6 @@
+@@ -35746,7 +36001,6 @@
                (t3 = t3 || e2.length) > e2.length && (t3 = e2.length),
                  r3 = t3 - 1;
                r3 >= 0 && 128 == (192 & e2[r3]);
@@ -1126,7 +1129,7 @@
              )
                r3--;
              return r3 < 0 ? t3 : 0 === r3 ? t3 : r3 + a[e2[r3]] > t3 ? r3 : t3;
-@@ -36492,7 +36744,6 @@
+@@ -36492,7 +36746,6 @@
                        n3 = i2.length,
                        o2 = new Uint8Array(n3);
                      n3--;
@@ -1134,7 +1137,7 @@
                    )
                      o2[n3] = i2.charCodeAt(n3);
                    return new Blob([o2], { type: r3 });
-@@ -39370,6 +39621,18 @@
+@@ -39370,6 +39623,18 @@
  };
  const updateSourceTargetSizeFor = (config, value) =>
    updateTargetSizeFor(config, "__source__", value);
@@ -1153,7 +1156,7 @@
  const longestEdgeFor = (config) =>
    Math.max(0, Number(config.longestEdge ?? config.scale) || 0);
  const longestEdgeResize = (config) => {
-@@ -39388,10 +39651,7 @@
+@@ -39388,10 +39653,7 @@
      const cachePath = await window.x("getCachePath");
      destination = window.pj(cachePath, `${pureName}.${outFormat}`);
    }
@@ -1165,7 +1168,7 @@
    if (destination !== outPath) {
      await window.x("moveFile", destination, outPath);
    }
-@@ -39405,8 +39665,11 @@
+@@ -39405,8 +39667,11 @@
    outFormat,
    targetKb,
    longestEdge,
@@ -1177,7 +1180,7 @@
    const sourceWidth = Math.max(1, Number(item.meta?.width) || 1);
    const sourceHeight = Math.max(1, Number(item.meta?.height) || 1);
    const sourceLongest = Math.max(sourceWidth, sourceHeight);
-@@ -39415,17 +39678,25 @@
+@@ -39415,17 +39680,25 @@
      Number(longestEdge) > 0 ? Number(longestEdge) : sourceLongest,
    );
    let lastSmallest = null;
@@ -1208,7 +1211,7 @@
          ...(currentLongest !== sourceLongest
            ? {
                resize: {
-@@ -39437,22 +39708,30 @@
+@@ -39437,22 +39710,30 @@
            : {}),
          formatOptions: {
            ...(recipe.formatOptions || {}),
@@ -1246,7 +1249,7 @@
        }
        if (low > high) break;
      }
-@@ -39465,14 +39744,23 @@
+@@ -39465,14 +39746,23 @@
          outFormat,
        );
      }
@@ -1273,7 +1276,7 @@
  }
  const compress = {
    key: "compress",
-@@ -39485,7 +39773,7 @@
+@@ -39485,7 +39775,7 @@
    configKey: "compress",
    updateConfig: updateCompressConfig,
    showSaving: true,
@@ -1282,7 +1285,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-@@ -39508,6 +39796,13 @@
+@@ -39508,6 +39798,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -1296,7 +1299,7 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -39518,18 +39813,16 @@
+@@ -39518,18 +39815,16 @@
      const fmt = item.meta.format;
      let recipe;
      if ((fmt === "webp" || fmt === "gif") && item.meta.loop >= 0) {
@@ -1323,7 +1326,7 @@
        recipe = {
          inputOptions: { animated: true, limitInputPixels: false },
          toFormat: fmt,
-@@ -39574,6 +39867,7 @@
+@@ -39574,6 +39869,7 @@
          outFormat: fmt,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -1331,7 +1334,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -39634,6 +39928,13 @@
+@@ -39634,6 +39930,13 @@
                ],
              })
            : null,
@@ -1345,7 +1348,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.quality"),
            value: config.quality,
-@@ -39713,18 +40014,16 @@
+@@ -39713,18 +40016,16 @@
        ((fmt === "gif" || item.meta.loop >= 0) && toFormat === "webp") ||
        ((fmt === "webp" || item.meta.loop >= 0) && toFormat === "gif")
      ) {
@@ -1373,7 +1376,7 @@
        recipe = {
          inputOptions: { animated: true, limitInputPixels: false },
          toFormat,
-@@ -39770,6 +40069,7 @@
+@@ -39770,6 +40071,7 @@
          outFormat: toFormat,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -1381,7 +1384,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -39818,6 +40118,13 @@
+@@ -39818,6 +40120,13 @@
                className: "x-cfg-note",
                children: t2("flow.targetSizeHint"),
              }),
@@ -1395,7 +1398,7 @@
            ],
          }),
        ],
-@@ -39842,6 +40149,7 @@
+@@ -39842,6 +40151,7 @@
        outPath,
        targetFileSizeKb: targetSizeFor(config, config.toFormat),
        longestEdge: longestEdgeFor(config),
@@ -1403,7 +1406,7 @@
        jobId,
      });
      const info = await window.x("getFileInfo", outPath);
-@@ -39949,6 +40257,13 @@
+@@ -39949,6 +40259,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -1417,7 +1420,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.animQuality"),
            value: config.quality,
-@@ -40002,12 +40317,1423 @@
+@@ -40002,11 +40319,1477 @@
        ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
        loop: config.loop,
        targetFileSizeKb: targetSizeFor(config, toFormat),
@@ -1452,7 +1455,7 @@
 +    label: "Electric Violet",
 +    value: "electric-violet",
 +    colors: ["#E50FC8", "#542AC6"],
-   },
++  },
 +  { label: "Ocean", value: "ocean", colors: ["#00C6FF", "#0072FF"] },
 +  { label: "Aurora", value: "aurora", colors: ["#00F5A0", "#00D9F5"] },
 +  {
@@ -1479,7 +1482,7 @@
 +    normalizeHexColor(config.backgroundColorA, "#FE2C2B"),
 +    normalizeHexColor(config.backgroundColorB, "#FF9B60"),
 +  ];
- };
++};
 +const collageGradientAngle = (config) =>
 +  Math.max(0, Math.min(360, Number(config.gradientAngle) || 0));
 +const collageCssGradient = (config, text = false) => {
@@ -1851,6 +1854,7 @@
 +}) {
 +  const patchItem = (id2, patch2) =>
 +    store.dispatch(updateSessionFile({ id: id2, ...patch2 }));
++  const update = (patch2) => store.dispatch(updateCollageConfig(patch2));
 +  const backToFront = [...files].sort(
 +    (a, b) =>
 +      (Number(a.layer) || 0) - (Number(b.layer) || 0) ||
@@ -1948,83 +1952,203 @@
 +      }),
 +      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
 +        style: { display: "grid", gap: 9, marginBottom: 9 },
-+        children: String(config.textOverlay || "").trim()
-+          ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++          style: {
++            border: "1px solid var(--border)",
++            borderRadius: 11,
++            padding: 10,
++            background: "var(--bg-elevated)",
++          },
++          children: [
++            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +              style: {
-+                border: "1px solid var(--border)",
-+                borderRadius: 11,
-+                padding: 10,
-+                background: "var(--bg-elevated)",
++                display: "flex",
++                alignItems: "center",
++                justifyContent: "space-between",
++                gap: 8,
++                marginBottom: 10,
 +              },
 +              children: [
-+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                  className: "x-flow-row-name",
 +                  style: {
-+                    display: "flex",
-+                    alignItems: "center",
-+                    justifyContent: "space-between",
-+                    gap: 8,
-+                    marginBottom: 10,
++                    minWidth: 0,
++                    overflow: "hidden",
++                    textOverflow: "ellipsis",
++                    whiteSpace: "nowrap",
++                    fontFamily: config.textFontFamily || "Helvetica Neue",
 +                  },
-+                  children: [
-+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
-+                      className: "x-flow-row-name",
-+                      style: {
-+                        minWidth: 0,
-+                        overflow: "hidden",
-+                        textOverflow: "ellipsis",
-+                        whiteSpace: "nowrap",
-+                        fontFamily: config.textFontFamily || "Helvetica Neue",
-+                      },
-+                      children: config.textOverlay,
-+                    }),
-+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
-+                      className: "x-config-sub",
-+                      children: t2("flow.collageTextLayer"),
-+                    }),
-+                  ],
++                  children:
++                    String(config.textOverlay || "").trim() ||
++                    t2("flow.collageText"),
 +                }),
-+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-+        style: { display: "grid", gap: 9 },
-+                  children: [
-+                    control(
-+                      t2("flow.collageScale"),
-+                      Math.max(25, Number(config.textScale) || 100),
-+                      25,
-+                      300,
-+                      (value) =>
-+                        store.dispatch(
-+                          updateCollageConfig({ textScale: value }),
-+                        ),
-+                      "%",
-+                    ),
-+                    control(
-+                      t2("flow.collageOffsetX"),
-+                      Number(config.textOffsetX) || 0,
-+                      -50,
-+                      50,
-+                      (value) =>
-+                        store.dispatch(
-+                          updateCollageConfig({ textOffsetX: value }),
-+                        ),
-+                    ),
-+                    control(
-+                      t2("flow.collageOffsetY"),
-+                      Number(config.textOffsetY) || 0,
-+                      -50,
-+                      50,
-+                      (value) =>
-+                        store.dispatch(
-+                          updateCollageConfig({ textOffsetY: value }),
-+                        ),
-+                    ),
-+                  ],
++                /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                  className: "x-config-sub",
++                  children: t2("flow.collageTextLayer"),
 +                }),
 +              ],
-+            })
-+          : null,
++            }),
++            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++              style: { display: "grid", gap: 9 },
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
++                  label: t2("flow.collageText"),
++                  value: config.textOverlay || "",
++                  placeholder: t2("flow.collageTextPlaceholder"),
++                  onChange: (value) => update({ textOverlay: value }),
++                }),
++                String(config.textOverlay || "").trim()
++                  ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                      jsxRuntimeExports.Fragment,
++                      {
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(
++                            SystemFontField,
++                            {
++                              label: t2("flow.collageTextFont"),
++                              value:
++                                config.textFontFamily || "Helvetica Neue",
++                              onChange: (value) =>
++                                update({ textFontFamily: value }),
++                            },
++                          ),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(
++                            LabeledSwitch,
++                            {
++                              label: t2("flow.collageTextMatch"),
++                              desc: t2("flow.collageTextMatchDesc"),
++                              checked: Boolean(config.textMatchBackground),
++                              onChange: (value) =>
++                                update({ textMatchBackground: value }),
++                            },
++                          ),
++                          !config.textMatchBackground
++                            ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                                jsxRuntimeExports.Fragment,
++                                {
++                                  children: [
++                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                      ColorField,
++                                      {
++                                        label: t2("flow.collageTextStart"),
++                                        value:
++                                          config.textColorA || "#FFFFFF",
++                                        fallback: "#FFFFFF",
++                                        onChange: (value) =>
++                                          update({ textColorA: value }),
++                                      },
++                                    ),
++                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                      ColorField,
++                                      {
++                                        label: t2("flow.collageTextEnd"),
++                                        value:
++                                          config.textColorB || "#FFD6F6",
++                                        fallback: "#FFD6F6",
++                                        onChange: (value) =>
++                                          update({ textColorB: value }),
++                                      },
++                                    ),
++                                  ],
++                                },
++                              )
++                            : null,
++                          control(
++                            t2("flow.collageScale"),
++                            Math.max(25, Number(config.textScale) || 100),
++                            25,
++                            300,
++                            (value) => update({ textScale: value }),
++                            "%",
++                          ),
++                          control(
++                            t2("flow.collageOffsetX"),
++                            Number(config.textOffsetX) || 0,
++                            -50,
++                            50,
++                            (value) => update({ textOffsetX: value }),
++                          ),
++                          control(
++                            t2("flow.collageOffsetY"),
++                            Number(config.textOffsetY) || 0,
++                            -50,
++                            50,
++                            (value) => update({ textOffsetY: value }),
++                          ),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(
++                            LabeledSwitch,
++                            {
++                              label: t2("flow.collageTextShadow"),
++                              desc: t2("flow.collageTextShadowDesc"),
++                              checked: Boolean(config.textShadow),
++                              onChange: (value) =>
++                                update({ textShadow: value }),
++                            },
++                          ),
++                          config.textShadow
++                            ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                                jsxRuntimeExports.Fragment,
++                                {
++                                  children: [
++                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                      ColorField,
++                                      {
++                                        label: t2("flow.collageShadowColor"),
++                                        value:
++                                          config.textShadowColor || "#000000",
++                                        fallback: "#000000",
++                                        onChange: (value) =>
++                                          update({ textShadowColor: value }),
++                                      },
++                                    ),
++                                    control(
++                                      t2("flow.collageShadowOpacity"),
++                                      Number(config.textShadowOpacity) || 0,
++                                      0,
++                                      100,
++                                      (value) =>
++                                        update({ textShadowOpacity: value }),
++                                      "%",
++                                    ),
++                                    control(
++                                      t2("flow.collageShadowBlur"),
++                                      Number(config.textShadowBlur) || 0,
++                                      0,
++                                      100,
++                                      (value) =>
++                                        update({ textShadowBlur: value }),
++                                    ),
++                                    control(
++                                      t2("flow.collageShadowX"),
++                                      Number(config.textShadowX) || 0,
++                                      -100,
++                                      100,
++                                      (value) =>
++                                        update({ textShadowX: value }),
++                                    ),
++                                    control(
++                                      t2("flow.collageShadowY"),
++                                      Number(config.textShadowY) || 0,
++                                      -100,
++                                      100,
++                                      (value) =>
++                                        update({ textShadowY: value }),
++                                    ),
++                                  ],
++                                },
++                              )
++                            : null,
++                        ],
++                      },
++                    )
++                  : null,
++              ],
++            }),
++          ],
++        }),
 +      }),
 +      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
-+        style: { display: "grid", gap: 9 },
++        style: { display: "grid", gap: 9, marginBottom: 9 },
 +        children: frontToBack.map((item, index) =>
 +          /* @__PURE__ */ jsxRuntimeExports.jsxs(
 +            "div",
@@ -2150,6 +2274,107 @@
 +            item.id,
 +          ),
 +        ),
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++        style: { display: "grid", gap: 9 },
++        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++          style: {
++            border: "1px solid var(--border)",
++            borderRadius: 11,
++            padding: 10,
++            background: "var(--bg-elevated)",
++          },
++          children: [
++            /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++              className: "x-config-sub",
++              style: { marginBottom: 10 },
++              children: t2("flow.collageBackgroundLayer"),
++            }),
++            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++              style: { display: "grid", gap: 9 },
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
++                  label: t2("flow.collageBackground"),
++                  value: config.backgroundMode || "transparent",
++                  options: [
++                    {
++                      label: t2("flow.collageTransparent"),
++                      value: "transparent",
++                    },
++                    {
++                      label: t2("flow.collageGradient"),
++                      value: "gradient",
++                    },
++                  ],
++                  onChange: (value) => update({ backgroundMode: value }),
++                }),
++                config.backgroundMode === "gradient"
++                  ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                      jsxRuntimeExports.Fragment,
++                      {
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                            label: t2("flow.collageGradientPreset"),
++                            value: config.gradientPreset || "custom",
++                            options: [
++                              ...COLLAGE_GRADIENT_PRESETS.map(
++                                ({ label, value }) => ({ label, value }),
++                              ),
++                              {
++                                label: t2("flow.collageCustomGradient"),
++                                value: "custom",
++                              },
++                            ],
++                            onChange: (value) => {
++                              const preset = COLLAGE_GRADIENT_PRESETS.find(
++                                (item) => item.value === value,
++                              );
++                              update({
++                                gradientPreset: value,
++                                ...(preset
++                                  ? {
++                                      backgroundColorA: preset.colors[0],
++                                      backgroundColorB: preset.colors[1],
++                                    }
++                                  : {}),
++                              });
++                            },
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                            label: t2("flow.collageGradientStart"),
++                            value: config.backgroundColorA || "#FE2C2B",
++                            fallback: "#FE2C2B",
++                            onChange: (value) =>
++                              update({
++                                backgroundColorA: value,
++                                gradientPreset: "custom",
++                              }),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                            label: t2("flow.collageGradientEnd"),
++                            value: config.backgroundColorB || "#FF9B60",
++                            fallback: "#FF9B60",
++                            onChange: (value) =>
++                              update({
++                                backgroundColorB: value,
++                                gradientPreset: "custom",
++                              }),
++                          }),
++                          control(
++                            t2("flow.collageGradientAngle"),
++                            collageGradientAngle(config),
++                            0,
++                            360,
++                            (value) => update({ gradientAngle: value }),
++                          ),
++                        ],
++                      },
++                    )
++                  : null,
++              ],
++            }),
++          ],
++        }),
 +      }),
 +    ],
 +  });
@@ -2436,173 +2661,6 @@
 +          className: "x-cfg-note",
 +          children: t2("flow.collageFitHint"),
 +        }),
-+        /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
-+          label: t2("flow.collageBackground"),
-+          value: config.backgroundMode || "transparent",
-+          options: [
-+            { label: t2("flow.collageTransparent"), value: "transparent" },
-+            { label: t2("flow.collageGradient"), value: "gradient" },
-+          ],
-+          onChange: (value) => update({ backgroundMode: value }),
-+        }),
-+        config.backgroundMode === "gradient"
-+          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
-+              children: [
-+                /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
-+                  label: t2("flow.collageGradientPreset"),
-+                  value: config.gradientPreset || "custom",
-+                  options: [
-+                    ...COLLAGE_GRADIENT_PRESETS.map(({ label, value }) => ({
-+                      label,
-+                      value,
-+                    })),
-+                    {
-+                      label: t2("flow.collageCustomGradient"),
-+                      value: "custom",
-+                    },
-+                  ],
-+                  onChange: (value) => {
-+                    const preset = COLLAGE_GRADIENT_PRESETS.find(
-+                      (item) => item.value === value,
-+                    );
-+                    update({
-+                      gradientPreset: value,
-+                      ...(preset
-+                        ? {
-+                            backgroundColorA: preset.colors[0],
-+                            backgroundColorB: preset.colors[1],
-+                          }
-+                        : {}),
-+                    });
-+                  },
-+                }),
-+                /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
-+                  label: t2("flow.collageGradientStart"),
-+                  value: config.backgroundColorA || "#FE2C2B",
-+                  fallback: "#FE2C2B",
-+                  onChange: (value) =>
-+                    update({
-+                      backgroundColorA: value,
-+                      gradientPreset: "custom",
-+        }),
-+                }),
-+                /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
-+                  label: t2("flow.collageGradientEnd"),
-+                  value: config.backgroundColorB || "#FF9B60",
-+                  fallback: "#FF9B60",
-+                  onChange: (value) =>
-+                    update({
-+                      backgroundColorB: value,
-+                      gradientPreset: "custom",
-+                    }),
-+                }),
-+                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-+                  label: t2("flow.collageGradientAngle"),
-+                  value: collageGradientAngle(config),
-+                  min: 0,
-+                  max: 360,
-+                  step: 1,
-+                  onChange: (value) => update({ gradientAngle: value }),
-+                }),
-+              ],
-+            })
-+          : null,
-+        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
-+          label: t2("flow.collageText"),
-+          value: config.textOverlay || "",
-+          placeholder: t2("flow.collageTextPlaceholder"),
-+          onChange: (value) => update({ textOverlay: value }),
-+        }),
-+        String(config.textOverlay || "").trim()
-+          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
-+              children: [
-+                /* @__PURE__ */ jsxRuntimeExports.jsx(SystemFontField, {
-+                  label: t2("flow.collageTextFont"),
-+                  value: config.textFontFamily || "Helvetica Neue",
-+                  onChange: (value) => update({ textFontFamily: value }),
-+                }),
-+                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
-+                  label: t2("flow.collageTextMatch"),
-+                  desc: t2("flow.collageTextMatchDesc"),
-+                  checked: Boolean(config.textMatchBackground),
-+                  onChange: (value) => update({ textMatchBackground: value }),
-+                }),
-+                !config.textMatchBackground
-+                  ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
-+                      jsxRuntimeExports.Fragment,
-+                      {
-+                        children: [
-+                          /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
-+                            label: t2("flow.collageTextStart"),
-+                            value: config.textColorA || "#FFFFFF",
-+                            fallback: "#FFFFFF",
-+                            onChange: (value) => update({ textColorA: value }),
-+                          }),
-+                          /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
-+                            label: t2("flow.collageTextEnd"),
-+                            value: config.textColorB || "#FFD6F6",
-+                            fallback: "#FFD6F6",
-+                            onChange: (value) => update({ textColorB: value }),
-+                          }),
-+                        ],
-+                      },
-+                    )
-+                  : null,
-+                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
-+                  label: t2("flow.collageTextShadow"),
-+                  desc: t2("flow.collageTextShadowDesc"),
-+                  checked: Boolean(config.textShadow),
-+                  onChange: (value) => update({ textShadow: value }),
-+                }),
-+                config.textShadow
-+                  ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
-+                      jsxRuntimeExports.Fragment,
-+                      {
-+                        children: [
-+                          /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
-+                            label: t2("flow.collageShadowColor"),
-+                            value: config.textShadowColor || "#000000",
-+                            fallback: "#000000",
-+                            onChange: (value) =>
-+                              update({ textShadowColor: value }),
-+                          }),
-+                          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-+                            label: t2("flow.collageShadowOpacity"),
-+                            value: Number(config.textShadowOpacity) || 0,
-+                            min: 0,
-+                            max: 100,
-+                            onChange: (value) =>
-+                              update({ textShadowOpacity: value }),
-+                          }),
-+                          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-+                            label: t2("flow.collageShadowBlur"),
-+                            value: Number(config.textShadowBlur) || 0,
-+                            min: 0,
-+                            max: 100,
-+                            onChange: (value) =>
-+                              update({ textShadowBlur: value }),
-+                          }),
-+                          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-+                            label: t2("flow.collageShadowX"),
-+                            value: Number(config.textShadowX) || 0,
-+                            min: -100,
-+                            max: 100,
-+                            onChange: (value) => update({ textShadowX: value }),
-+                          }),
-+                          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-+                            label: t2("flow.collageShadowY"),
-+                            value: Number(config.textShadowY) || 0,
-+                            min: -100,
-+                            max: 100,
-+                            onChange: (value) => update({ textShadowY: value }),
-+                          }),
-+                        ],
-+                      },
-+                    )
-+                  : null,
-+              ],
-+            })
-+          : null,
 +        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
 +          label: t2("flow.outFormat"),
 +          value: config.toFormat,
@@ -2668,7 +2726,7 @@
 +        }),
 +      ],
 +    });
-+  },
+   },
 +  panelSub: (config, count, t2) =>
 +    count
 +      ? t2("flow.sub.fmt", {
@@ -2837,11 +2895,10 @@
 +      },
 +    };
 +  },
-+};
+ };
  async function mapWithConcurrency(items, concurrency, mapper) {
    const results = new Array(items.length);
-   let nextIndex = 0;
-@@ -40161,6 +41887,13 @@
+@@ -40161,6 +41944,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -2855,7 +2912,7 @@
          config.ext !== "webm"
            ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
                label: t2("flow.quality"),
-@@ -40244,6 +41977,7 @@
+@@ -40244,6 +42034,7 @@
            preparedInput: true,
            loop,
            targetFileSizeKb: targetKb,
@@ -2863,7 +2920,7 @@
            jobId,
          });
          info = await window.x("getFileInfo", outputPath);
-@@ -40270,7 +42004,18 @@
+@@ -40270,7 +42061,18 @@
              ? { resize: longestEdgeResize(config) }
              : {}),
            toFormat: ext,
@@ -2883,7 +2940,7 @@
            outPath: outputPath,
          });
        }
-@@ -40334,7 +42079,7 @@
+@@ -40334,7 +42136,7 @@
      }
      return { pass: true };
    },
@@ -2892,7 +2949,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -40430,6 +42175,13 @@
+@@ -40430,6 +42232,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -2906,15 +2963,15 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -40516,7 +42268,20 @@
+@@ -40516,10 +42325,23 @@
      } else {
        const targetBytes = Math.max(1, targetKb) * 1e3;
        const format = item.meta.format;
 -      if (format === "png") {
 +      if (format === "gif") {
-+        recipe = {
-+          inputPath: item.path,
-+          inputOptions: sharpOpt,
+         recipe = {
+           inputPath: item.path,
+           inputOptions: sharpOpt,
 +          toFormat: "gif",
 +          formatOptions: {
 +            colors: config.gifColorReduction ? 64 : 256,
@@ -2925,10 +2982,13 @@
 +          },
 +        };
 +      } else if (format === "png") {
-         recipe = {
-           inputPath: item.path,
-           inputOptions: sharpOpt,
-@@ -40572,7 +42337,7 @@
++        recipe = {
++          inputPath: item.path,
++          inputOptions: sharpOpt,
+           toFormat: "png",
+           formatOptions: { palette: true, quality: 50, effort: 10 },
+         };
+@@ -40572,7 +42394,7 @@
        }
      }
      if (finalResize) recipe = { ...recipe, resize: finalResize };
@@ -2937,7 +2997,7 @@
        const outSize = await writeSharpToTarget({
          recipe,
          item,
-@@ -40581,6 +42346,7 @@
+@@ -40581,6 +42403,7 @@
          outFormat: item.meta.format,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -2945,7 +3005,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -40655,6 +42421,7 @@
+@@ -40655,6 +42478,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -2953,17 +3013,17 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -40929,6 +42696,9 @@
+@@ -40928,6 +42752,9 @@
+   }, []);
    const reset = reactExports.useCallback(() => {
      store.dispatch(resetSession());
-   }, []);
++  }, []);
 +  const edit = reactExports.useCallback(() => {
 +    store.dispatch(resumeEditing());
-+  }, []);
+   }, []);
    const chooseOutputDir = reactExports.useCallback(async () => {
      try {
-       const dirs = await window.x("selectDir");
-@@ -41122,6 +42892,7 @@
+@@ -41122,6 +42949,7 @@
      load,
      removeFile: removeFile2,
      clear,
@@ -2971,7 +3031,7 @@
      reset,
      start,
      cancel,
-@@ -41448,7 +43219,7 @@
+@@ -41448,7 +43276,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -2980,7 +3040,7 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41469,6 +43240,12 @@
+@@ -41469,6 +43297,12 @@
                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
                    type: "button",
                    className: "x-flow-btn-ghost",
@@ -2993,7 +3053,7 @@
                    onClick: handlers2.reset,
                    children: t2("flow.again"),
                  }),
-@@ -41654,8 +43431,8 @@
+@@ -41654,8 +43488,8 @@
      return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
        type: "button",
        className: "x-cfg-action is-secondary",
@@ -3004,7 +3064,7 @@
      });
    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
      type: "button",
-@@ -41668,6 +43445,7 @@
+@@ -41668,6 +43502,7 @@
    mod: mod2,
    handlers: handlers2,
    t: t2,
@@ -3012,7 +3072,7 @@
  }) {
    const session = useSelector((s) => s.session);
    const config = useSelector((s) => s[mod2.configKey]?.config);
-@@ -41685,6 +43463,16 @@
+@@ -41685,6 +43520,16 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [
@@ -3029,7 +3089,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-head",
          children: [
-@@ -41701,7 +43489,7 @@
+@@ -41701,7 +43546,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-body",
          children: [
@@ -3038,7 +3098,7 @@
            config
              ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
                  jsxRuntimeExports.Fragment,
-@@ -42284,6 +44072,7 @@
+@@ -42284,6 +44129,7 @@
                          mod: mod2,
                          handlers: handlers2,
                          t: t2,
