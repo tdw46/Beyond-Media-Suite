@@ -366,14 +366,14 @@ test("Collage packs every requested layout without distorting source aspect rati
   assert.match(patch, /const sourceHeight = Math\.max/);
   assert.match(
     patch,
-    /Math\.max\(baseWidth \/ sourceWidth, baseHeight \/ sourceHeight\)/,
+    /baseWidth \/ croppedSourceWidth/,
   );
   assert.match(
     patch,
-    /Math\.min\(baseWidth \/ sourceWidth, baseHeight \/ sourceHeight\)/,
+    /baseWidth \/ croppedSourceWidth/,
   );
-  assert.match(patch, /sourceWidth \* fitScale \* userScale/);
-  assert.match(patch, /sourceHeight \* fitScale \* userScale/);
+  assert.match(patch, /croppedSourceWidth \* fitScale \* userScale/);
+  assert.match(patch, /croppedSourceHeight \* fitScale \* userScale/);
   assert.match(patch, /objectFit: "fill"/);
 });
 
@@ -395,7 +395,10 @@ test("Collage supports exact target dimensions with minimum-crop fill and opt-in
   assert.match(patch, /requestedWidth \|\|/);
   assert.match(patch, /requestedHeight \|\|/);
   assert.match(patch, /value: "letterbox"/);
-  assert.match(patch, /const fill = config\.fitMode !== "letterbox"/);
+  assert.match(
+    patch,
+    /const fill = !config\.autoPadding && config\.fitMode !== "letterbox"/,
+  );
   assert.match(patch, /fill \? 1 : 0\.25/);
   assert.match(patch, /value: "letterbox"/);
 });
@@ -563,8 +566,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.17/);
-  assert.match(build, /2\.1\.3\.17/);
+  assert.match(build, /2\.1\.3-fork\.18/);
+  assert.match(build, /2\.1\.3\.18/);
 });
 
 test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {
@@ -595,7 +598,49 @@ test("Collage gradients and top-layer text render consistently with system fonts
   assert.match(patch, /backgroundPath,/);
   assert.match(patch, /textPath,/);
   assert.match(patch, /\[\$\{previous\}\]\[textoverlay\]overlay/);
-  assert.match(patch, /collageCssGradient\(config, true\)/);
+  assert.match(patch, /overlayPreview\.text \|\|/);
+  assert.match(patch, /window\.x\("sharpToBuffer"/);
+});
+
+test("Collage preview and export share SVG overlays and expose patterns", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /const collagePatternOptions =/);
+  for (const pattern of ["dots", "hex", "stripes", "checker", "grid", "waves"]) {
+    assert.match(patch, new RegExp(`value: "${pattern}"`));
+  }
+  assert.match(patch, /backgroundPattern: "none"/);
+  assert.match(patch, /textPattern: "none"/);
+  assert.match(patch, /fill="url\(#backgroundPattern\)"/);
+  assert.match(patch, /clip-path="url\(#textClip\)"/);
+  assert.match(patch, /overlayPreview\.text \|\|/);
+  assert.match(patch, /overlayPreview\.background \|\|/);
+  assert.match(patch, /new Blob\(\[buffer\], \{ type: "image\/png" \}\)/);
+});
+
+test("Collage edge crops and optional equal padding use one preview/export geometry", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../patches/xpic-2.1.3-collage.patch", import.meta.url),
+      "utf8",
+    ),
+  );
+  for (const edge of ["Left", "Right", "Top", "Bottom"]) {
+    assert.match(patch, new RegExp(`crop${edge}: 0`));
+    assert.match(patch, new RegExp(`flow\\.collageCrop${edge}`));
+  }
+  assert.match(patch, /const collageCropFractions =/);
+  assert.match(patch, /crop=iw\*\$\{cropWidth\.toFixed\(6\)\}/);
+  assert.match(patch, /left: `\$\{\(-rect\.crop\.left \/ cropWidth\) \* 100\}%`/);
+  assert.match(patch, /autoPadding: false/);
+  assert.match(patch, /tilePadding: 16/);
+  assert.match(patch, /const requestedPadding = config\.autoPadding/);
+  assert.match(patch, /label: t2\("flow\.collageAutoPadding"\)/);
+  assert.match(patch, /label: t2\("flow\.collageTilePadding"\)/);
 });
 
 test("Collage keeps all text and gradient settings with the layer tiles", async () => {

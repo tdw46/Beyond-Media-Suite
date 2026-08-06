@@ -64,7 +64,7 @@
      getCachePath: () => {
        return app2.getPath("temp");
      },
-@@ -2020,6 +2063,145 @@
+@@ -2020,6 +2063,161 @@
          safeUnlink(listPath);
        }
      },
@@ -144,8 +144,24 @@
 +      files.forEach((file, index) => {
 +        const itemWidth = Math.max(2, Math.round(Number(file.width) || 0));
 +        const itemHeight = Math.max(2, Math.round(Number(file.height) || 0));
++        const cropLeft = Math.max(0, Math.min(0.45, Number(file.cropLeft) || 0));
++        const cropRight = Math.max(
++          0,
++          Math.min(0.45, Number(file.cropRight) || 0),
++        );
++        const cropTop = Math.max(0, Math.min(0.45, Number(file.cropTop) || 0));
++        const cropBottom = Math.max(
++          0,
++          Math.min(0.45, Number(file.cropBottom) || 0),
++        );
++        const cropWidth = Math.max(0.1, 1 - cropLeft - cropRight);
++        const cropHeight = Math.max(0.1, 1 - cropTop - cropBottom);
++        const cropFilter =
++          cropLeft || cropRight || cropTop || cropBottom
++            ? `crop=iw*${cropWidth.toFixed(6)}:ih*${cropHeight.toFixed(6)}:iw*${cropLeft.toFixed(6)}:ih*${cropTop.toFixed(6)},`
++            : "";
 +        filters.push(
-+          `[${index}:v:0]fps=${outputFps},scale=${itemWidth}:${itemHeight}:flags=lanczos,format=rgba,setpts=PTS-STARTPTS[item${index}]`,
++          `[${index}:v:0]fps=${outputFps},${cropFilter}scale=${itemWidth}:${itemHeight}:flags=lanczos,format=rgba,setpts=PTS-STARTPTS[item${index}]`,
 +        );
 +      });
 +      const ordered = files
@@ -210,7 +226,7 @@
      execMedia: async (_, opt) => {
        const { cmd, jobId, tempPaths = [] } = opt || {};
        if (!Array.isArray(cmd) || !cmd.length) {
-@@ -2441,6 +2623,7 @@
+@@ -2441,6 +2639,7 @@
          loop,
          loseless,
          targetFileSizeKb,
@@ -218,7 +234,7 @@
          jobId,
        } = opt;
        const cwd = binDir();
-@@ -2766,18 +2949,26 @@
+@@ -2766,18 +2965,26 @@
          moveInto(tempPath);
        };
        const encodeAnimationTarget = async () => {
@@ -247,7 +263,7 @@
          if (toFormat === "webp") {
            const outputFps = Math.max(1, Number(fps) || 10);
            const estimatedFrames = Math.max(
-@@ -2794,7 +2985,7 @@
+@@ -2794,7 +3001,7 @@
              ),
            );
            currentScale = Math.max(
@@ -256,7 +272,7 @@
              Math.min(maxScale, targetAwareLongest || maxScale),
            );
          }
-@@ -2803,7 +2994,9 @@
+@@ -2803,7 +3010,9 @@
          const runCandidate = async (tuning) => {
            const candidate = vtemp(`.${toFormat}`);
            const targetFilters = [];
@@ -267,7 +283,7 @@
              targetFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
            }
            if (currentScale !== sourceLongest || !preparedInput) {
-@@ -2865,15 +3058,23 @@
+@@ -2865,15 +3074,23 @@
            return { path: candidate, size: fs.statSync(candidate).size };
          };
          try {
@@ -295,7 +311,7 @@
                const result = await runCandidate(tuning);
                if (result.size <= targetBytes) {
                  if (best && best.path !== result.path) safeUnlink(best.path);
-@@ -2910,18 +3111,43 @@
+@@ -2910,18 +3127,43 @@
              } else {
                safeUnlink(smallest?.path);
              }
@@ -347,7 +363,7 @@
          } finally {
            safeUnlink(fallbackPath);
          }
-@@ -2964,7 +3190,9 @@
+@@ -2964,7 +3206,9 @@
                ).then(() => resolve(true));
              }
              if (toFormat === "gif") {
@@ -358,7 +374,7 @@
                return runMediaProcess(
                  ffmpeg,
                  [
-@@ -3065,21 +3293,43 @@
+@@ -3065,21 +3309,43 @@
                /Stream #0:0.*: Video: (\w+).*?, (\d+)x(\d+).*?, (\d+) kb\/s, ([\d.]+) fps/.exec(
                  stderr,
                );
@@ -407,7 +423,7 @@
        return new Promise((resolve, reject) => {
          ensureExecPerm(cwd)
            .then(() =>
-@@ -3088,25 +3338,28 @@
+@@ -3088,25 +3354,28 @@
                ffmpeg,
                [
                  "-hide_banner",
@@ -573,7 +589,7 @@
    },
  });
  const vConvertSlice = createConfigSlice({
-@@ -22865,12 +22876,52 @@
+@@ -22865,12 +22876,62 @@
    initialConfig: {
      toFormat: "mov",
      targetFileSizes: {},
@@ -595,6 +611,8 @@
 +    targetWidth: 0,
 +    targetHeight: 0,
 +    fitMode: "fill",
++    autoPadding: false,
++    tilePadding: 16,
 +    fps: 24,
 +    duration: 0,
 +    quality: 80,
@@ -608,11 +626,19 @@
 +    backgroundColorA: "#FE2C2B",
 +    backgroundColorB: "#FF9B60",
 +    gradientAngle: 135,
++    backgroundPattern: "none",
++    backgroundPatternColor: "#FFFFFF",
++    backgroundPatternOpacity: 18,
++    backgroundPatternSize: 32,
 +    textOverlay: "",
 +    textColorA: "#FFFFFF",
 +    textColorB: "#FFD6F6",
 +    textGradientPreset: "custom",
 +    textMatchBackground: false,
++    textPattern: "none",
++    textPatternColor: "#FFFFFF",
++    textPatternOpacity: 30,
++    textPatternSize: 18,
 +    textFontFamily: "Helvetica Neue",
 +    textScale: 100,
 +    textOffsetX: 0,
@@ -626,7 +652,7 @@
    },
  });
  const globalSlice = createSlice({
-@@ -22900,6 +22951,7 @@
+@@ -22900,6 +22961,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -634,7 +660,7 @@
  const { updateGlobalConfig } = globalSlice.actions;
  const {
    switchTab,
-@@ -22915,6 +22967,7 @@
+@@ -22915,6 +22977,7 @@
    finishProcessing,
    retryStart,
    cancelProcessing,
@@ -642,7 +668,7 @@
    resetSession,
  } = sessionSlice.actions;
  const { createWorkflow, updateWorkflow, deleteWorkflow, restoreWorkflows } =
-@@ -22929,6 +22982,7 @@
+@@ -22929,6 +22992,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -650,7 +676,7 @@
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
    },
-@@ -23305,6 +23359,7 @@
+@@ -23305,6 +23369,7 @@
    "nav.vconvert": "格式转换",
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
@@ -658,7 +684,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23404,10 +23459,12 @@
+@@ -23404,10 +23469,12 @@
    "flow.verb.vconvert": "转换",
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
@@ -671,7 +697,7 @@
    "flow.cropMode": "处理模式",
    "flow.cropRatio": "比例裁剪",
    "flow.cropFree": "自由裁剪",
-@@ -23422,11 +23479,69 @@
+@@ -23422,11 +23489,88 @@
    "flow.cropTargetHint": "通过调整质量逼近目标体积，PNG 格式效果有限。",
    "flow.targetSize": "目标输出大小(KB)",
    "flow.targetSizeHint": "填 0 关闭。每种输出格式会分别记住自己的目标值。",
@@ -694,6 +720,10 @@
 +  "flow.collageLetterbox": "完整显示（留边）",
 +  "flow.collageFitHint":
 +    "默认填满每个区域并使用最少的居中裁切；留边模式会显示完整画面。",
++  "flow.collageAutoPadding": "自动媒体间距",
++  "flow.collageAutoPaddingDesc":
++    "均匀缩进每个媒体区域并完整显示画面，不进行自动裁切。",
++  "flow.collageTilePadding": "每个媒体的内边距(px)",
 +  "flow.collageBackground": "画布背景",
 +  "flow.collageTransparent": "透明",
 +  "flow.collageGradient": "渐变",
@@ -702,6 +732,17 @@
 +  "flow.collageGradientStart": "起始颜色",
 +  "flow.collageGradientEnd": "结束颜色",
 +  "flow.collageGradientAngle": "渐变角度",
++  "flow.collagePattern": "重复图案",
++  "flow.collagePatternNone": "无",
++  "flow.collagePatternDots": "漫画网点",
++  "flow.collagePatternHex": "六边形",
++  "flow.collagePatternStripes": "斜纹",
++  "flow.collagePatternChecker": "棋盘格",
++  "flow.collagePatternGrid": "网格",
++  "flow.collagePatternWaves": "波纹",
++  "flow.collagePatternColor": "图案颜色",
++  "flow.collagePatternBlend": "图案混合强度",
++  "flow.collagePatternSize": "图案大小",
 +  "flow.collageText": "文字叠加",
 +  "flow.collageTextPlaceholder": "输入叠加文字",
 +  "flow.collageTextLayer": "文字 · 顶层",
@@ -729,6 +770,10 @@
 +  "flow.collageScale": "缩放",
 +  "flow.collageOffsetX": "左右偏移",
 +  "flow.collageOffsetY": "上下偏移",
++  "flow.collageCropLeft": "从左裁切",
++  "flow.collageCropRight": "从右裁切",
++  "flow.collageCropTop": "从上裁切",
++  "flow.collageCropBottom": "从下裁切",
 +  "flow.collageNeed": "请选择 2–4 个图片或视频文件",
 +  "flow.collageMax": "拼贴最多支持 4 个项目。",
 +  "flow.collageRow": "左右排列",
@@ -741,7 +786,7 @@
    "flow.cropArea": "裁剪区域",
    "flow.cropApplyAll": "另外 {n} 张将应用相同裁剪",
    "flow.verb.svga": "预览",
-@@ -23512,6 +23627,8 @@
+@@ -23512,6 +23656,8 @@
    "flow.doneSubUp": "{count} 个文件 · 共增大",
    "flow.doneCount": "{count} 个文件",
    "flow.reveal": "在文件夹中显示",
@@ -750,7 +795,7 @@
    "flow.again": "再来一批",
    "flow.againPanel": "再处理一批",
    "flow.start": "开始{verb} ({n})",
-@@ -23699,6 +23816,7 @@
+@@ -23699,6 +23845,7 @@
    "nav.vconvert": "Convert",
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
@@ -758,7 +803,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23795,10 +23913,12 @@
+@@ -23795,10 +23942,12 @@
    "flow.verb.vconvert": "Convert",
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
@@ -771,7 +816,7 @@
    "flow.cropMode": "Mode",
    "flow.cropRatio": "Aspect",
    "flow.cropFree": "Free",
-@@ -23814,6 +23934,9 @@
+@@ -23814,6 +23963,9 @@
    "flow.targetSize": "Target output size (KB)",
    "flow.targetSizeHint":
      "Set 0 to disable. Each output format remembers its own target.",
@@ -781,7 +826,7 @@
    "flow.longestEdge": "Longest edge (px)",
    "flow.longestEdgeHint":
      "Set 0 to keep the original size. Aspect ratio is always preserved.",
-@@ -23822,6 +23945,63 @@
+@@ -23822,6 +23974,82 @@
      "Replaces each input only after a successful same-format encode.",
    "flow.overwriteSourceUnavailable":
      "Overwrite source requires the output format to match every input.",
@@ -796,6 +841,10 @@
 +  "flow.collageLetterbox": "Fit (letterbox)",
 +  "flow.collageFitHint":
 +    "Fill is the default and uses the smallest centered crop needed. Fit shows the complete frame with letterboxing.",
++  "flow.collageAutoPadding": "Auto-pad media",
++  "flow.collageAutoPaddingDesc":
++    "Evenly inset every media slot and fit complete frames without automatic cropping.",
++  "flow.collageTilePadding": "Padding per media tile (px)",
 +  "flow.collageBackground": "Canvas background",
 +  "flow.collageTransparent": "Transparent",
 +  "flow.collageGradient": "Gradient",
@@ -804,6 +853,17 @@
 +  "flow.collageGradientStart": "Start color",
 +  "flow.collageGradientEnd": "End color",
 +  "flow.collageGradientAngle": "Gradient angle",
++  "flow.collagePattern": "Repeating pattern",
++  "flow.collagePatternNone": "None",
++  "flow.collagePatternDots": "Comic dots",
++  "flow.collagePatternHex": "Hexagons",
++  "flow.collagePatternStripes": "Diagonal stripes",
++  "flow.collagePatternChecker": "Checkerboard",
++  "flow.collagePatternGrid": "Grid",
++  "flow.collagePatternWaves": "Waves",
++  "flow.collagePatternColor": "Pattern color",
++  "flow.collagePatternBlend": "Pattern blend strength",
++  "flow.collagePatternSize": "Pattern size",
 +  "flow.collageText": "Text overlay",
 +  "flow.collageTextPlaceholder": "Enter overlay text",
 +  "flow.collageTextLayer": "Text · top layer",
@@ -833,6 +893,10 @@
 +  "flow.collageScale": "Scale",
 +  "flow.collageOffsetX": "Left / right offset",
 +  "flow.collageOffsetY": "Up / down offset",
++  "flow.collageCropLeft": "Crop from left",
++  "flow.collageCropRight": "Crop from right",
++  "flow.collageCropTop": "Crop from top",
++  "flow.collageCropBottom": "Crop from bottom",
 +  "flow.collageNeed": "Choose 2–4 image or video files",
 +  "flow.collageMax": "A collage supports up to 4 items.",
 +  "flow.collageRow": "Side by side",
@@ -845,7 +909,7 @@
    "flow.cropArea": "Crop area",
    "flow.cropApplyAll": "{n} more get the same crop",
    "flow.verb.svga": "Preview",
-@@ -23896,6 +24076,8 @@
+@@ -23896,6 +24124,8 @@
    "flow.doneSubUp": "{count} file(s) · grew",
    "flow.doneCount": "{count} file(s)",
    "flow.reveal": "Reveal in Finder",
@@ -854,7 +918,7 @@
    "flow.again": "New batch",
    "flow.againPanel": "Process again",
    "flow.start": "Start {verb} ({n})",
-@@ -26272,6 +26454,7 @@
+@@ -26272,6 +26502,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -862,7 +926,7 @@
      ],
    },
  ];
-@@ -27661,10 +27844,10 @@
+@@ -27661,10 +27892,10 @@
                  return b2.w(
                    n3
                      .toDate()
@@ -877,7 +941,7 @@
                    n3,
                  );
                },
-@@ -28567,6 +28750,99 @@
+@@ -28567,6 +28798,99 @@
        ],
      }),
  );
@@ -977,7 +1041,7 @@
  const SegmentedField = reactExports.memo(
    ({ label, value, options, onChange }) =>
      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -29691,7 +29967,6 @@
+@@ -29691,7 +30015,6 @@
                for (
                  var t3 = Object.keys(e2), r3 = new Array(t3.length), i2 = 0;
                  i2 < t3.length;
@@ -985,7 +1049,7 @@
                )
                  r3[i2] = e2[t3[i2++]];
                return r3;
-@@ -30400,15 +30675,13 @@
+@@ -30400,15 +30723,13 @@
              throw Error("no such enum: " + e2);
            }),
            (n2.prototype.add = function (e2) {
@@ -1003,7 +1067,7 @@
                throw TypeError("object must be a valid nested object");
              if (this.nested) {
                var t3 = this.get(e2.name);
-@@ -30819,7 +31092,6 @@
+@@ -30819,7 +31140,6 @@
                  t3 = this.constructor.alloc(this.len),
                  r3 = 0;
                e2;
@@ -1011,7 +1075,7 @@
              )
                (e2.fn(e2.val, t3, r3), (r3 += e2.len), (e2 = e2.next));
              return t3;
-@@ -31152,7 +31424,6 @@
+@@ -31152,7 +31472,6 @@
              for (
                var e2 = new Array(arguments.length), t3 = 0;
                t3 < arguments.length;
@@ -1019,7 +1083,7 @@
              )
                e2[t3] = arguments[t3++];
              return function (t4, r3) {
-@@ -31378,7 +31649,6 @@
+@@ -31378,7 +31697,6 @@
            for (
              var r3 = new Array(arguments.length - 1), i = 0, n2 = 2, o = true;
              n2 < arguments.length;
@@ -1027,7 +1091,7 @@
            )
              r3[i++] = arguments[n2++];
            return new Promise(function (n3, s) {
-@@ -31389,7 +31659,6 @@
+@@ -31389,7 +31707,6 @@
                    for (
                      var t4 = new Array(arguments.length - 1), r4 = 0;
                      r4 < t4.length;
@@ -1035,7 +1099,7 @@
                    )
                      t4[r4++] = arguments[r4];
                    n3.apply(null, t4);
-@@ -33855,7 +34124,6 @@
+@@ -33855,7 +34172,6 @@
                      f2 = new Array(s.length),
                      l2 = 0;
                    l2 < s.length;
@@ -1043,7 +1107,7 @@
                  )
                    ((a[l2] = s[l2]), (f2[l2] = e3[s[l2++]]));
                  return ((a[l2] = t4), Function.apply(null, a).apply(null, f2));
-@@ -33865,7 +34133,6 @@
+@@ -33865,7 +34181,6 @@
              for (
                var u2 = new Array(arguments.length - 1), h = 0;
                h < u2.length;
@@ -1051,7 +1115,7 @@
              )
                u2[h] = arguments[++h];
              if (
-@@ -34439,7 +34706,6 @@
+@@ -34439,7 +34754,6 @@
              for (
                v2(b2, e2.lens, 0, 288, h, 0, e2.work, { bits: 9 }), t3 = 0;
                t3 < 32;
@@ -1059,7 +1123,7 @@
              )
                e2.lens[t3++] = 5;
              (v2(_2, e2.lens, 0, 32, c, 0, e2.work, { bits: 5 }), (de2 = false));
-@@ -34920,7 +35186,6 @@
+@@ -34920,7 +35234,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !((me2 = Se2 >>> 24) <= ue3);
@@ -1067,7 +1131,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35047,7 +35312,6 @@
+@@ -35047,7 +35360,6 @@
                        255),
                        (ge2 = 65535 & Se2),
                        !((me2 = Se2 >>> 24) <= ue3);
@@ -1075,7 +1139,7 @@
                    ) {
                      if (0 === f3) break e;
                      (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35064,7 +35328,6 @@
+@@ -35064,7 +35376,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !(be2 + (me2 = Se2 >>> 24) <= ue3);
@@ -1083,7 +1147,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35111,7 +35374,6 @@
+@@ -35111,7 +35422,6 @@
                        255),
                        (ge2 = 65535 & Se2),
                        !((me2 = Se2 >>> 24) <= ue3);
@@ -1091,7 +1155,7 @@
                    ) {
                      if (0 === f3) break e;
                      (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35128,7 +35390,6 @@
+@@ -35128,7 +35438,6 @@
                          255),
                          (ge2 = 65535 & Se2),
                          !(be2 + (me2 = Se2 >>> 24) <= ue3);
@@ -1099,7 +1163,7 @@
                      ) {
                        if (0 === f3) break e;
                        (f3--, (c2 += n3[s2++] << ue3), (ue3 += 8));
-@@ -35301,7 +35562,6 @@
+@@ -35301,7 +35610,6 @@
            for (
              var n2 = (65535 & e2) | 0, o = ((e2 >>> 16) & 65535) | 0, s = 0;
              0 !== r3;
@@ -1107,7 +1171,7 @@
            ) {
              r3 -= s = r3 > 2e3 ? 2e3 : r3;
              do {
-@@ -35614,7 +35874,6 @@
+@@ -35614,7 +35922,6 @@
                for (
                  0 === E2 && (E2 = j), v2 += A2, N2 = 1 << (T2 = x3 - E2);
                  T2 + E2 < S2 && !((N2 -= P2[T2 + E2]) <= 0);
@@ -1115,7 +1179,7 @@
                )
                  (T2++, (N2 <<= 1));
                if (
-@@ -35727,7 +35986,6 @@
+@@ -35727,7 +36034,6 @@
                  for (
                    o2 &= 2 === s2 ? 31 : 3 === s2 ? 15 : 7;
                    s2 > 1 && r3 < f3;
@@ -1123,7 +1187,7 @@
                  )
                    ((o2 = (o2 << 6) | (63 & e2[r3++])), s2--);
                  s2 > 1
-@@ -35746,7 +36004,6 @@
+@@ -35746,7 +36052,6 @@
                (t3 = t3 || e2.length) > e2.length && (t3 = e2.length),
                  r3 = t3 - 1;
                r3 >= 0 && 128 == (192 & e2[r3]);
@@ -1131,7 +1195,7 @@
              )
                r3--;
              return r3 < 0 ? t3 : 0 === r3 ? t3 : r3 + a[e2[r3]] > t3 ? r3 : t3;
-@@ -36492,7 +36749,6 @@
+@@ -36492,7 +36797,6 @@
                        n3 = i2.length,
                        o2 = new Uint8Array(n3);
                      n3--;
@@ -1139,7 +1203,7 @@
                    )
                      o2[n3] = i2.charCodeAt(n3);
                    return new Blob([o2], { type: r3 });
-@@ -39370,6 +39626,18 @@
+@@ -39370,6 +39674,18 @@
  };
  const updateSourceTargetSizeFor = (config, value) =>
    updateTargetSizeFor(config, "__source__", value);
@@ -1158,7 +1222,7 @@
  const longestEdgeFor = (config) =>
    Math.max(0, Number(config.longestEdge ?? config.scale) || 0);
  const longestEdgeResize = (config) => {
-@@ -39388,10 +39656,7 @@
+@@ -39388,10 +39704,7 @@
      const cachePath = await window.x("getCachePath");
      destination = window.pj(cachePath, `${pureName}.${outFormat}`);
    }
@@ -1170,7 +1234,7 @@
    if (destination !== outPath) {
      await window.x("moveFile", destination, outPath);
    }
-@@ -39405,8 +39670,11 @@
+@@ -39405,8 +39718,11 @@
    outFormat,
    targetKb,
    longestEdge,
@@ -1182,7 +1246,7 @@
    const sourceWidth = Math.max(1, Number(item.meta?.width) || 1);
    const sourceHeight = Math.max(1, Number(item.meta?.height) || 1);
    const sourceLongest = Math.max(sourceWidth, sourceHeight);
-@@ -39415,17 +39683,25 @@
+@@ -39415,17 +39731,25 @@
      Number(longestEdge) > 0 ? Number(longestEdge) : sourceLongest,
    );
    let lastSmallest = null;
@@ -1213,7 +1277,7 @@
          ...(currentLongest !== sourceLongest
            ? {
                resize: {
-@@ -39437,22 +39713,30 @@
+@@ -39437,22 +39761,30 @@
            : {}),
          formatOptions: {
            ...(recipe.formatOptions || {}),
@@ -1251,7 +1315,7 @@
        }
        if (low > high) break;
      }
-@@ -39465,14 +39749,23 @@
+@@ -39465,14 +39797,23 @@
          outFormat,
        );
      }
@@ -1278,7 +1342,7 @@
  }
  const compress = {
    key: "compress",
-@@ -39485,7 +39778,7 @@
+@@ -39485,7 +39826,7 @@
    configKey: "compress",
    updateConfig: updateCompressConfig,
    showSaving: true,
@@ -1287,7 +1351,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
-@@ -39508,6 +39801,13 @@
+@@ -39508,6 +39849,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -1301,7 +1365,7 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -39518,18 +39818,16 @@
+@@ -39518,18 +39866,16 @@
      const fmt = item.meta.format;
      let recipe;
      if ((fmt === "webp" || fmt === "gif") && item.meta.loop >= 0) {
@@ -1309,13 +1373,12 @@
 -        quality: config.quality,
 -        ...(fmt === "webp"
 -          ? {}
--          : {
--              colors: 32,
--              dither: 0,
 +      const opt =
 +        fmt === "webp"
 +          ? { quality: config.quality }
-+          : {
+           : {
+-              colors: 32,
+-              dither: 0,
 +              colors: config.gifColorReduction ? 32 : 256,
 +              dither: config.gifColorReduction ? 0 : 1,
                effort: 10,
@@ -1329,7 +1392,7 @@
        recipe = {
          inputOptions: { animated: true, limitInputPixels: false },
          toFormat: fmt,
-@@ -39574,6 +39872,7 @@
+@@ -39574,6 +39920,7 @@
          outFormat: fmt,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -1337,7 +1400,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -39634,6 +39933,13 @@
+@@ -39634,6 +39981,13 @@
                ],
              })
            : null,
@@ -1351,7 +1414,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.quality"),
            value: config.quality,
-@@ -39713,18 +40019,16 @@
+@@ -39713,18 +40067,16 @@
        ((fmt === "gif" || item.meta.loop >= 0) && toFormat === "webp") ||
        ((fmt === "webp" || item.meta.loop >= 0) && toFormat === "gif")
      ) {
@@ -1379,7 +1442,7 @@
        recipe = {
          inputOptions: { animated: true, limitInputPixels: false },
          toFormat,
-@@ -39770,6 +40074,7 @@
+@@ -39770,6 +40122,7 @@
          outFormat: toFormat,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -1387,7 +1450,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -39818,6 +40123,13 @@
+@@ -39818,6 +40171,13 @@
                className: "x-cfg-note",
                children: t2("flow.targetSizeHint"),
              }),
@@ -1401,7 +1464,7 @@
            ],
          }),
        ],
-@@ -39842,6 +40154,7 @@
+@@ -39842,6 +40202,7 @@
        outPath,
        targetFileSizeKb: targetSizeFor(config, config.toFormat),
        longestEdge: longestEdgeFor(config),
@@ -1409,7 +1472,7 @@
        jobId,
      });
      const info = await window.x("getFileInfo", outPath);
-@@ -39949,6 +40262,13 @@
+@@ -39949,6 +40310,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -1423,7 +1486,7 @@
          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
            label: t2("flow.animQuality"),
            value: config.quality,
-@@ -40002,175 +40322,1696 @@
+@@ -40002,298 +40370,2190 @@
        ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
        loop: config.loop,
        targetFileSizeKb: targetSizeFor(config, toFormat),
@@ -1446,105 +1509,7 @@
 -        results[index] = await mapper(items[index], index);
 -      }
 -    },
-+const COLLAGE_STILL_OUTPUTS = new Set([
-+  "png",
-+  "jpeg",
-+  "webp-still",
-+  "avif",
-+  "tiff",
-+]);
-+const COLLAGE_OUTPUT_OPTIONS = [
-+  { label: "PNG", value: "png" },
-+  { label: "JPEG", value: "jpeg" },
-+  { label: "WebP (still)", value: "webp-still" },
-+  { label: "AVIF", value: "avif" },
-+  { label: "TIFF", value: "tiff" },
-+  { label: "GIF", value: "gif" },
-+  { label: "WebP (animated)", value: "webp" },
-+  { label: "APNG", value: "apng" },
-+  ...vWriteOptions,
-+];
-+const COLLAGE_GRADIENT_PRESETS = [
-+  { label: "Sunset", value: "sunset", colors: ["#FE2C2B", "#FF9B60"] },
-+  {
-+    label: "Electric Violet",
-+    value: "electric-violet",
-+    colors: ["#E50FC8", "#542AC6"],
-+  },
-+  { label: "Ocean", value: "ocean", colors: ["#00C6FF", "#0072FF"] },
-+  { label: "Aurora", value: "aurora", colors: ["#00F5A0", "#00D9F5"] },
-+  {
-+    label: "Twilight",
-+    value: "twilight",
-+    colors: ["#FF61D2", "#7A5CFA"],
-+  },
-+  { label: "Golden Hour", value: "gold", colors: ["#F7971E", "#FFD200"] },
-+  {
-+    label: "Midnight",
-+    value: "midnight",
-+    colors: ["#141E30", "#243B55"],
-+  },
-+  { label: "Rosewater", value: "rosewater", colors: ["#FF9A9E", "#FAD0C4"] },
-+];
-+const collageGradientColors = (config, text = false) => {
-+  if (text && !config.textMatchBackground) {
-+    return [
-+      normalizeHexColor(config.textColorA, "#FFFFFF"),
-+      normalizeHexColor(config.textColorB, "#FFD6F6"),
-+    ];
-+  }
-+  return [
-+    normalizeHexColor(config.backgroundColorA, "#FE2C2B"),
-+    normalizeHexColor(config.backgroundColorB, "#FF9B60"),
-+  ];
-+};
-+const collageGradientAngle = (config) =>
-+  Math.max(0, Math.min(360, Number(config.gradientAngle) || 0));
-+const collageCssGradient = (config, text = false) => {
-+  const [colorA, colorB] = collageGradientColors(config, text);
-+  return `linear-gradient(${collageGradientAngle(config)}deg, ${colorA}, ${colorB})`;
-+};
-+const collageGradientVector = (angle) => {
-+  const radians = (Number(angle) * Math.PI) / 180;
-+  const dx = Math.sin(radians);
-+  const dy = -Math.cos(radians);
-+  return {
-+    x1: `${(50 - dx * 50).toFixed(3)}%`,
-+    y1: `${(50 - dy * 50).toFixed(3)}%`,
-+    x2: `${(50 + dx * 50).toFixed(3)}%`,
-+    y2: `${(50 + dy * 50).toFixed(3)}%`,
-+  };
-+};
-+const escapeSvgValue = (value) =>
-+  String(value || "")
-+    .replaceAll("&", "&amp;")
-+    .replaceAll("<", "&lt;")
-+    .replaceAll(">", "&gt;")
-+    .replaceAll('"', "&quot;")
-+    .replaceAll("'", "&apos;");
-+const collageBackgroundSvg = (config, width, height) => {
-+  const [colorA, colorB] = collageGradientColors(config);
-+  const vector = collageGradientVector(collageGradientAngle(config));
-+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="gradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#gradient)"/></svg>`;
-+};
-+const collageTextSvg = (config, width, height) => {
-+  const [colorA, colorB] = collageGradientColors(config, true);
-+  const vector = collageGradientVector(collageGradientAngle(config));
-+  const x =
-+    width *
-+    (0.5 + Math.max(-50, Math.min(50, Number(config.textOffsetX) || 0)) / 100);
-+  const y =
-+    height *
-+    (0.5 + Math.max(-50, Math.min(50, Number(config.textOffsetY) || 0)) / 100);
-+  const scale = Math.max(25, Math.min(300, Number(config.textScale) || 100));
-+  const fontSize = Math.max(8, (height * 0.12 * scale) / 100);
-+  const shadowColor = normalizeHexColor(config.textShadowColor, "#000000");
-+  const shadowOpacity =
-+    Math.max(0, Math.min(100, Number(config.textShadowOpacity) || 0)) / 100;
-+  const shadowBlur = Math.max(
-+    0,
-+    Math.min(100, Number(config.textShadowBlur) || 0),
-   );
+-  );
 -  await Promise.all(workers);
 -  return results;
 -}
@@ -1584,6 +1549,303 @@
 -      } else if (!ctx.append) {
 -        toast.error(t("mod.mergeMin2"));
 -        return null;
+-      }
+-    }
+-    const mapped = (
+-      await mapWithConcurrency(list, 6, async (file) => {
+-        const path = file.path || window.xGetFilePath(file);
+-        const ext = file.ext
+-          ? `.${file.ext}`
+-          : (await window.x("getFileExt", path))?.toLowerCase();
+-        if (!mergeAccept.includes(ext)) return null;
+-        const _dir = file.dir || (await window.x("getFileDir", path));
+-        const meta = await window.x("sharpMetadata", { path: `${path}` });
+-        return {
+-          id: uuid(),
+-          name: file.name,
+-          path,
+-          ext,
+-          dir: _dir,
+-          url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
+-          thumb: `xpic://${THUMBNAIL_DOMAIN}/${encodeURIComponent(path)}`,
+-          size: file.size,
+-          meta: removeUnSerializable(meta),
+-        };
+-      })
+-    ).filter(Boolean);
+-    const expectedDir = ctx.existing[0]?.dir ?? mapped[0]?.dir;
+-    const expectedWidth =
+-      ctx.existing[0]?.meta?.width ?? mapped[0]?.meta?.width;
+-    const expectedHeight =
+-      ctx.existing[0]?.meta?.height ?? mapped[0]?.meta?.height;
+-    for (const item of mapped) {
+-      if (item.dir !== expectedDir) {
+-        throw new Error(t("mod.sameDirOnly"));
+-      }
+-      if (
+-        item.meta?.width !== expectedWidth ||
+-        item.meta?.height !== expectedHeight
+-      ) {
+-        throw new Error(t("mod.sameSizeOnly"));
+-      }
+-    }
+-    const total = (ctx.append ? ctx.existing.length : 0) + mapped.length;
+-    if (total < 2) {
+-      toast.error(t("mod.mergeMin2Same"));
+-      return null;
+-    }
+-    if (!actived && total > 20);
+-    sortedFilenames(mapped, "name");
+-    return mapped;
+-  } catch (e) {
+-    toast.error(e?.message || t("mod.unknownError"));
+-    return null;
+-  }
+-}
+-const FORMAT_SEG = [
+-  { label: "WebP", value: "webp" },
+-  { label: "GIF", value: "gif" },
+-  { label: "WebM", value: "webm" },
++const COLLAGE_STILL_OUTPUTS = new Set([
++  "png",
++  "jpeg",
++  "webp-still",
++  "avif",
++  "tiff",
++]);
++const COLLAGE_OUTPUT_OPTIONS = [
++  { label: "PNG", value: "png" },
++  { label: "JPEG", value: "jpeg" },
++  { label: "WebP (still)", value: "webp-still" },
++  { label: "AVIF", value: "avif" },
++  { label: "TIFF", value: "tiff" },
++  { label: "GIF", value: "gif" },
++  { label: "WebP (animated)", value: "webp" },
++  { label: "APNG", value: "apng" },
++  ...vWriteOptions,
+ ];
+-const merge$1 = {
+-  key: "merge",
+-  labelKey: "nav.merge",
+-  verbKey: "flow.verb.merge",
+-  mediaType: "image",
+-  domain: PICTURE_DOMAIN,
+-  accept: mergeAccept,
+-  validation: { maxFiles: 5e3, minFiles: 2, requireActivation: true },
+-  configKey: "merge",
+-  updateConfig: updateMergeConfig,
+-  showSaving: false,
+-  singleOutput: true,
+-  load: mergeLoad,
+-  renderParams: ({ config, update, t: t2 }) => {
+-    const zl = config.zl || 10;
+-    const firstName = store.getState().session.files[0]?.name || "animation";
+-    const defaultName = optimizedStem(fileStem(firstName));
+-    const configuredName = config.o === "x_animate" ? "" : config.o;
+-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
+-      children: [
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
+-          label: t2("flow.mergeName"),
+-          value: configuredName ?? "",
+-          placeholder: defaultName,
+-          onChange: (v2) => update({ o: v2 }),
+-        }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
+-          label: t2("flow.outFormat"),
+-          value: config.ext || "webp",
+-          options: FORMAT_SEG,
+-          onChange: (v2) => update({ ext: v2 }),
+-        }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-          label: t2("flow.targetSize"),
+-          value: targetSizeFor(config, config.ext || "webp"),
+-          min: 0,
+-          onChange: (v2) =>
+-            update(updateTargetSizeFor(config, config.ext || "webp", v2)),
+-        }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
+-          className: "x-cfg-note",
+-          children: t2("flow.targetSizeHint"),
+-        }),
+-        config.ext !== "webm"
+-          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+-              label: t2("flow.quality"),
+-              value: config.q,
+-              min: 0,
+-              max: 100,
+-              step: 5,
+-              onChange: (v2) => update({ q: v2 }),
+-            })
+-          : null,
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-          label: t2("flow.fps"),
+-          value: zl,
+-          min: 1,
+-          onChange: (v2) =>
+-            update({ zl: v2, d: Math.max(1, Math.round(1e3 / (v2 || 1))) }),
+-        }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-          label: t2("flow.loop"),
+-          value: config.loop ?? 0,
+-          min: 0,
+-          onChange: (v2) => update({ loop: v2 }),
+-        }),
+-      ],
+-    });
++const COLLAGE_GRADIENT_PRESETS = [
++  { label: "Sunset", value: "sunset", colors: ["#FE2C2B", "#FF9B60"] },
++  {
++    label: "Electric Violet",
++    value: "electric-violet",
++    colors: ["#E50FC8", "#542AC6"],
+   },
+-  panelSub: (config, n2, t2) =>
+-    n2
+-      ? t2("flow.sub.fmt", {
+-          n: n2,
+-          fmt: String(config.ext || "webp").toUpperCase(),
+-        })
+-      : t2("flow.sub.idle"),
+-  async processBatch({
+-    files,
+-    config,
+-    outputDir,
+-    setProgress: setProgress2,
+-    jobId,
+-  }) {
+-    const ext = config.ext || "webp";
+-    const loop = config.loop ?? 0;
+-    const d = config.d || Math.max(1, Math.round(1e3 / (config.zl || 10)));
+-    const configuredName = String(config.o || "").trim();
+-    const name =
+-      configuredName && configuredName !== "x_animate"
+-        ? configuredName
+-        : optimizedStem(fileStem(files[0]?.name || "animation"));
+-    setProgress2(8);
+-    await window.x("createDirIfNotExist", outputDir);
+-    const stamp = `${files.length}_${name}`;
+-    const fakePath = window.pj(
+-      outputDir,
+-      `__xpic_temp_${stamp}_temp_xpic__.webp`,
+-    );
+-    const bridgePath = window.pj(
+-      outputDir,
+-      `__xpic_temp_${stamp}_temp_xpic__.mkv`,
++  { label: "Ocean", value: "ocean", colors: ["#00C6FF", "#0072FF"] },
++  { label: "Aurora", value: "aurora", colors: ["#00F5A0", "#00D9F5"] },
++  {
++    label: "Twilight",
++    value: "twilight",
++    colors: ["#FF61D2", "#7A5CFA"],
++  },
++  { label: "Golden Hour", value: "gold", colors: ["#F7971E", "#FFD200"] },
++  {
++    label: "Midnight",
++    value: "midnight",
++    colors: ["#141E30", "#243B55"],
++  },
++  { label: "Rosewater", value: "rosewater", colors: ["#FF9A9E", "#FAD0C4"] },
++];
++const collagePatternOptions = (t2) => [
++  { label: t2("flow.collagePatternNone"), value: "none" },
++  { label: t2("flow.collagePatternDots"), value: "dots" },
++  { label: t2("flow.collagePatternHex"), value: "hex" },
++  { label: t2("flow.collagePatternStripes"), value: "stripes" },
++  { label: t2("flow.collagePatternChecker"), value: "checker" },
++  { label: t2("flow.collagePatternGrid"), value: "grid" },
++  { label: t2("flow.collagePatternWaves"), value: "waves" },
++];
++const collagePatternDefinition = (pattern, id2, requestedSize, color) => {
++  if (!pattern || pattern === "none") return "";
++  const size = Math.max(4, Math.min(256, Number(requestedSize) || 24));
++  const half = size / 2;
++  const quarter = size / 4;
++  const stroke = Math.max(1, size * 0.07);
++  const fill = normalizeHexColor(color, "#FFFFFF");
++  let shape = "";
++  if (pattern === "dots") {
++    shape = `<circle cx="${half}" cy="${half}" r="${Math.max(1, size * 0.18)}" fill="${fill}"/>`;
++  } else if (pattern === "hex") {
++    shape = `<path d="M${quarter},${stroke / 2} H${size - quarter} L${size - stroke / 2},${half} L${size - quarter},${size - stroke / 2} H${quarter} L${stroke / 2},${half} Z" fill="none" stroke="${fill}" stroke-width="${stroke}"/>`;
++  } else if (pattern === "stripes") {
++    shape = `<path d="M${-quarter},${quarter} L${quarter},${-quarter} M0,${size} L${size},0 M${size - quarter},${size + quarter} L${size + quarter},${size - quarter}" fill="none" stroke="${fill}" stroke-width="${Math.max(1, size * 0.16)}"/>`;
++  } else if (pattern === "checker") {
++    shape = `<rect width="${half}" height="${half}" fill="${fill}"/><rect x="${half}" y="${half}" width="${half}" height="${half}" fill="${fill}"/>`;
++  } else if (pattern === "grid") {
++    shape = `<path d="M0,0 H${size} M0,0 V${size}" fill="none" stroke="${fill}" stroke-width="${stroke}"/>`;
++  } else if (pattern === "waves") {
++    shape = `<path d="M0,${half} Q${quarter},${quarter} ${half},${half} T${size},${half}" fill="none" stroke="${fill}" stroke-width="${stroke}"/>`;
++  }
++  return `<pattern id="${id2}" width="${size}" height="${size}" patternUnits="userSpaceOnUse">${shape}</pattern>`;
++};
++const collageGradientColors = (config, text = false) => {
++  if (text && !config.textMatchBackground) {
++    return [
++      normalizeHexColor(config.textColorA, "#FFFFFF"),
++      normalizeHexColor(config.textColorB, "#FFD6F6"),
++    ];
++  }
++  return [
++    normalizeHexColor(config.backgroundColorA, "#FE2C2B"),
++    normalizeHexColor(config.backgroundColorB, "#FF9B60"),
++  ];
++};
++const collageGradientAngle = (config) =>
++  Math.max(0, Math.min(360, Number(config.gradientAngle) || 0));
++const collageCssGradient = (config, text = false) => {
++  const [colorA, colorB] = collageGradientColors(config, text);
++  return `linear-gradient(${collageGradientAngle(config)}deg, ${colorA}, ${colorB})`;
++};
++const collageGradientVector = (angle) => {
++  const radians = (Number(angle) * Math.PI) / 180;
++  const dx = Math.sin(radians);
++  const dy = -Math.cos(radians);
++  return {
++    x1: `${(50 - dx * 50).toFixed(3)}%`,
++    y1: `${(50 - dy * 50).toFixed(3)}%`,
++    x2: `${(50 + dx * 50).toFixed(3)}%`,
++    y2: `${(50 + dy * 50).toFixed(3)}%`,
++  };
++};
++const escapeSvgValue = (value) =>
++  String(value || "")
++    .replaceAll("&", "&amp;")
++    .replaceAll("<", "&lt;")
++    .replaceAll(">", "&gt;")
++    .replaceAll('"', "&quot;")
++    .replaceAll("'", "&apos;");
++const collageBackgroundSvg = (config, width, height) => {
++  const [colorA, colorB] = collageGradientColors(config);
++  const vector = collageGradientVector(collageGradientAngle(config));
++  const pattern = collagePatternDefinition(
++    config.backgroundPattern,
++    "backgroundPattern",
++    config.backgroundPatternSize,
++    config.backgroundPatternColor,
++  );
++  const opacity =
++    Math.max(0, Math.min(100, Number(config.backgroundPatternOpacity) || 0)) /
++    100;
++  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="gradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${pattern}</defs><rect width="100%" height="100%" fill="url(#gradient)"/>${pattern ? `<rect width="100%" height="100%" fill="url(#backgroundPattern)" opacity="${opacity}"/>` : ""}</svg>`;
++};
++const collageTextSvg = (config, width, height) => {
++  const [colorA, colorB] = collageGradientColors(config, true);
++  const vector = collageGradientVector(collageGradientAngle(config));
++  const x =
++    width *
++    (0.5 + Math.max(-50, Math.min(50, Number(config.textOffsetX) || 0)) / 100);
++  const y =
++    height *
++    (0.5 + Math.max(-50, Math.min(50, Number(config.textOffsetY) || 0)) / 100);
++  const scale = Math.max(25, Math.min(300, Number(config.textScale) || 100));
++  const fontSize = Math.max(8, (height * 0.12 * scale) / 100);
++  const shadowColor = normalizeHexColor(config.textShadowColor, "#000000");
++  const shadowOpacity =
++    Math.max(0, Math.min(100, Number(config.textShadowOpacity) || 0)) / 100;
++  const shadowBlur = Math.max(
++    0,
++    Math.min(100, Number(config.textShadowBlur) || 0),
++  );
 +  const shadowX = Math.max(
 +    -100,
 +    Math.min(100, Number(config.textShadowX) || 0),
@@ -1595,8 +1857,20 @@
 +  const shadow = config.textShadow
 +    ? `<filter id="shadow" x="-100%" y="-100%" width="300%" height="300%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="${shadowBlur}" result="blur"/><feOffset in="blur" dx="${shadowX}" dy="${shadowY}" result="offset"/><feFlood flood-color="${shadowColor}" flood-opacity="${shadowOpacity}" result="color"/><feComposite in="color" in2="offset" operator="in" result="shadowColor"/><feMerge><feMergeNode in="shadowColor"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`
 +    : "";
-+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="textGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${shadow}</defs><text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="${escapeSvgValue(config.textFontFamily || "Helvetica Neue")}" font-size="${fontSize}" font-weight="800" fill="url(#textGradient)"${config.textShadow ? ' filter="url(#shadow)"' : ""}>${escapeSvgValue(config.textOverlay)}</text></svg>`;
++  const pattern = collagePatternDefinition(
++    config.textPattern,
++    "textPattern",
++    config.textPatternSize,
++    config.textPatternColor,
++  );
++  const patternOpacity =
++    Math.max(0, Math.min(100, Number(config.textPatternOpacity) || 0)) / 100;
++  const textAttributes = `x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="${escapeSvgValue(config.textFontFamily || "Helvetica Neue")}" font-size="${fontSize}" font-weight="800"`;
++  const escapedText = escapeSvgValue(config.textOverlay);
++  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="textGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${shadow}${pattern}${pattern ? `<clipPath id="textClip"><text ${textAttributes}>${escapedText}</text></clipPath>` : ""}</defs><text ${textAttributes} fill="url(#textGradient)"${config.textShadow ? ' filter="url(#shadow)"' : ""}>${escapedText}</text>${pattern ? `<rect width="100%" height="100%" fill="url(#textPattern)" opacity="${patternOpacity}" clip-path="url(#textClip)"/>` : ""}</svg>`;
 +};
++const collageSvgDataUrl = (svg) =>
++  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 +const collageOutputSpec = (value) => {
 +  if (value === "webp-still") {
 +    return { format: "webp", ext: "webp", still: true };
@@ -1635,7 +1909,65 @@
 +  const aspects = files.map((item) => {
 +    const width = Number(item.meta?.width || item.meta?.pixelWidth) || 1;
 +    const height = Number(item.meta?.height || item.meta?.pixelHeight) || 1;
-+    return Math.max(0.01, width / height);
++    const crop = collageCropFractions(item);
++    return Math.max(
++      0.01,
++      (width * (1 - crop.left - crop.right)) /
++        (height * (1 - crop.top - crop.bottom)),
+     );
+-    const outputPath = window.pj(outputDir, `${name}.${ext}`);
+-    const targetKb = targetSizeFor(config, ext);
+-    let info;
+-    try {
+-      if (ext === "webm" || targetKb > 0) {
+-        setProgress2(20);
+-        await window.x("mergeFramesIntermediate", {
+-          files: files.map((item) => item.path),
+-          fps: config.zl || 10,
+-          longestEdge: longestEdgeFor(config),
+-          pixelFormat: ext === "webm" ? "yuva420p" : "bgra",
+-          outPath: bridgePath,
+-          jobId,
+-        });
+-        setProgress2(60);
+-        await window.x("vConvert", {
+-          inputPath: bridgePath,
+-          toFormat: ext,
+-          outPath: outputPath,
+-          fps: config.zl || 10,
+-          longestEdge: 0,
+-          preparedInput: true,
+-          loop,
+-          targetFileSizeKb: targetKb,
+-          jobId,
+-        });
+-        info = await window.x("getFileInfo", outputPath);
+-      } else {
+-        const cmdArr = ["img2webp", "-loop", loop];
+-        for (const item of files) {
+-          cmdArr.push(item.path);
+-          cmdArr.push("-d");
+-          cmdArr.push(d);
+-        }
+-        cmdArr.push("-o");
+-        cmdArr.push(fakePath);
+-        setProgress2(25);
+-        await window.x("execMedia", {
+-          cmd: cmdArr,
+-          jobId,
+-          tempPaths: [fakePath],
+-        });
+-        setProgress2(70);
+-        info = await window.x("sharpToFile", {
+-          inputPath: fakePath,
+-          inputOptions: { animated: true },
+-          ...(longestEdgeResize(config)
+-            ? { resize: longestEdgeResize(config) }
+-            : {}),
+-          toFormat: ext,
+-          formatOptions: { quality: config.q, nearLossless: true },
+-          outPath: outputPath,
+-        });
 +  });
 +  const packRows = (groups) => {
 +    const rects = new Array(files.length);
@@ -1649,11 +1981,26 @@
 +        rects[index] = { x, y, width: itemWidth, height: rowHeight };
 +        x += itemWidth;
        }
+-    } finally {
+-      await window.x("removeFile", fakePath);
+-      await window.x("removeFile", bridgePath);
+-      await window.x("finishMediaJob", jobId);
 +      y += rowHeight;
      }
--    const mapped = (
--      await mapWithConcurrency(list, 6, async (file) => {
-+    return {
+-    const meta =
+-      ext === "webm"
+-        ? await window.x("vGetFileInfo", outputPath)
+-        : await window.x("sharpMetadata", { path: outputPath });
+-    setProgress2(100);
+-    const totalFrom = files.reduce((a, f2) => a + (f2.size || 0), 0);
+-    const outSize = info.size;
+     return {
+-      count: files.length,
+-      totalFrom,
+-      totalTo: outSize,
+-      saved: totalFrom - outSize,
+-      savedPct: totalFrom > 0 ? Math.round((1 - outSize / totalFrom) * 100) : 0,
+-      outDir: outputDir,
 +      aspect: 1 / y,
 +      rects: rects.map((rect) => ({
 +        x: rect.x,
@@ -1706,6 +2053,12 @@
 +    ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
 +    : 0;
 +};
++const collageCropFractions = (item) => ({
++  left: Math.max(0, Math.min(0.45, (Number(item.cropLeft) || 0) / 100)),
++  right: Math.max(0, Math.min(0.45, (Number(item.cropRight) || 0) / 100)),
++  top: Math.max(0, Math.min(0.45, (Number(item.cropTop) || 0) / 100)),
++  bottom: Math.max(0, Math.min(0.45, (Number(item.cropBottom) || 0) / 100)),
++});
 +const collageGeometry = (files, config) => {
 +  const options = collageLayoutOptions(files.length, (key) => key);
 +  const layout = options.some((option) => option.value === config.layout)
@@ -1759,10 +2112,21 @@
 +    height,
 +    placements: files.map((item, index) => {
 +      const rect = rects[index];
-+      const baseX = Math.round(rect.x * width);
-+      const baseY = Math.round(rect.y * height);
-+      const baseRight = Math.round((rect.x + rect.width) * width);
-+      const baseBottom = Math.round((rect.y + rect.height) * height);
++      const rawX = Math.round(rect.x * width);
++      const rawY = Math.round(rect.y * height);
++      const rawRight = Math.round((rect.x + rect.width) * width);
++      const rawBottom = Math.round((rect.y + rect.height) * height);
++      const requestedPadding = config.autoPadding
++        ? Math.max(0, Math.round(Number(config.tilePadding) || 0))
++        : 0;
++      const slotPadding = Math.min(
++        requestedPadding,
++        Math.max(0, Math.floor(Math.min(rawRight - rawX, rawBottom - rawY) / 2) - 1),
++      );
++      const baseX = rawX + slotPadding;
++      const baseY = rawY + slotPadding;
++      const baseRight = rawRight - slotPadding;
++      const baseBottom = rawBottom - slotPadding;
 +      const baseWidth = Math.max(2, baseRight - baseX);
 +      const baseHeight = Math.max(2, baseBottom - baseY);
 +      const sourceWidth = Math.max(
@@ -1773,21 +2137,36 @@
 +        1,
 +        Number(item.meta?.height || item.meta?.pixelHeight) || 1,
 +      );
-+      const fill = config.fitMode !== "letterbox";
++      const crop = collageCropFractions(item);
++      const croppedSourceWidth = Math.max(
++        1,
++        sourceWidth * (1 - crop.left - crop.right),
++      );
++      const croppedSourceHeight = Math.max(
++        1,
++        sourceHeight * (1 - crop.top - crop.bottom),
++      );
++      const fill = !config.autoPadding && config.fitMode !== "letterbox";
 +      const fitScale = fill
-+        ? Math.max(baseWidth / sourceWidth, baseHeight / sourceHeight)
-+        : Math.min(baseWidth / sourceWidth, baseHeight / sourceHeight);
++        ? Math.max(
++            baseWidth / croppedSourceWidth,
++            baseHeight / croppedSourceHeight,
++          )
++        : Math.min(
++            baseWidth / croppedSourceWidth,
++            baseHeight / croppedSourceHeight,
++          );
 +      const userScale = Math.max(
 +        fill ? 1 : 0.25,
 +        Math.min(3, (Number(item.scale) || 100) / 100),
 +      );
 +      const mediaWidth = Math.max(
 +        2,
-+        Math.round(sourceWidth * fitScale * userScale),
++        Math.round(croppedSourceWidth * fitScale * userScale),
 +      );
 +      const mediaHeight = Math.max(
 +        2,
-+        Math.round(sourceHeight * fitScale * userScale),
++        Math.round(croppedSourceHeight * fitScale * userScale),
 +      );
 +      const centeredX = baseX + Math.round((baseWidth - mediaWidth) / 2);
 +      const centeredY = baseY + Math.round((baseHeight - mediaHeight) / 2);
@@ -1822,6 +2201,7 @@
 +        mediaHeight,
 +        mediaX: centeredX + Math.round(shiftX),
 +        mediaY: centeredY + Math.round(shiftY),
++        crop,
 +      };
 +    }),
 +  };
@@ -1840,13 +2220,7 @@
 +      rawFiles,
 +      4,
 +      async (file, index) => {
-         const path = file.path || window.xGetFilePath(file);
--        const ext = file.ext
--          ? `.${file.ext}`
--          : (await window.x("getFileExt", path))?.toLowerCase();
--        if (!mergeAccept.includes(ext)) return null;
--        const _dir = file.dir || (await window.x("getFileDir", path));
--        const meta = await window.x("sharpMetadata", { path: `${path}` });
++        const path = file.path || window.xGetFilePath(file);
 +        const ext = (await window.x("getFileExt", path))?.toLowerCase();
 +        if (!accepted.has(ext)) return null;
 +        const info =
@@ -1878,21 +2252,21 @@
 +            scale: 100,
 +            offsetX: 0,
 +            offsetY: 0,
++            cropLeft: 0,
++            cropRight: 0,
++            cropTop: 0,
++            cropBottom: 0,
 +          };
 +        }
 +        const meta = await window.x("sharpMetadata", { path });
-         return {
-           id: uuid(),
-           name: file.name,
-           path,
-           ext,
--          dir: _dir,
--          url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
--          thumb: `xpic://${THUMBNAIL_DOMAIN}/${encodeURIComponent(path)}`,
--          size: file.size,
++        return {
++          id: uuid(),
++          name: file.name,
++          path,
++          ext,
 +          dir,
 +          size: info.size,
-           meta: removeUnSerializable(meta),
++          meta: removeUnSerializable(meta),
 +          url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
 +          mediaKind: "image",
 +          still: true,
@@ -1900,35 +2274,11 @@
 +          scale: 100,
 +          offsetX: 0,
 +          offsetY: 0,
-         };
--      })
--    ).filter(Boolean);
--    const expectedDir = ctx.existing[0]?.dir ?? mapped[0]?.dir;
--    const expectedWidth =
--      ctx.existing[0]?.meta?.width ?? mapped[0]?.meta?.width;
--    const expectedHeight =
--      ctx.existing[0]?.meta?.height ?? mapped[0]?.meta?.height;
--    for (const item of mapped) {
--      if (item.dir !== expectedDir) {
--        throw new Error(t("mod.sameDirOnly"));
--      }
--      if (
--        item.meta?.width !== expectedWidth ||
--        item.meta?.height !== expectedHeight
--      ) {
--        throw new Error(t("mod.sameSizeOnly"));
--      }
--    }
--    const total = (ctx.append ? ctx.existing.length : 0) + mapped.length;
--    if (total < 2) {
--      toast.error(t("mod.mergeMin2Same"));
--      return null;
--    }
--    if (!actived && total > 20);
--    sortedFilenames(mapped, "name");
--    return mapped;
--  } catch (e) {
--    toast.error(e?.message || t("mod.unknownError"));
++          cropLeft: 0,
++          cropRight: 0,
++          cropTop: 0,
++          cropBottom: 0,
++        };
 +      },
 +    );
 +    const result = mapped.filter(Boolean);
@@ -1936,66 +2286,9 @@
 +    return result;
 +  } catch (error) {
 +    toast.error(error?.message || t("val.unknownError"));
-     return null;
-   }
- }
--const FORMAT_SEG = [
--  { label: "WebP", value: "webp" },
--  { label: "GIF", value: "gif" },
--  { label: "WebM", value: "webm" },
--];
--const merge$1 = {
--  key: "merge",
--  labelKey: "nav.merge",
--  verbKey: "flow.verb.merge",
--  mediaType: "image",
--  domain: PICTURE_DOMAIN,
--  accept: mergeAccept,
--  validation: { maxFiles: 5e3, minFiles: 2, requireActivation: true },
--  configKey: "merge",
--  updateConfig: updateMergeConfig,
--  showSaving: false,
--  singleOutput: true,
--  load: mergeLoad,
--  renderParams: ({ config, update, t: t2 }) => {
--    const zl = config.zl || 10;
--    const firstName = store.getState().session.files[0]?.name || "animation";
--    const defaultName = optimizedStem(fileStem(firstName));
--    const configuredName = config.o === "x_animate" ? "" : config.o;
--    return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
--      children: [
--        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
--          label: t2("flow.mergeName"),
--          value: configuredName ?? "",
--          placeholder: defaultName,
--          onChange: (v2) => update({ o: v2 }),
--        }),
--        /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
--          label: t2("flow.outFormat"),
--          value: config.ext || "webp",
--          options: FORMAT_SEG,
--          onChange: (v2) => update({ ext: v2 }),
--        }),
--        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
--          label: t2("flow.targetSize"),
--          value: targetSizeFor(config, config.ext || "webp"),
--          min: 0,
--          onChange: (v2) =>
--            update(updateTargetSizeFor(config, config.ext || "webp", v2)),
--        }),
--        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
--          className: "x-cfg-note",
--          children: t2("flow.targetSizeHint"),
--        }),
--        config.ext !== "webm"
--          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
--              label: t2("flow.quality"),
--              value: config.q,
--              min: 0,
--              max: 100,
--              step: 5,
--              onChange: (v2) => update({ q: v2 }),
--            })
++    return null;
++  }
++}
 +const CollageLayerControls = reactExports.memo(function CollageLayerControls2({
 +  files,
 +  config,
@@ -2252,6 +2545,52 @@
 +                                },
 +                              )
 +                            : null,
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                            label: t2("flow.collagePattern"),
++                            value: config.textPattern || "none",
++                            options: collagePatternOptions(t2),
++                            onChange: (value) => update({ textPattern: value }),
++                          }),
++                          config.textPattern && config.textPattern !== "none"
++                            ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                                jsxRuntimeExports.Fragment,
++                                {
++                                  children: [
++                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                      ColorField,
++                                      {
++                                        label: t2("flow.collagePatternColor"),
++                                        value:
++                                          config.textPatternColor || "#FFFFFF",
++                                        fallback: "#FFFFFF",
++                                        onChange: (value) =>
++                                          update({ textPatternColor: value }),
++                                      },
++                                    ),
++                                    control(
++                                      t2("flow.collagePatternBlend"),
++                                      Number(config.textPatternOpacity) || 0,
++                                      0,
++                                      100,
++                                      (value) =>
++                                        update({ textPatternOpacity: value }),
++                                      "%",
++                                    ),
++                                    control(
++                                      t2("flow.collagePatternSize"),
++                                      Math.max(
++                                        4,
++                                        Number(config.textPatternSize) || 18,
++                                      ),
++                                      4,
++                                      128,
++                                      (value) =>
++                                        update({ textPatternSize: value }),
++                                    ),
++                                  ],
++                                },
++                              )
++                            : null,
 +                          control(
 +                            t2("flow.collageScale"),
 +                            Math.max(25, Number(config.textScale) || 100),
@@ -2444,10 +2783,14 @@
 +                    control(
 +                      t2("flow.collageScale"),
 +                      Math.max(
-+                        config.fitMode === "letterbox" ? 25 : 100,
++                        config.fitMode === "letterbox" || config.autoPadding
++                          ? 25
++                          : 100,
 +                        Number(item.scale) || 100,
 +                      ),
-+                      config.fitMode === "letterbox" ? 25 : 100,
++                      config.fitMode === "letterbox" || config.autoPadding
++                        ? 25
++                        : 100,
 +                      300,
 +                      (value) => patchItem(item.id, { scale: value }),
 +                      "%",
@@ -2465,6 +2808,38 @@
 +                      -50,
 +                      50,
 +                      (value) => patchItem(item.id, { offsetY: value }),
++                    ),
++                    control(
++                      t2("flow.collageCropLeft"),
++                      Number(item.cropLeft) || 0,
++                      0,
++                      45,
++                      (value) => patchItem(item.id, { cropLeft: value }),
++                      "%",
++                    ),
++                    control(
++                      t2("flow.collageCropRight"),
++                      Number(item.cropRight) || 0,
++                      0,
++                      45,
++                      (value) => patchItem(item.id, { cropRight: value }),
++                      "%",
++                    ),
++                    control(
++                      t2("flow.collageCropTop"),
++                      Number(item.cropTop) || 0,
++                      0,
++                      45,
++                      (value) => patchItem(item.id, { cropTop: value }),
++                      "%",
++                    ),
++                    control(
++                      t2("flow.collageCropBottom"),
++                      Number(item.cropBottom) || 0,
++                      0,
++                      45,
++                      (value) => patchItem(item.id, { cropBottom: value }),
++                      "%",
 +                    ),
 +                  ],
 +                }),
@@ -2566,6 +2941,63 @@
 +                            360,
 +                            (value) => update({ gradientAngle: value }),
 +                          ),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                            label: t2("flow.collagePattern"),
++                            value: config.backgroundPattern || "none",
++                            options: collagePatternOptions(t2),
++                            onChange: (value) =>
++                              update({ backgroundPattern: value }),
++                          }),
++                          config.backgroundPattern &&
++                          config.backgroundPattern !== "none"
++                            ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                                jsxRuntimeExports.Fragment,
++                                {
++                                  children: [
++                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                      ColorField,
++                                      {
++                                        label: t2("flow.collagePatternColor"),
++                                        value:
++                                          config.backgroundPatternColor ||
++                                          "#FFFFFF",
++                                        fallback: "#FFFFFF",
++                                        onChange: (value) =>
++                                          update({
++                                            backgroundPatternColor: value,
++                                          }),
++                                      },
++                                    ),
++                                    control(
++                                      t2("flow.collagePatternBlend"),
++                                      Number(config.backgroundPatternOpacity) ||
++                                        0,
++                                      0,
++                                      100,
++                                      (value) =>
++                                        update({
++                                          backgroundPatternOpacity: value,
++                                        }),
++                                      "%",
++                                    ),
++                                    control(
++                                      t2("flow.collagePatternSize"),
++                                      Math.max(
++                                        4,
++                                        Number(config.backgroundPatternSize) ||
++                                          32,
++                                      ),
++                                      4,
++                                      128,
++                                      (value) =>
++                                        update({
++                                          backgroundPatternSize: value,
++                                        }),
++                                    ),
++                                  ],
++                                },
++                              )
++                            : null,
 +                        ],
 +                      },
 +                    )
@@ -2586,9 +3018,93 @@
 +}) {
 +  const config = useSelector((state) => state.collage.config);
 +  const [playing, setPlaying] = reactExports.useState(false);
++  const [overlayPreview, setOverlayPreview] = reactExports.useState({
++    background: null,
++    text: null,
++  });
++  const overlayUrls = reactExports.useRef({ background: null, text: null });
 +  const videoRefs = reactExports.useRef(new Map());
 +  const layouts = collageLayoutOptions(files.length, t2);
 +  const geometry = collageGeometry(files, config);
++  const overlaySignature = JSON.stringify({
++    width: geometry.width,
++    height: geometry.height,
++    backgroundMode: config.backgroundMode,
++    backgroundColorA: config.backgroundColorA,
++    backgroundColorB: config.backgroundColorB,
++    gradientAngle: config.gradientAngle,
++    backgroundPattern: config.backgroundPattern,
++    backgroundPatternColor: config.backgroundPatternColor,
++    backgroundPatternOpacity: config.backgroundPatternOpacity,
++    backgroundPatternSize: config.backgroundPatternSize,
++    textOverlay: config.textOverlay,
++    textMatchBackground: config.textMatchBackground,
++    textColorA: config.textColorA,
++    textColorB: config.textColorB,
++    textFontFamily: config.textFontFamily,
++    textScale: config.textScale,
++    textOffsetX: config.textOffsetX,
++    textOffsetY: config.textOffsetY,
++    textShadow: config.textShadow,
++    textShadowColor: config.textShadowColor,
++    textShadowOpacity: config.textShadowOpacity,
++    textShadowBlur: config.textShadowBlur,
++    textShadowX: config.textShadowX,
++    textShadowY: config.textShadowY,
++    textPattern: config.textPattern,
++    textPatternColor: config.textPatternColor,
++    textPatternOpacity: config.textPatternOpacity,
++    textPatternSize: config.textPatternSize,
++  });
++  reactExports.useEffect(() => {
++    let cancelled = false;
++    const timer = window.setTimeout(async () => {
++      const makePngUrl = async (svg) => {
++        const buffer = await window.x("sharpToBuffer", {
++          inputBuffer: new TextEncoder().encode(svg),
++          toFormat: "png",
++        });
++        return URL.createObjectURL(new Blob([buffer], { type: "image/png" }));
++      };
++      try {
++        const [background, text] = await Promise.all([
++          config.backgroundMode === "gradient"
++            ? makePngUrl(
++                collageBackgroundSvg(config, geometry.width, geometry.height),
++              )
++            : null,
++          String(config.textOverlay || "").trim()
++            ? makePngUrl(
++                collageTextSvg(config, geometry.width, geometry.height),
++              )
++            : null,
++        ]);
++        const next = { background, text };
++        if (cancelled) {
++          Object.values(next).filter(Boolean).forEach(URL.revokeObjectURL);
++          return;
++        }
++        const previous = overlayUrls.current;
++        overlayUrls.current = next;
++        setOverlayPreview(next);
++        Object.values(previous).filter(Boolean).forEach(URL.revokeObjectURL);
++      } catch {
++        // Keep the prior frame visible while the next exact preview is prepared.
++      }
++    }, 60);
++    return () => {
++      cancelled = true;
++      window.clearTimeout(timer);
++    };
++  }, [overlaySignature]);
++  reactExports.useEffect(
++    () => () => {
++      Object.values(overlayUrls.current)
++        .filter(Boolean)
++        .forEach(URL.revokeObjectURL);
++    },
++    [],
++  );
 +  reactExports.useEffect(() => {
 +    if (!layouts.some((option) => option.value === config.layout)) {
 +      store.dispatch(
@@ -2674,7 +3190,16 @@
 +                  backgroundColor: "var(--bg-elevated)",
 +                  backgroundImage:
 +                    config.backgroundMode === "gradient"
-+                      ? collageCssGradient(config)
++                      ? `url("${
++                          overlayPreview.background ||
++                          collageSvgDataUrl(
++                            collageBackgroundSvg(
++                              config,
++                              geometry.width,
++                              geometry.height,
++                            ),
++                          )
++                        }")`
 +                      : "linear-gradient(45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(-45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(128,128,128,.12) 75%),linear-gradient(-45deg,transparent 75%,rgba(128,128,128,.12) 75%)",
 +                  backgroundSize:
 +                    config.backgroundMode === "gradient"
@@ -2688,76 +3213,85 @@
 +                },
 +                children: [
 +                  files.map((item, index) => {
-+                  const rect = geometry.placements[index];
-+                  const mediaStyle = {
-+                    position: "absolute",
-+                    left: `${(rect.mediaX / geometry.width) * 100}%`,
-+                    top: `${(rect.mediaY / geometry.height) * 100}%`,
-+                    width: `${(rect.mediaWidth / geometry.width) * 100}%`,
-+                    height: `${(rect.mediaHeight / geometry.height) * 100}%`,
-+                    objectFit: "fill",
-+                    maxWidth: "none",
-+                    maxHeight: "none",
-+                    zIndex: Number(item.layer) || index + 1,
-+                  };
-+                  if (item.mediaKind === "video") {
++                    const rect = geometry.placements[index];
++                    const cropWidth = Math.max(
++                      0.1,
++                      1 - rect.crop.left - rect.crop.right,
++                    );
++                    const cropHeight = Math.max(
++                      0.1,
++                      1 - rect.crop.top - rect.crop.bottom,
++                    );
++                    const wrapperStyle = {
++                      position: "absolute",
++                      left: `${(rect.mediaX / geometry.width) * 100}%`,
++                      top: `${(rect.mediaY / geometry.height) * 100}%`,
++                      width: `${(rect.mediaWidth / geometry.width) * 100}%`,
++                      height: `${(rect.mediaHeight / geometry.height) * 100}%`,
++                      overflow: "hidden",
++                      zIndex: Number(item.layer) || index + 1,
++                    };
++                    const mediaStyle = {
++                      position: "absolute",
++                      left: `${(-rect.crop.left / cropWidth) * 100}%`,
++                      top: `${(-rect.crop.top / cropHeight) * 100}%`,
++                      width: `${100 / cropWidth}%`,
++                      height: `${100 / cropHeight}%`,
++                      objectFit: "fill",
++                      maxWidth: "none",
++                      maxHeight: "none",
++                    };
++                    const media =
++                      item.mediaKind === "video"
++                        ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
++                            ref: (node) => {
++                              if (node) videoRefs.current.set(item.id, node);
++                              else videoRefs.current.delete(item.id);
++                            },
++                            src: item.url,
++                            poster: item.poster,
++                            preload: "auto",
++                            muted: true,
++                            loop: true,
++                            playsInline: true,
++                            style: mediaStyle,
++                          })
++                        : /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                            src:
++                              item.mediaKind === "animated-image" && !playing
++                                ? item.poster
++                                : item.url,
++                            draggable: false,
++                            style: mediaStyle,
++                            alt: "",
++                          });
 +                    return /* @__PURE__ */ jsxRuntimeExports.jsx(
-+                      "video",
-+                      {
-+                        ref: (node) => {
-+                          if (node) videoRefs.current.set(item.id, node);
-+                          else videoRefs.current.delete(item.id);
-+                        },
-+                        src: item.url,
-+                        poster: item.poster,
-+                        preload: "auto",
-+                        muted: true,
-+                        loop: true,
-+                        playsInline: true,
-+                        style: mediaStyle,
-+                      },
++                      "div",
++                      { style: wrapperStyle, children: media },
 +                      item.id,
 +                    );
-+                  }
-+                  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-+                    "img",
-+                    {
-+                      src:
-+                        item.mediaKind === "animated-image" && !playing
-+                          ? item.poster
-+                          : item.url,
-+                      draggable: false,
-+                      style: mediaStyle,
-+                      alt: "",
-+                    },
-+                    item.id,
-+                  );
-+                }),
++                  }),
 +                  String(config.textOverlay || "").trim()
-+                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                        src:
++                          overlayPreview.text ||
++                          collageSvgDataUrl(
++                            collageTextSvg(
++                              config,
++                              geometry.width,
++                              geometry.height,
++                            ),
++                          ),
++                        alt: "",
++                        draggable: false,
 +                        style: {
 +                          position: "absolute",
-+                          left: `${50 + Math.max(-50, Math.min(50, Number(config.textOffsetX) || 0))}%`,
-+                          top: `${50 + Math.max(-50, Math.min(50, Number(config.textOffsetY) || 0))}%`,
-+                          transform: "translate(-50%, -50%)",
++                          inset: 0,
++                          width: "100%",
++                          height: "100%",
 +                          zIndex: 9999,
-+                          maxWidth: "200%",
-+                          whiteSpace: "nowrap",
-+                          textAlign: "center",
-+                          fontFamily: config.textFontFamily || "Helvetica Neue",
-+                          fontWeight: 800,
-+                          fontSize: `${12 * (Math.max(25, Math.min(300, Number(config.textScale) || 100)) / 100)}cqh`,
-+                          lineHeight: 1,
-+                          color: "transparent",
-+                          backgroundImage: collageCssGradient(config, true),
-+                          backgroundClip: "text",
-+                          WebkitBackgroundClip: "text",
-+                          textShadow: config.textShadow
-+                            ? `${Number(config.textShadowX) || 0}px ${Number(config.textShadowY) || 0}px ${Math.max(0, Number(config.textShadowBlur) || 0)}px color-mix(in srgb, ${normalizeHexColor(config.textShadowColor, "#000000")} ${Math.max(0, Math.min(100, Number(config.textShadowOpacity) || 0))}%, transparent)`
-+                            : "none",
 +                          pointerEvents: "none",
 +                        },
-+                        children: config.textOverlay,
 +                      })
 +                    : null,
 +                ],
@@ -2860,6 +3394,21 @@
 +          className: "x-cfg-note",
 +          children: t2("flow.collageFitHint"),
 +        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++          label: t2("flow.collageAutoPadding"),
++          desc: t2("flow.collageAutoPaddingDesc"),
++          checked: Boolean(config.autoPadding),
++          onChange: (value) => update({ autoPadding: value }),
++        }),
++        config.autoPadding
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++              label: t2("flow.collageTilePadding"),
++              value: Math.max(0, Number(config.tilePadding) || 0),
++              min: 0,
++              max: 2048,
++              onChange: (value) => update({ tilePadding: value }),
++            })
++          : null,
 +        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
 +          label: t2("flow.outFormat"),
 +          value: config.toFormat,
@@ -2883,7 +3432,7 @@
 +              update,
 +              t: t2,
 +            })
-           : null,
++          : null,
 +        !output.still
 +          ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
 +              children: [
@@ -3006,6 +3555,10 @@
 +            y: placement.mediaY,
 +            width: placement.mediaWidth,
 +            height: placement.mediaHeight,
++            cropLeft: placement.crop.left,
++            cropRight: placement.crop.right,
++            cropTop: placement.crop.top,
++            cropBottom: placement.crop.bottom,
 +          };
 +        }),
 +        width: geometry.width,
@@ -3083,7 +3636,7 @@
 +      saved: totalFrom - outSize,
 +      savedPct: totalFrom > 0 ? Math.round((1 - outSize / totalFrom) * 100) : 0,
 +      outDir: outputDir,
-+      output: {
+       output: {
 +        name: `${name}.${spec.ext}`,
 +        path: outputPath,
 +        size: outSize,
@@ -3265,22 +3818,106 @@
 +              onChange: (v2) => update({ q: v2 }),
 +            })
 +          : null,
-         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
-           label: t2("flow.fps"),
-           value: zl,
-@@ -40244,6 +42085,7 @@
-           preparedInput: true,
-           loop,
-           targetFileSizeKb: targetKb,
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.fps"),
++          value: zl,
++          min: 1,
++          onChange: (v2) =>
++            update({ zl: v2, d: Math.max(1, Math.round(1e3 / (v2 || 1))) }),
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++          label: t2("flow.loop"),
++          value: config.loop ?? 0,
++          min: 0,
++          onChange: (v2) => update({ loop: v2 }),
++        }),
++      ],
++    });
++  },
++  panelSub: (config, n2, t2) =>
++    n2
++      ? t2("flow.sub.fmt", {
++          n: n2,
++          fmt: String(config.ext || "webp").toUpperCase(),
++        })
++      : t2("flow.sub.idle"),
++  async processBatch({
++    files,
++    config,
++    outputDir,
++    setProgress: setProgress2,
++    jobId,
++  }) {
++    const ext = config.ext || "webp";
++    const loop = config.loop ?? 0;
++    const d = config.d || Math.max(1, Math.round(1e3 / (config.zl || 10)));
++    const configuredName = String(config.o || "").trim();
++    const name =
++      configuredName && configuredName !== "x_animate"
++        ? configuredName
++        : optimizedStem(fileStem(files[0]?.name || "animation"));
++    setProgress2(8);
++    await window.x("createDirIfNotExist", outputDir);
++    const stamp = `${files.length}_${name}`;
++    const fakePath = window.pj(
++      outputDir,
++      `__xpic_temp_${stamp}_temp_xpic__.webp`,
++    );
++    const bridgePath = window.pj(
++      outputDir,
++      `__xpic_temp_${stamp}_temp_xpic__.mkv`,
++    );
++    const outputPath = window.pj(outputDir, `${name}.${ext}`);
++    const targetKb = targetSizeFor(config, ext);
++    let info;
++    try {
++      if (ext === "webm" || targetKb > 0) {
++        setProgress2(20);
++        await window.x("mergeFramesIntermediate", {
++          files: files.map((item) => item.path),
++          fps: config.zl || 10,
++          longestEdge: longestEdgeFor(config),
++          pixelFormat: ext === "webm" ? "yuva420p" : "bgra",
++          outPath: bridgePath,
++          jobId,
++        });
++        setProgress2(60);
++        await window.x("vConvert", {
++          inputPath: bridgePath,
++          toFormat: ext,
++          outPath: outputPath,
++          fps: config.zl || 10,
++          longestEdge: 0,
++          preparedInput: true,
++          loop,
++          targetFileSizeKb: targetKb,
 +          allowGifColorReduction: config.gifColorReduction,
-           jobId,
-         });
-         info = await window.x("getFileInfo", outputPath);
-@@ -40270,7 +42112,18 @@
-             ? { resize: longestEdgeResize(config) }
-             : {}),
-           toFormat: ext,
--          formatOptions: { quality: config.q, nearLossless: true },
++          jobId,
++        });
++        info = await window.x("getFileInfo", outputPath);
++      } else {
++        const cmdArr = ["img2webp", "-loop", loop];
++        for (const item of files) {
++          cmdArr.push(item.path);
++          cmdArr.push("-d");
++          cmdArr.push(d);
++        }
++        cmdArr.push("-o");
++        cmdArr.push(fakePath);
++        setProgress2(25);
++        await window.x("execMedia", {
++          cmd: cmdArr,
++          jobId,
++          tempPaths: [fakePath],
++        });
++        setProgress2(70);
++        info = await window.x("sharpToFile", {
++          inputPath: fakePath,
++          inputOptions: { animated: true },
++          ...(longestEdgeResize(config)
++            ? { resize: longestEdgeResize(config) }
++            : {}),
++          toFormat: ext,
 +          formatOptions:
 +            ext === "gif"
 +              ? {
@@ -3293,10 +3930,33 @@
 +                  interPaletteMaxError: 0,
 +                }
 +              : { quality: config.q, nearLossless: true },
-           outPath: outputPath,
-         });
-       }
-@@ -40334,7 +42187,7 @@
++          outPath: outputPath,
++        });
++      }
++    } finally {
++      await window.x("removeFile", fakePath);
++      await window.x("removeFile", bridgePath);
++      await window.x("finishMediaJob", jobId);
++    }
++    const meta =
++      ext === "webm"
++        ? await window.x("vGetFileInfo", outputPath)
++        : await window.x("sharpMetadata", { path: outputPath });
++    setProgress2(100);
++    const totalFrom = files.reduce((a, f2) => a + (f2.size || 0), 0);
++    const outSize = info.size;
++    return {
++      count: files.length,
++      totalFrom,
++      totalTo: outSize,
++      saved: totalFrom - outSize,
++      savedPct: totalFrom > 0 ? Math.round((1 - outSize / totalFrom) * 100) : 0,
++      outDir: outputDir,
++      output: {
+         name: `${name}.${ext}`,
+         path: outputPath,
+         size: outSize,
+@@ -40334,7 +42594,7 @@
      }
      return { pass: true };
    },
@@ -3305,7 +3965,7 @@
      /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
        children: [
          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -40430,6 +42283,13 @@
+@@ -40430,6 +42690,13 @@
            className: "x-cfg-note",
            children: t2("flow.targetSizeHint"),
          }),
@@ -3319,15 +3979,15 @@
        ],
      }),
    panelSub: (config, n2, t2) =>
-@@ -40516,7 +42376,20 @@
+@@ -40516,10 +42783,23 @@
      } else {
        const targetBytes = Math.max(1, targetKb) * 1e3;
        const format = item.meta.format;
 -      if (format === "png") {
 +      if (format === "gif") {
-+        recipe = {
-+          inputPath: item.path,
-+          inputOptions: sharpOpt,
+         recipe = {
+           inputPath: item.path,
+           inputOptions: sharpOpt,
 +          toFormat: "gif",
 +          formatOptions: {
 +            colors: config.gifColorReduction ? 64 : 256,
@@ -3338,10 +3998,13 @@
 +          },
 +        };
 +      } else if (format === "png") {
-         recipe = {
-           inputPath: item.path,
-           inputOptions: sharpOpt,
-@@ -40572,7 +42445,7 @@
++        recipe = {
++          inputPath: item.path,
++          inputOptions: sharpOpt,
+           toFormat: "png",
+           formatOptions: { palette: true, quality: 50, effort: 10 },
+         };
+@@ -40572,7 +42852,7 @@
        }
      }
      if (finalResize) recipe = { ...recipe, resize: finalResize };
@@ -3350,7 +4013,7 @@
        const outSize = await writeSharpToTarget({
          recipe,
          item,
-@@ -40581,6 +42454,7 @@
+@@ -40581,6 +42861,7 @@
          outFormat: item.meta.format,
          targetKb,
          longestEdge: longestEdgeFor(config),
@@ -3358,7 +4021,7 @@
        });
        return { outName, outPath, outSize };
      }
-@@ -40655,6 +42529,7 @@
+@@ -40655,6 +42936,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -3366,7 +4029,7 @@
    merge: merge$1,
    crop,
    "svga-preview": svgaPreview,
-@@ -40929,6 +42804,9 @@
+@@ -40929,6 +43211,9 @@
    const reset = reactExports.useCallback(() => {
      store.dispatch(resetSession());
    }, []);
@@ -3376,7 +4039,7 @@
    const chooseOutputDir = reactExports.useCallback(async () => {
      try {
        const dirs = await window.x("selectDir");
-@@ -41122,6 +43000,7 @@
+@@ -41122,6 +43407,7 @@
      load,
      removeFile: removeFile2,
      clear,
@@ -3384,7 +4047,7 @@
      reset,
      start,
      cancel,
-@@ -41448,7 +43327,7 @@
+@@ -41448,7 +43734,7 @@
                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
                    className: "x-flow-done-sub",
                    children: mod2.singleOutput
@@ -3393,20 +4056,20 @@
                      : t2("flow.doneCount", { count: result.count }),
                  }),
              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -41465,6 +43344,12 @@
-                     " ",
-                     t2("flow.reveal"),
-                   ],
+@@ -41469,6 +43755,12 @@
+                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+                   type: "button",
+                   className: "x-flow-btn-ghost",
++                  onClick: handlers2.edit,
++                  children: t2("flow.backToEdit"),
 +                }),
 +                /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
 +                  type: "button",
 +                  className: "x-flow-btn-ghost",
-+                  onClick: handlers2.edit,
-+                  children: t2("flow.backToEdit"),
+                   onClick: handlers2.reset,
+                   children: t2("flow.again"),
                  }),
-                 /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
-                   type: "button",
-@@ -41654,8 +43539,8 @@
+@@ -41654,8 +43946,8 @@
      return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
        type: "button",
        className: "x-cfg-action is-secondary",
@@ -3417,7 +4080,7 @@
      });
    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
      type: "button",
-@@ -41668,6 +43553,7 @@
+@@ -41668,6 +43960,7 @@
    mod: mod2,
    handlers: handlers2,
    t: t2,
@@ -3425,7 +4088,7 @@
  }) {
    const session = useSelector((s) => s.session);
    const config = useSelector((s) => s[mod2.configKey]?.config);
-@@ -41685,6 +43571,16 @@
+@@ -41685,6 +43978,16 @@
    return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
      className: "x-config",
      children: [
@@ -3442,7 +4105,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-head",
          children: [
-@@ -41701,7 +43597,7 @@
+@@ -41701,7 +44004,7 @@
        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
          className: "x-config-body",
          children: [
@@ -3451,7 +4114,7 @@
            config
              ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
                  jsxRuntimeExports.Fragment,
-@@ -42284,6 +44180,7 @@
+@@ -42284,6 +44587,7 @@
                          mod: mod2,
                          handlers: handlers2,
                          t: t2,

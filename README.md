@@ -105,6 +105,19 @@ video-to-animation, and every video output format exposed by xPic:
   export share the same full-resolution composition. All text and background
   controls live in the Layers panel alongside the media tiles, ordered as
   Text (top), media, and Background (bottom);
+- collage preview and export now use the same Sharp-rasterized full-canvas SVG
+  background and text layers, so GIF and other outputs match the preview
+  boundary exactly, including large, offset text and drop shadows near the
+  canvas edges;
+- optional repeating comic dots, hexagons, diagonal stripes, checkerboard,
+  grid, and wave patterns can blend over the gradient background or inside
+  gradient text, with independent color, strength, and scale controls;
+- each media tile has independent left, right, top, and bottom crop controls;
+  its cropped aspect is used when packing rows and columns, and the same crop
+  is applied before scaling in preview and export;
+- **Auto-pad media** evenly insets every packed tile by a chosen pixel amount,
+  fits each complete cropped frame into the remaining space without automatic
+  cropping, and keeps the selected canvas width and height unchanged;
 - target-sized GIF creation now searches palette, dimensions, and frame rate
   against a hard byte ceiling and never silently accepts an oversized result;
 - GIF output preserves the full 256-color palette by default. **Reduce GIF
