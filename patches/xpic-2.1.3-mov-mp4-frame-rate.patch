@@ -1,0 +1,128 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1556,8 +1556,11 @@
+   };
+   const mediaJobs = app2.__xpicMediaJobs || new Map();
+   const mediaTemps = app2.__xpicMediaTemps || new Map();
++  const cancelledMediaProcesses =
++    app2.__xpicCancelledMediaProcesses || new WeakSet();
+   app2.__xpicMediaJobs = mediaJobs;
+   app2.__xpicMediaTemps = mediaTemps;
++  app2.__xpicCancelledMediaProcesses = cancelledMediaProcesses;
+   const normalizeJobId = (jobId) =>
+     typeof jobId === "string" && jobId ? jobId : null;
+   const trackMediaTemp = (jobId, filePath) => {
+@@ -1607,6 +1610,7 @@
+     const children = id2 ? mediaJobs.get(id2) : null;
+     if (children) {
+       for (const child of children) {
++        cancelledMediaProcesses.add(child);
+         terminateMediaProcess(child);
+         const timer = setTimeout(() => {
+           terminateMediaProcess(child, "SIGKILL");
+@@ -1655,9 +1659,7 @@
+         reject(error);
+       });
+       child.once("close", (code, signal) => {
+-        const cancelled =
+-          Boolean(signal) ||
+-          Boolean(jobId && !mediaJobs.get(jobId)?.has(child));
++        const cancelled = cancelledMediaProcesses.has(child);
+         unregister();
+         if (code === 0) {
+           resolve({ stdout, stderr });
+@@ -1666,7 +1668,9 @@
+         const error = new Error(
+           cancelled
+             ? "Media job cancelled."
+-            : stderr || `${path.basename(file)} exited with code ${code}.`,
++            : signal
++              ? `${path.basename(file)} terminated unexpectedly (${signal}).`
++              : stderr || `${path.basename(file)} exited with code ${code}.`,
+         );
+         error.code = code;
+         error.signal = signal;
+@@ -2240,7 +2244,9 @@
+     },
+     cancelMediaJob: (_, jobId) => cancelMediaJob(jobId),
+     finishMediaJob: (_, jobId) => {
+-      cancelMediaJob(jobId);
++      const id2 = normalizeJobId(jobId);
++      if (id2 && mediaJobs.get(id2)?.size) return false;
++      if (id2) mediaJobs.delete(id2);
+       cleanupMediaTemps(jobId);
+       return true;
+     },
+@@ -2690,6 +2696,7 @@
+           pixelFormat: "yuv420p",
+           audioCodec: "aac",
+           twoPass: true,
++          fpsMode: "vfr",
+           videoArgs: ["-preset", "slow"],
+           outputArgs: ["-movflags", "+faststart"],
+         },
+@@ -2698,6 +2705,7 @@
+           pixelFormat: "yuv420p",
+           audioCodec: "aac",
+           twoPass: true,
++          fpsMode: "vfr",
+           videoArgs: ["-preset", "slow"],
+           outputArgs: [],
+         },
+@@ -2714,6 +2722,7 @@
+           pixelFormat: "yuv420p",
+           audioCodec: "aac",
+           twoPass: true,
++          fpsMode: "vfr",
+           videoArgs: ["-preset", "slow"],
+           outputArgs: ["-movflags", "+faststart"],
+         },
+@@ -2722,6 +2731,7 @@
+           pixelFormat: "yuva420p",
+           audioCodec: "libopus",
+           twoPass: true,
++          fpsMode: "cfr",
+           videoArgs: [
+             "-deadline",
+             "good",
+@@ -2745,8 +2755,6 @@
+             "tv",
+           ],
+           outputArgs: [
+-            "-fps_mode",
+-            "cfr",
+             "-metadata:s:v:0",
+             "alpha_mode=1",
+             "-cluster_time_limit",
+@@ -2758,6 +2766,7 @@
+           pixelFormat: "yuv420p",
+           audioCodec: "aac",
+           twoPass: true,
++          fpsMode: "vfr",
+           videoArgs: ["-preset", "slow"],
+           outputArgs: [],
+         },
+@@ -2766,6 +2775,7 @@
+           pixelFormat: "yuv420p",
+           audioCodec: "aac",
+           twoPass: true,
++          fpsMode: "vfr",
+           videoArgs: ["-preset", "slow"],
+           outputArgs: [],
+         },
+@@ -2831,6 +2841,7 @@
+               `${bitrate}k`,
+               ...videoFilter,
+               ...profile.videoArgs,
++              ...(profile.fpsMode ? ["-fps_mode", profile.fpsMode] : []),
+             ];
+             if (profile.twoPass) {
+               await runMediaProcess(
+@@ -2946,6 +2957,7 @@
+           profile.pixelFormat,
+           ...videoFilter,
+           ...profile.videoArgs,
++          ...(profile.fpsMode ? ["-fps_mode", profile.fpsMode] : []),
+         ];
+         if (profile.videoCodec === "libx264") {
+           args.push("-crf", "23");

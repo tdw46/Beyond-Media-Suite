@@ -51,6 +51,8 @@ video-to-animation, and every video output format exposed by xPic:
   dimensions proportionally only when quality alone cannot meet the ceiling;
 - MP4, MKV, MOV, FLV, and TS use measured two-pass H.264; WebM uses measured
   two-pass VP9 with alpha support; AVI and WMV use iterative native encoders;
+- both video passes now use the same explicit frame-timing mode, preventing
+  high nominal source rates from duplicating frames or crashing MOV → MP4;
 - video bitrate is recalibrated against the actual encoded byte size until the
   result fits the requested ceiling, with a small audio and container budget;
 - Merge Frames can create WebP, GIF, or alpha-capable WebM and remembers a

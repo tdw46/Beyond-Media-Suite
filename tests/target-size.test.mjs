@@ -122,6 +122,38 @@ test("media batches are cancellable and clean up their process trees", async () 
   assert.match(patch, /execMedia/);
 });
 
+test("MOV to MP4 keeps two-pass timing stable and distinguishes crashes from cancellation", async () => {
+  const [patch, build] = await Promise.all([
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(
+        new URL(
+          "../patches/xpic-2.1.3-mov-mp4-frame-rate.patch",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ),
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+    ),
+  ]);
+  assert.ok((patch.match(/fpsMode: "vfr"/g) || []).length >= 5);
+  assert.match(patch, /fpsMode: "cfr"/);
+  assert.match(
+    patch,
+    /\.\.\.\(profile\.fpsMode \? \["-fps_mode", profile\.fpsMode\] : \[\]\)/,
+  );
+  assert.match(patch, /cancelledMediaProcesses\.add\(child\)/);
+  assert.match(patch, /const cancelled = cancelledMediaProcesses\.has\(child\)/);
+  assert.match(patch, /terminated unexpectedly \(\$\{signal\}\)/);
+  assert.match(
+    patch,
+    /finishMediaJob:[\s\S]{0,220}mediaJobs\.get\(id2\)\?\.size[\s\S]{0,120}cleanupMediaTemps/,
+  );
+  assert.match(build, /xpic-2\.1\.3-mov-mp4-frame-rate\.patch/);
+  assert.match(build, /movMp4FrameRatePatchPath/);
+});
+
 test("target-sized WebP starts at a frame-count-aware scale", async () => {
   const targetBytes = 750_000;
   const frames = 336;
@@ -572,8 +604,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.21/);
-  assert.match(build, /2\.1\.3\.21/);
+  assert.match(build, /2\.1\.3-fork\.22/);
+  assert.match(build, /2\.1\.3\.22/);
 });
 
 test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {
