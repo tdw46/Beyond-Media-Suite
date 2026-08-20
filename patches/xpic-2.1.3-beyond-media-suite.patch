@@ -25,7 +25,7 @@
      } catch (e) {
        console.log("Failed to remove temporary file:", filePath, e);
      }
-@@ -1715,7 +1722,108 @@
+@@ -1715,7 +1722,91 @@
        width: dimensions ? Number(dimensions[1]) : null,
        height: dimensions ? Number(dimensions[2]) : null,
      };
@@ -46,7 +46,7 @@
 +      throw new Error("Only YouTube video URLs are supported.");
 +    }
 +    return parsed.toString();
-   };
++  };
 +  const ytDlpPath = () =>
 +    app2.isPackaged
 +      ? path.join(process.resourcesPath, "tools", "yt-dlp")
@@ -78,7 +78,7 @@
 +      } catch {}
 +    }
 +    return youtubeNodeRuntime;
-+  };
+   };
 +  const ytDlpArgs = () => {
 +    const runtime = findYouTubeNodeRuntime();
 +    return [
@@ -114,42 +114,24 @@
 +    thumbnail: String(info?.thumbnail || ""),
 +    uploader: String(info?.uploader || ""),
 +  });
-+  const registerYouTubeStream = (url, headers, kind) => {
-+    if (!/^https:\/\//.test(String(url || ""))) return "";
-+    const streams = app2.__beyondYouTubeStreams || new Map();
-+    app2.__beyondYouTubeStreams = streams;
-+    const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-+    streams.set(token, {
-+      url,
-+      headers: headers && typeof headers === "object" ? headers : {},
-+      kind,
-+      createdAt: Date.now(),
-+    });
-+    for (const [key, value] of streams) {
-+      if (streams.size <= 8 && Date.now() - value.createdAt < 216e5) break;
-+      streams.delete(key);
-+    }
-+    return `xpic://youtube-stream/${token}`;
-+  };
    const changeMenu = (opt) => {
      const { id, email, newId } = opt;
      const menu22 = electron.Menu.getApplicationMenu();
-@@ -1833,6 +1941,137 @@
+@@ -1832,6 +1923,123 @@
+     getSystemFontFamilies: () => getSystemFontFamilies(),
      getCachePath: () => {
        return app2.getPath("temp");
-     },
++    },
 +    getDownloadsPath: () => app2.getPath("downloads"),
 +    youtubeInspect: async (_, opt) => {
 +      const url = validateYouTubeUrl(opt?.url);
 +      const executable = await ensureYtDlp();
 +      const printTemplate =
-+        '{"id":%(id)j,"title":%(title)j,"duration":%(duration)j,"width":%(width)j,"height":%(height)j,"fps":%(fps)j,"thumbnail":%(thumbnail)j,"uploader":%(uploader)j,"video_url":%(requested_formats.0.url)j,"audio_url":%(requested_formats.1.url)j,"video_headers":%(requested_formats.0.http_headers)j,"audio_headers":%(requested_formats.1.http_headers)j}';
++        '{"id":%(id)j,"title":%(title)j,"duration":%(duration)j,"width":%(width)j,"height":%(height)j,"fps":%(fps)j,"thumbnail":%(thumbnail)j,"uploader":%(uploader)j}';
 +      const { stdout } = await runMediaProcess(
 +        executable,
 +        [
 +          ...ytDlpArgs(),
-+          "--format",
-+          "bv*[vcodec^=avc1][height<=720]+ba[acodec^=mp4a]/bv*[height<=720]+ba/bv*",
 +          "--skip-download",
 +          "--print",
 +          printTemplate,
@@ -158,19 +140,7 @@
 +        ytDlpProcessOptions({ jobId: opt?.jobId }),
 +      );
 +      const info = JSON.parse(stdout);
-+      return {
-+        ...safeYouTubeMetadata(info),
-+        previewVideoUrl: registerYouTubeStream(
-+          info.video_url,
-+          info.video_headers,
-+          "video",
-+        ),
-+        previewAudioUrl: registerYouTubeStream(
-+          info.audio_url,
-+          info.audio_headers,
-+          "audio",
-+        ),
-+      };
++      return safeYouTubeMetadata(info);
 +    },
 +    youtubeDownloadClip: async (_, opt) => {
 +      const url = validateYouTubeUrl(opt?.url);
@@ -268,11 +238,10 @@
 +        { jobId: opt?.jobId },
 +      );
 +      return { path: outPath, size: fs.statSync(outPath).size };
-+    },
+     },
      moveFile: (_, src, dest) => {
        return new Promise((resolve, reject) => {
-         fs.mkdir(path.dirname(dest), { recursive: true }, (err) => {
-@@ -1875,7 +2114,7 @@
+@@ -1875,7 +2083,7 @@
        try {
          await fs.promises.unlink(backup);
        } catch (error) {
@@ -281,7 +250,7 @@
        }
        return null;
      },
-@@ -3547,7 +3786,7 @@
+@@ -3547,7 +3755,7 @@
        submenu: [
          {
            role: "about",
@@ -290,7 +259,7 @@
          },
          {
            label: "检查更新",
-@@ -3579,7 +3818,7 @@
+@@ -3579,7 +3787,7 @@
                  defaultId: 1,
                  title: "警告",
                  detail:
@@ -299,7 +268,7 @@
                  cancelId: 0,
                  icon: icon$1,
                  noLink: true,
-@@ -3598,7 +3837,7 @@
+@@ -3598,7 +3806,7 @@
          { type: "separator" },
          {
            role: "hide",
@@ -308,7 +277,7 @@
          },
          {
            role: "hideOthers",
-@@ -3883,8 +4122,24 @@
+@@ -3883,8 +4091,24 @@
  const WIN_MIN_WIDTH = 800;
  const WIN_MIN_HEIGHT = 600;
  const app = electron.app;
@@ -334,7 +303,7 @@
  const store = new Store();
  {
    const cfg = store.get("xpic-config");
-@@ -3903,12 +4158,12 @@
+@@ -3903,12 +4127,12 @@
  );
  app.dock?.setIcon(icon);
  app.setAboutPanelOptions({
@@ -352,33 +321,41 @@
    iconPath: path.join(assetsBase, "main/icon.png"),
  });
  const isWin = os.platform() === "win32";
-@@ -4272,6 +4527,18 @@
-       let { host, pathname } = new URL(request.url);
-       pathname = decodeURIComponent(pathname).slice(1);
-       host = decodeURIComponent(host);
-+      if (host === "youtube-stream") {
-+        const stream = app.__beyondYouTubeStreams?.get(pathname);
-+        if (!stream) return new Response("Preview stream expired", { status: 404 });
-+        const headers = new Headers(stream.headers || {});
-+        const range = request.headers.get("Range");
-+        if (range) headers.set("Range", range);
-+        return electron.net.fetch(stream.url, {
-+          method: request.method === "HEAD" ? "HEAD" : "GET",
-+          headers,
-+          cache: "no-store",
-+        });
-+      }
-       if (host === THUMBNAIL_DOMAIN) {
-         return getThumbnail(pathname)
-           .then(
+@@ -4105,6 +4329,28 @@
+       webSecurity: true,
+     },
+   });
++  if (!app.__beyondYouTubeReferrerHooked) {
++    app.__beyondYouTubeReferrerHooked = true;
++    app.__win__.webContents.session.webRequest.onBeforeSendHeaders(
++      {
++        urls: ["https://youtube.com/*", "https://*.youtube.com/*"],
++      },
++      (details, callback) => {
++        const requestHeaders = { ...details.requestHeaders };
++        let found = false;
++        for (const key of Object.keys(requestHeaders)) {
++          if (key.toLowerCase() === "referer") {
++            requestHeaders[key] = "https://github.com/tdw46/Beyond-Media-Suite/";
++            found = true;
++          }
++        }
++        if (!found) {
++          requestHeaders.Referer = "https://github.com/tdw46/Beyond-Media-Suite/";
++        }
++        callback({ requestHeaders });
++      },
++    );
++  }
+   mainWindowState.manage(app.__win__);
+   app.__win__?.once("ready-to-show", () => {
+     app.__win__?.show();
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22883,6 +22883,26 @@
-   name: "vcompress",
-   initialConfig: {
+@@ -22885,6 +22885,26 @@
      quality: "",
-+  },
-+});
+   },
+ });
 +const youtubeSlice = createConfigSlice({
 +  name: "youtube",
 +  initialConfig: {
@@ -397,9 +374,11 @@
 +    outputName: "youtube_clip",
 +    targetFileSizes: {},
 +    gifColorReduction: false,
-   },
- });
++  },
++});
  const collageSlice = createConfigSlice({
+   name: "collage",
+   initialConfig: {
 @@ -22961,6 +22981,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
@@ -598,10 +577,12 @@
            }),
          ],
        }),
-@@ -43011,12 +43107,807 @@
+@@ -43009,6 +43105,945 @@
+   updateConfig: () => ({ type: "@@noop" }),
+   renderParams: () => null,
    Custom: WorkflowWorkspace,
-   noDrag: true,
- };
++  noDrag: true,
++};
 +const parseYouTubeTime = (value) => {
 +  const text = String(value || "").trim();
 +  if (/^\d+(?:\.\d{1,3})?$/.test(text)) {
@@ -628,6 +609,87 @@
 +    .replace(/\s+/g, " ")
 +    .trim()
 +    .slice(0, 120) || "youtube_clip";
++const youtubeVideoIdFromUrl = (value) => {
++  const input = String(value || "").trim();
++  if (!input) return "";
++  if (/^[A-Za-z0-9_-]{11}$/.test(input)) return input;
++  try {
++    const parsed = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
++    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
++    let candidate = "";
++    if (host === "youtu.be") candidate = parsed.pathname.split("/").filter(Boolean)[0] || "";
++    else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
++      candidate = parsed.searchParams.get("v") || "";
++      if (!candidate) {
++        const parts = parsed.pathname.split("/").filter(Boolean);
++        if (["embed", "shorts", "live"].includes(parts[0])) candidate = parts[1] || "";
++      }
++    }
++    return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : "";
++  } catch {
++    return "";
++  }
++};
++const youtubeStartMsFromUrl = (value) => {
++  const input = String(value || "").trim();
++  if (!input) return null;
++  const parseOffset = (raw) => {
++    const text = String(raw || "").trim().toLowerCase();
++    if (!text) return null;
++    if (/^\d+(?:\.\d+)?$/.test(text)) return Math.round(Number(text) * 1e3);
++    let seconds = 0;
++    let matched = "";
++    for (const part of text.matchAll(/(\d+(?:\.\d+)?)(h|m|s)/g)) {
++      matched += part[0];
++      const multiplier = part[2] === "h" ? 3600 : part[2] === "m" ? 60 : 1;
++      seconds += Number(part[1]) * multiplier;
++    }
++    return matched === text ? Math.round(seconds * 1e3) : null;
++  };
++  try {
++    const parsed = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
++    for (const key of ["t", "start", "time_continue"]) {
++      const offset = parseOffset(parsed.searchParams.get(key));
++      if (offset != null) return offset;
++    }
++    const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
++    for (const key of ["t", "start"]) {
++      const offset = parseOffset(hash.get(key));
++      if (offset != null) return offset;
++    }
++  } catch {}
++  return null;
++};
++let youtubeIframeApiPromise;
++const loadYouTubeIframeApi = () => {
++  if (window.YT?.Player) return Promise.resolve(window.YT);
++  if (youtubeIframeApiPromise) return youtubeIframeApiPromise;
++  youtubeIframeApiPromise = new Promise((resolve, reject) => {
++    const previousReady = window.onYouTubeIframeAPIReady;
++    const timeout = window.setTimeout(
++      () => reject(new Error("YouTube preview player timed out while loading.")),
++      15e3,
++    );
++    window.onYouTubeIframeAPIReady = () => {
++      previousReady?.();
++      window.clearTimeout(timeout);
++      resolve(window.YT);
++    };
++    const existing = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
++    if (!existing) {
++      const script = document.createElement("script");
++      script.src = "https://www.youtube.com/iframe_api";
++      script.async = true;
++      script.onerror = () => {
++        window.clearTimeout(timeout);
++        youtubeIframeApiPromise = null;
++        reject(new Error("YouTube preview player could not be loaded."));
++      };
++      document.head.appendChild(script);
++    }
++  });
++  return youtubeIframeApiPromise;
++};
 +const YOUTUBE_OUTPUT_OPTIONS = [
 +  { label: "GIF", value: "gif" },
 +  { label: "WebP", value: "webp" },
@@ -646,11 +708,15 @@
 +  const [stage, setStage] = reactExports.useState("idle");
 +  const [error, setError] = reactExports.useState("");
 +  const [result, setResult] = reactExports.useState(null);
-+  const [previewUrl, setPreviewUrl] = reactExports.useState("");
-+  const [previewAudioUrl, setPreviewAudioUrl] = reactExports.useState("");
++  const [previewVideoId, setPreviewVideoId] = reactExports.useState(() =>
++    youtubeVideoIdFromUrl(config.url),
++  );
 +  const jobRef = reactExports.useRef("");
-+  const videoRef = reactExports.useRef(null);
-+  const audioRef = reactExports.useRef(null);
++  const youtubeHostRef = reactExports.useRef(null);
++  const youtubePlayerRef = reactExports.useRef(null);
++  const selectedRangeRef = reactExports.useRef({ startMs: 0, endMs: 5000 });
++  const autoInspectUrlRef = reactExports.useRef("");
++  const inspectSequenceRef = reactExports.useRef(0);
 +  const fineDragRef = reactExports.useRef(null);
 +  const cancelledRef = reactExports.useRef(false);
 +  const busy = !["idle", "done", "error"].includes(stage);
@@ -667,7 +733,9 @@
 +      .then((value) => setOutputDir(value || ""))
 +      .catch(() => {});
 +  }, []);
-+  const inspect = async () => {
++  const inspect = async (urlOverride = config.url) => {
++    const url = typeof urlOverride === "string" ? urlOverride : config.url;
++    const sequence = ++inspectSequenceRef.current;
 +    const jobId = `youtube-inspect-${Date.now()}`;
 +    jobRef.current = jobId;
 +    cancelledRef.current = false;
@@ -675,19 +743,26 @@
 +    setError("");
 +    setResult(null);
 +    try {
-+      const info = await window.x("youtubeInspect", { url: config.url, jobId });
++      const info = await window.x("youtubeInspect", { url, jobId });
++      if (sequence !== inspectSequenceRef.current) return;
 +      setMetadata(info);
-+      setPreviewUrl(info.previewVideoUrl || "");
-+      setPreviewAudioUrl(info.previewAudioUrl || "");
++      setPreviewVideoId(info.id || youtubeVideoIdFromUrl(url));
 +      const durationMs = Math.round(Number(info.duration || 0) * 1e3);
++      const requestedStartMs = Math.min(
++        Math.max(0, durationMs - 1),
++        Math.max(0, youtubeStartMsFromUrl(url) || 0),
++      );
++      const requestedLengthMs = Math.max(1, Number(config.clipLengthMs) || 5e3);
 +      update({
 +        outputName: safeYouTubeStem(info.title),
-+        startTime: "00:00:00.000",
-+        endTime: formatYouTubeTime(Math.min(5e3, durationMs || 5e3)),
++        startTime: formatYouTubeTime(requestedStartMs),
++        endTime: formatYouTubeTime(
++          Math.min(durationMs || requestedStartMs + requestedLengthMs, requestedStartMs + requestedLengthMs),
++        ),
 +      });
 +      setStage("idle");
 +    } catch (cause) {
-+      if (!cancelledRef.current) {
++      if (!cancelledRef.current && sequence === inspectSequenceRef.current) {
 +        setError(cause?.message || String(cause));
 +        setStage("error");
 +      }
@@ -695,6 +770,19 @@
 +      await window.x("finishMediaJob", jobId).catch(() => {});
 +    }
 +  };
++  reactExports.useEffect(() => {
++    const url = String(config.url || "").trim();
++    if (!youtubeVideoIdFromUrl(url)) {
++      autoInspectUrlRef.current = "";
++      return;
++    }
++    if (autoInspectUrlRef.current === url) return;
++    const timer = window.setTimeout(() => {
++      autoInspectUrlRef.current = url;
++      void inspect(url);
++    }, 350);
++    return () => window.clearTimeout(timer);
++  }, [config.url]);
 +  const createClip = async () => {
 +    const startMs = parseYouTubeTime(config.startTime);
 +    const endMs = parseYouTubeTime(config.endTime);
@@ -797,7 +885,8 @@
 +            : "";
 +  const videoDurationMs = Math.max(
 +    1,
-+    Math.round(Number(metadata?.duration || 0) * 1e3),
++    Math.round(Number(metadata?.duration || 0) * 1e3) ||
++      Math.max(5e3, parseYouTubeTime(config.endTime) || 5e3),
 +  );
 +  const selectedStartMs = Math.max(
 +    0,
@@ -807,14 +896,77 @@
 +    selectedStartMs + 1,
 +    Math.min(videoDurationMs, parseYouTubeTime(config.endTime) || 5e3),
 +  );
++  selectedRangeRef.current = {
++    startMs: selectedStartMs,
++    endMs: selectedEndMs,
++  };
++  reactExports.useEffect(() => {
++    if (!previewVideoId || !youtubeHostRef.current) {
++      youtubePlayerRef.current = null;
++      return;
++    }
++    let disposed = false;
++    let player = null;
++    const host = youtubeHostRef.current;
++    loadYouTubeIframeApi()
++      .then((YT) => {
++        if (disposed || !host.isConnected) return;
++        player = new YT.Player(host, {
++          width: "100%",
++          height: "100%",
++          videoId: previewVideoId,
++          playerVars: {
++            controls: 1,
++            playsinline: 1,
++            rel: 0,
++            fs: 1,
++            widget_referrer: "https://github.com/tdw46/Beyond-Media-Suite/",
++          },
++          events: {
++            onReady: (event) => {
++              if (disposed) return;
++              youtubePlayerRef.current = event.target;
++              event.target.seekTo(selectedRangeRef.current.startMs / 1e3, true);
++              event.target.pauseVideo();
++            },
++            onStateChange: (event) => {
++              if (disposed || event.data !== YT.PlayerState.PLAYING) return;
++              const currentMs = event.target.getCurrentTime() * 1e3;
++              const range = selectedRangeRef.current;
++              if (currentMs < range.startMs - 100 || currentMs >= range.endMs - 20) {
++                event.target.seekTo(range.startMs / 1e3, true);
++              }
++            },
++          },
++        });
++      })
++      .catch((cause) => {
++        if (!disposed) setError(cause?.message || String(cause));
++      });
++    return () => {
++      disposed = true;
++      if (youtubePlayerRef.current === player) youtubePlayerRef.current = null;
++      try {
++        player?.destroy();
++      } catch {}
++    };
++  }, [previewVideoId]);
++  reactExports.useEffect(() => {
++    const timer = window.setInterval(() => {
++      const player = youtubePlayerRef.current;
++      if (!player || player.getPlayerState?.() !== 1) return;
++      const currentMs = player.getCurrentTime() * 1e3;
++      const range = selectedRangeRef.current;
++      if (currentMs >= range.endMs - 20 || currentMs < range.startMs - 100) {
++        player.seekTo(range.startMs / 1e3, true);
++        player.playVideo();
++      }
++    }, 50);
++    return () => window.clearInterval(timer);
++  }, []);
 +  const seekPreview = (value) => {
 +    const seconds = Math.max(0, Number(value) / 1e3);
-+    if (videoRef.current && Number.isFinite(seconds)) {
-+      videoRef.current.currentTime = seconds;
-+    }
-+    if (audioRef.current && Number.isFinite(seconds)) {
-+      audioRef.current.currentTime = seconds;
-+    }
++    if (Number.isFinite(seconds)) youtubePlayerRef.current?.seekTo?.(seconds, true);
 +  };
 +  const setTimelineStart = (value) => {
 +    let startMs = Math.max(
@@ -924,7 +1076,7 @@
 +                ],
 +              })
 +            : null,
-+          metadata
++          previewVideoId || metadata
 +            ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +                style: {
 +                  marginTop: 16,
@@ -935,58 +1087,22 @@
 +                  maxWidth: 720,
 +                },
 +                children: [
-+                  previewUrl
-+                    ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
-+                        jsxRuntimeExports.Fragment,
-+                        {
-+                          children: [
-+                            /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
-+                              ref: videoRef,
-+                              src: previewUrl,
-+                              controls: true,
-+                              preload: "metadata",
-+                              onPlay: () => {
-+                                if (audioRef.current) {
-+                                  audioRef.current.currentTime =
-+                                    videoRef.current?.currentTime || 0;
-+                                  void audioRef.current.play().catch(() => {});
-+                                }
-+                              },
-+                              onPause: () => audioRef.current?.pause(),
-+                              onSeeked: () => {
-+                                if (audioRef.current) {
-+                                  audioRef.current.currentTime =
-+                                    videoRef.current?.currentTime || 0;
-+                                }
-+                              },
-+                              onTimeUpdate: () => {
-+                                const video = videoRef.current;
-+                                if (video && video.currentTime * 1e3 >= selectedEndMs) {
-+                                  video.pause();
-+                                  seekPreview(selectedStartMs);
-+                                }
-+                              },
-+                              style: {
-+                                display: "block",
-+                                width: "100%",
-+                                maxHeight: 390,
-+                                aspectRatio: "16 / 9",
-+                                objectFit: "contain",
-+                                background: "#000",
-+                                borderRadius: 10,
-+                              },
-+                            }),
-+                            previewAudioUrl
-+                              ? /* @__PURE__ */ jsxRuntimeExports.jsx("audio", {
-+                                  ref: audioRef,
-+                                  src: previewAudioUrl,
-+                                  preload: "metadata",
-+                                  style: { display: "none" },
-+                                })
-+                              : null,
-+                          ],
++                  previewVideoId
++                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                        style: {
++                          width: "100%",
++                          maxHeight: 390,
++                          aspectRatio: "16 / 9",
++                          background: "#000",
++                          borderRadius: 10,
++                          overflow: "hidden",
 +                        },
-+                      )
++                        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                          key: previewVideoId,
++                          ref: youtubeHostRef,
++                          style: { width: "100%", height: "100%" },
++                        }),
++                      })
 +                    : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
 +                        style: {
 +                          display: "grid",
@@ -1000,7 +1116,8 @@
 +                        },
 +                        children: t2("youtube.load"),
 +                      }),
-+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                  metadata
++                    ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +                    style: { marginTop: 18 },
 +                    children: [
 +                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
@@ -1198,7 +1315,8 @@
 +                        children: t2("youtube.previewHint"),
 +                      }),
 +                    ],
-+                  }),
++                      })
++                    : null,
 +                ],
 +              })
 +            : null,
@@ -1260,17 +1378,25 @@
 +                value: config.url,
 +                placeholder: "https://www.youtube.com/watch?v=…",
 +                onChange: (url) => {
-+                  update({ url });
++                  const startMs = Math.max(0, youtubeStartMsFromUrl(url) || 0);
++                  const clipLengthMs = Math.max(
++                    1,
++                    Number(config.clipLengthMs) || 5e3,
++                  );
++                  update({
++                    url,
++                    startTime: formatYouTubeTime(startMs),
++                    endTime: formatYouTubeTime(startMs + clipLengthMs),
++                  });
 +                  setMetadata(null);
-+                  setPreviewUrl("");
-+                  setPreviewAudioUrl("");
++                  setPreviewVideoId(youtubeVideoIdFromUrl(url));
 +                },
 +              }),
 +              /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
 +                type: "button",
 +                className: "x-cfg-action",
 +                disabled: busy || !config.url,
-+                onClick: inspect,
++                onClick: () => inspect(),
 +                children: stage === "inspecting" ? t2("youtube.loading") : t2("youtube.load"),
 +              }),
 +              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
@@ -1394,11 +1520,10 @@
 +  updateConfig: updateYouTubeConfig,
 +  renderParams: () => null,
 +  Custom: YouTubeClipWorkspace,
-+  noDrag: true,
-+};
+   noDrag: true,
+ };
  const FLOW_MODULES = {
-   compress,
-   convert,
+@@ -43017,6 +44052,7 @@
    vconvert,
    vcompress,
    v2image,
@@ -1406,7 +1531,7 @@
    collage,
    merge: merge$1,
    crop,
-@@ -44634,8 +45525,8 @@
+@@ -44634,8 +45670,8 @@
                !window.isWin
                  ? /* @__PURE__ */ jsxRuntimeExports.jsx(Titlebar, {
                      title: MODULE_LABEL_KEYS[currentTab]
@@ -1417,7 +1542,7 @@
                    })
                  : null,
                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -45293,7 +46184,7 @@
+@@ -45293,7 +46329,7 @@
                        }),
                        /* @__PURE__ */ jsxRuntimeExports.jsx(Row, {
                          title: t2("settings.version"),
@@ -1425,4 +1550,4 @@
 +                        desc: `Beyond Media Suite ${version}`,
                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(
                            "span",
-                          {},
+                           {},

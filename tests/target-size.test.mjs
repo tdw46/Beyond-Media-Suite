@@ -604,8 +604,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.25/);
-  assert.match(build, /2\.1\.3\.25/);
+  assert.match(build, /2\.1\.3-fork\.26/);
+  assert.match(build, /2\.1\.3\.26/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -634,9 +634,20 @@ test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation
   assert.match(patch, /youtube\.startBeginning/);
   assert.match(patch, /youtube\.endFull/);
   assert.match(patch, /youtube\.fullVideo/);
-  assert.match(patch, /xpic:\/\/youtube-stream/);
-  assert.match(patch, /registerYouTubeStream/);
-  assert.match(patch, /videoRef\.current\.currentTime = seconds/);
+  assert.match(patch, /loadYouTubeIframeApi/);
+  assert.match(patch, /new YT\.Player/);
+  assert.match(patch, /youtubePlayerRef\.current\?\.seekTo/);
+  assert.match(patch, /player\.getPlayerState\?\.\(\) !== 1/);
+  assert.match(patch, /player\.playVideo\(\)/);
+  assert.match(patch, /onBeforeSendHeaders/);
+  assert.match(patch, /requestHeaders\.Referer/);
+  assert.match(patch, /github\.com\/tdw46\/Beyond-Media-Suite/);
+  assert.match(patch, /widget_referrer/);
+  assert.match(patch, /youtubeStartMsFromUrl/);
+  assert.match(patch, /new URLSearchParams\(parsed\.hash/);
+  assert.match(patch, /autoInspectUrlRef/);
+  assert.match(patch, /void inspect\(url\)/);
+  assert.match(patch, /startTime: formatYouTubeTime\(startMs\)/);
   assert.match(patch, /if \(startMs >= endMs\)/);
   assert.match(patch, /endMs = Math\.min\(videoDurationMs, startMs \+ pushLength\)/);
   assert.match(patch, /clipLengthMs: 5000/);
