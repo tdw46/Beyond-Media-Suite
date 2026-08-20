@@ -192,7 +192,7 @@ try {
   );
 
   packagedJson.productName = "Beyond Media Suite";
-  packagedJson.version = "2.1.3-fork.23";
+  packagedJson.version = "2.1.3-fork.24";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -254,7 +254,7 @@ try {
     "com.tdw46.beyond-media-suite",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.23", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.24", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

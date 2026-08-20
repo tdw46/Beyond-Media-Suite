@@ -604,8 +604,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.23/);
-  assert.match(build, /2\.1\.3\.23/);
+  assert.match(build, /2\.1\.3-fork\.24/);
+  assert.match(build, /2\.1\.3\.24/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -629,7 +629,13 @@ test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation
   assert.match(patch, /youtubeFrameBuffer/);
   assert.match(patch, /parseYouTubeTime/);
   assert.match(patch, /startTime: "00:00:00\.000"/);
-  assert.match(patch, /endTime: "00:00:03\.000"/);
+  assert.match(patch, /endTime: "00:00:05\.000"/);
+  assert.match(patch, /preview: true/);
+  assert.match(patch, /type: "range"/);
+  assert.match(patch, /youtube\.startBeginning/);
+  assert.match(patch, /youtube\.endFull/);
+  assert.match(patch, /youtube\.fullVideo/);
+  assert.match(patch, /previewLength = Math\.min\(12e3/);
   assert.match(patch, /targetSizeFor\(config, format\)/);
   assert.match(patch, /preparedInput: true/);
   assert.match(patch, /\.\.\.vWriteOptions/);

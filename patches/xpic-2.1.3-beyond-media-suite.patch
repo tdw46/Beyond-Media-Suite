@@ -25,11 +25,10 @@
      } catch (e) {
        console.log("Failed to remove temporary file:", filePath, e);
      }
-@@ -1715,7 +1722,91 @@
-       width: dimensions ? Number(dimensions[1]) : null,
+@@ -1716,6 +1723,90 @@
        height: dimensions ? Number(dimensions[2]) : null,
      };
-+  };
+   };
 +  let youtubeNodeRuntime;
 +  const validateYouTubeUrl = (value) => {
 +    let parsed;
@@ -78,7 +77,7 @@
 +      } catch {}
 +    }
 +    return youtubeNodeRuntime;
-   };
++  };
 +  const ytDlpArgs = () => {
 +    const runtime = findYouTubeNodeRuntime();
 +    return [
@@ -117,7 +116,7 @@
    const changeMenu = (opt) => {
      const { id, email, newId } = opt;
      const menu22 = electron.Menu.getApplicationMenu();
-@@ -1833,6 +1924,122 @@
+@@ -1833,6 +1924,126 @@
      getCachePath: () => {
        return app2.getPath("temp");
      },
@@ -146,6 +145,7 @@
 +      const endMs = Math.max(0, Math.round(Number(opt?.endMs) || 0));
 +      if (endMs <= startMs) throw new Error("End time must be after start time.");
 +      const executable = await ensureYtDlp();
++      const preview = Boolean(opt?.preview);
 +      const tempDir = fs.mkdtempSync(
 +        path.join(app2.getPath("temp"), "beyond-media-youtube-"),
 +      );
@@ -161,9 +161,12 @@
 +          section,
 +          "--force-keyframes-at-cuts",
 +          "--format",
-+          "bv*+ba/b",
++          preview
++            ? "b[ext=mp4][height<=720]/bv*[vcodec^=avc1][height<=720]+ba[ext=m4a]/bv*+ba/b"
++            : "bv*+ba/b",
 +          "--merge-output-format",
-+          "mkv",
++          preview ? "mp4" : "mkv",
++          ...(preview ? ["--recode-video", "mp4"] : []),
 +          "--output",
 +          outputTemplate,
 +          "--print",
@@ -240,7 +243,7 @@
      moveFile: (_, src, dest) => {
        return new Promise((resolve, reject) => {
          fs.mkdir(path.dirname(dest), { recursive: true }, (err) => {
-@@ -1875,7 +2082,7 @@
+@@ -1875,7 +2086,7 @@
        try {
          await fs.promises.unlink(backup);
        } catch (error) {
@@ -249,7 +252,7 @@
        }
        return null;
      },
-@@ -3547,7 +3754,7 @@
+@@ -3547,7 +3758,7 @@
        submenu: [
          {
            role: "about",
@@ -258,7 +261,7 @@
          },
          {
            label: "检查更新",
-@@ -3579,7 +3786,7 @@
+@@ -3579,7 +3790,7 @@
                  defaultId: 1,
                  title: "警告",
                  detail:
@@ -267,7 +270,7 @@
                  cancelId: 0,
                  icon: icon$1,
                  noLink: true,
-@@ -3598,7 +3805,7 @@
+@@ -3598,7 +3809,7 @@
          { type: "separator" },
          {
            role: "hide",
@@ -276,7 +279,7 @@
          },
          {
            role: "hideOthers",
-@@ -3883,8 +4090,24 @@
+@@ -3883,8 +4094,24 @@
  const WIN_MIN_WIDTH = 800;
  const WIN_MIN_HEIGHT = 600;
  const app = electron.app;
@@ -302,7 +305,7 @@
  const store = new Store();
  {
    const cfg = store.get("xpic-config");
-@@ -3903,12 +4126,12 @@
+@@ -3903,12 +4130,12 @@
  );
  app.dock?.setIcon(icon);
  app.setAboutPanelOptions({
@@ -322,18 +325,17 @@
  const isWin = os.platform() === "win32";
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22883,6 +22883,24 @@
-   name: "vcompress",
-   initialConfig: {
+@@ -22885,6 +22885,25 @@
      quality: "",
-+  },
-+});
+   },
+ });
 +const youtubeSlice = createConfigSlice({
 +  name: "youtube",
 +  initialConfig: {
 +    url: "",
 +    startTime: "00:00:00.000",
-+    endTime: "00:00:03.000",
++    endTime: "00:00:05.000",
++    rangeUiVersion: 1,
 +    fps: 24,
 +    width: 1280,
 +    height: 720,
@@ -344,10 +346,12 @@
 +    outputName: "youtube_clip",
 +    targetFileSizes: {},
 +    gifColorReduction: false,
-   },
- });
++  },
++});
  const collageSlice = createConfigSlice({
-@@ -22961,6 +22979,7 @@
+   name: "collage",
+   initialConfig: {
+@@ -22961,6 +22980,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -355,7 +359,7 @@
  const { updateConfig: updateCollageConfig } = collageSlice.actions;
  const { updateGlobalConfig } = globalSlice.actions;
  const {
-@@ -22992,6 +23011,7 @@
+@@ -22992,6 +23012,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -363,7 +367,7 @@
      collage: collageSlice.reducer,
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
-@@ -23370,6 +23390,7 @@
+@@ -23370,6 +23391,7 @@
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
    "nav.collage": "拼贴画布",
@@ -371,7 +375,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23434,7 +23455,7 @@
+@@ -23434,7 +23456,7 @@
    "settings.updDev": "开发模式不检查更新",
    "settings.telemetry": "匿名使用统计",
    "settings.telemetryHint":
@@ -380,7 +384,7 @@
    "settings.replayGuide": "重放新手引导",
    "settings.feedback": "问题反馈",
    "settings.about": "关于作者",
-@@ -23470,6 +23491,7 @@
+@@ -23470,6 +23492,7 @@
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
    "flow.verb.collage": "创建",
@@ -388,7 +392,7 @@
    "flow.verb.merge": "合成",
    "flow.verb.crop": "裁剪",
    "flow.mergeName": "动图名称",
-@@ -23677,6 +23699,31 @@
+@@ -23677,6 +23700,38 @@
    "flow.nearLossless": "近乎无损",
    "flow.preset": "预处理风格",
    "flow.outFormat": "输出格式",
@@ -398,6 +402,13 @@
 +  "youtube.start": "开始时间 (毫秒精度)",
 +  "youtube.end": "结束时间 (毫秒精度)",
 +  "youtube.timeHint": "使用 HH:MM:SS.mmm，例如 00:01:02.350。",
++  "youtube.timeline": "片段时间线",
++  "youtube.selection": "所选时长：{time}",
++  "youtube.startBeginning": "开始设为视频开头",
++  "youtube.endFull": "结束设为视频结尾",
++  "youtube.fullVideo": "选择完整视频",
++  "youtube.previewBuffering": "正在缓冲实时预览…",
++  "youtube.previewHint": "拖动任一边界后会自动缓冲该边界附近最多 12 秒的可播放预览；最终导出仍使用完整所选范围。",
 +  "youtube.width": "宽度 (px)",
 +  "youtube.height": "高度 (px)",
 +  "youtube.fit": "画面适配",
@@ -420,7 +431,7 @@
    "flow.jpegWarn": "转 JPEG 体积可能变大，建议用 WebP。",
    "flow.outDir": "输出目录",
    "flow.choose": "选择",
-@@ -23692,7 +23739,7 @@
+@@ -23692,7 +23747,7 @@
    "flow.placeholder.title": "该模块正在迁移到新界面",
    "flow.placeholder.desc": "其余模块将分阶段接入单窗工作流",
    // 系统提示 Alert
@@ -429,7 +440,7 @@
    "alert.proDesc":
      "当前为未激活状态。激活后解锁无限批量、视频处理与全部输出格式。",
    "alert.proFeat1": "每次处理无数量上限",
-@@ -23850,6 +23897,7 @@
+@@ -23850,6 +23905,7 @@
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
    "nav.collage": "Collage",
@@ -437,7 +448,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23912,7 +23960,7 @@
+@@ -23912,7 +23968,7 @@
    "settings.updDev": "Dev mode: update check skipped",
    "settings.telemetry": "Anonymous usage stats",
    "settings.telemetryHint":
@@ -446,7 +457,7 @@
    "settings.replayGuide": "Replay guide",
    "settings.feedback": "Feedback",
    "settings.about": "About",
-@@ -23947,6 +23995,7 @@
+@@ -23947,6 +24003,7 @@
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
    "flow.verb.collage": "Create",
@@ -454,7 +465,7 @@
    "flow.verb.merge": "Merge",
    "flow.verb.crop": "Crop",
    "flow.mergeName": "Animation name",
-@@ -24150,6 +24199,31 @@
+@@ -24150,6 +24207,38 @@
    "flow.nearLossless": "Near-lossless",
    "flow.preset": "Preset",
    "flow.outFormat": "Output format",
@@ -464,6 +475,13 @@
 +  "youtube.start": "Start time (millisecond precision)",
 +  "youtube.end": "End time (millisecond precision)",
 +  "youtube.timeHint": "Use HH:MM:SS.mmm, for example 00:01:02.350.",
++  "youtube.timeline": "Clip timeline",
++  "youtube.selection": "Selected duration: {time}",
++  "youtube.startBeginning": "Start at beginning",
++  "youtube.endFull": "End at video end",
++  "youtube.fullVideo": "Use full video",
++  "youtube.previewBuffering": "Buffering live preview…",
++  "youtube.previewHint": "Moving either boundary automatically buffers up to 12 seconds near that edge for playback. The final export still uses the complete selected range.",
 +  "youtube.width": "Width (px)",
 +  "youtube.height": "Height (px)",
 +  "youtube.fit": "Frame fitting",
@@ -486,7 +504,7 @@
    "flow.jpegWarn": "Converting to JPEG may grow the size; WebP is recommended.",
    "flow.outDir": "Output folder",
    "flow.choose": "Choose",
-@@ -24164,7 +24238,7 @@
+@@ -24164,7 +24253,7 @@
    "flow.sub.generic": "{n} file(s)",
    "flow.placeholder.title": "This module is moving to the new UI",
    "flow.placeholder.desc": "Remaining modules land in later stages",
@@ -495,7 +513,7 @@
    "alert.proDesc":
      "Currently unactivated. Activate to unlock unlimited batches, video processing and all output formats.",
    "alert.proFeat1": "No per-batch limit",
-@@ -25989,7 +26063,7 @@
+@@ -25989,7 +26078,7 @@
                                  " ",
                                  /* @__PURE__ */ jsxRuntimeExports.jsx("a", {
                                    className: "x-link-btn",
@@ -504,7 +522,7 @@
                                    target: "_blank",
                                    rel: "noreferrer",
                                    children: "付款页面",
-@@ -26511,6 +26585,7 @@
+@@ -26511,6 +26600,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -512,7 +530,7 @@
        { key: "collage", labelKey: "nav.collage", Icon: Layers },
      ],
    },
-@@ -26540,11 +26615,12 @@
+@@ -26540,11 +26630,12 @@
              className: "x-logo",
              src: logoSrc,
              draggable: false,
@@ -527,7 +545,7 @@
            }),
          ],
        }),
-@@ -43011,12 +43087,443 @@
+@@ -43011,12 +43102,722 @@
    Custom: WorkflowWorkspace,
    noDrag: true,
  };
@@ -575,15 +593,79 @@
 +  const [stage, setStage] = reactExports.useState("idle");
 +  const [error, setError] = reactExports.useState("");
 +  const [result, setResult] = reactExports.useState(null);
++  const [previewUrl, setPreviewUrl] = reactExports.useState("");
++  const [previewBusy, setPreviewBusy] = reactExports.useState(false);
 +  const jobRef = reactExports.useRef("");
++  const previewJobRef = reactExports.useRef("");
++  const previewAnchorRef = reactExports.useRef("start");
 +  const cancelledRef = reactExports.useRef(false);
 +  const busy = !["idle", "done", "error"].includes(stage);
 +  reactExports.useEffect(() => {
++    if (config.rangeUiVersion !== 1) {
++      update({ endTime: "00:00:05.000", rangeUiVersion: 1 });
++    }
 +    window
 +      .x("getDownloadsPath")
 +      .then((value) => setOutputDir(value || ""))
 +      .catch(() => {});
 +  }, []);
++  reactExports.useEffect(
++    () => () => {
++      if (previewJobRef.current) {
++        void window.x("cancelMediaJob", previewJobRef.current).catch(() => {});
++      }
++    },
++    [],
++  );
++  const bufferPreview = async () => {
++    const selectionStart = parseYouTubeTime(config.startTime);
++    const selectionEnd = parseYouTubeTime(config.endTime);
++    if (
++      !metadata ||
++      selectionStart == null ||
++      selectionEnd == null ||
++      selectionEnd <= selectionStart
++    ) {
++      return;
++    }
++    if (previewJobRef.current) {
++      await window.x("cancelMediaJob", previewJobRef.current).catch(() => {});
++    }
++    const previewLength = Math.min(12e3, selectionEnd - selectionStart);
++    const startMs =
++      previewAnchorRef.current === "end"
++        ? Math.max(selectionStart, selectionEnd - previewLength)
++        : selectionStart;
++    const endMs = Math.min(selectionEnd, startMs + previewLength);
++    const jobId = `youtube-preview-${Date.now()}`;
++    previewJobRef.current = jobId;
++    setPreviewBusy(true);
++    setPreviewUrl("");
++    try {
++      const downloaded = await window.x("youtubeDownloadClip", {
++        url: config.url,
++        startMs,
++        endMs,
++        preview: true,
++        jobId,
++      });
++      if (previewJobRef.current === jobId) {
++        setPreviewUrl(`xpic://${VIDEO_DOMAIN}/${downloaded.path}`);
++      }
++    } catch (cause) {
++      if (previewJobRef.current === jobId) {
++        setError(cause?.message || String(cause));
++      }
++      await window.x("finishMediaJob", jobId).catch(() => {});
++    } finally {
++      if (previewJobRef.current === jobId) setPreviewBusy(false);
++    }
++  };
++  reactExports.useEffect(() => {
++    if (!metadata) return;
++    const timer = window.setTimeout(() => void bufferPreview(), 650);
++    return () => window.clearTimeout(timer);
++  }, [metadata?.id, config.startTime, config.endTime]);
 +  const inspect = async () => {
 +    const jobId = `youtube-inspect-${Date.now()}`;
 +    jobRef.current = jobId;
@@ -595,12 +677,11 @@
 +      const info = await window.x("youtubeInspect", { url: config.url, jobId });
 +      setMetadata(info);
 +      const durationMs = Math.round(Number(info.duration || 0) * 1e3);
-+      const currentEnd = parseYouTubeTime(config.endTime);
++      previewAnchorRef.current = "start";
 +      update({
 +        outputName: safeYouTubeStem(info.title),
-+        ...(durationMs > 0 && (currentEnd == null || currentEnd > durationMs)
-+          ? { endTime: formatYouTubeTime(durationMs) }
-+          : {}),
++        startTime: "00:00:00.000",
++        endTime: formatYouTubeTime(Math.min(5e3, durationMs || 5e3)),
 +      });
 +      setStage("idle");
 +    } catch (cause) {
@@ -712,6 +793,37 @@
 +          : stage === "encoding"
 +            ? t2("youtube.encoding")
 +            : "";
++  const videoDurationMs = Math.max(
++    1,
++    Math.round(Number(metadata?.duration || 0) * 1e3),
++  );
++  const selectedStartMs = Math.max(
++    0,
++    Math.min(videoDurationMs - 1, parseYouTubeTime(config.startTime) || 0),
++  );
++  const selectedEndMs = Math.max(
++    selectedStartMs + 1,
++    Math.min(videoDurationMs, parseYouTubeTime(config.endTime) || 5e3),
++  );
++  const setTimelineStart = (value) => {
++    previewAnchorRef.current = "start";
++    update({
++      startTime: formatYouTubeTime(
++        Math.min(selectedEndMs - 1, Math.max(0, Math.round(Number(value)))),
++      ),
++    });
++  };
++  const setTimelineEnd = (value) => {
++    previewAnchorRef.current = "end";
++    update({
++      endTime: formatYouTubeTime(
++        Math.max(
++          selectedStartMs + 1,
++          Math.min(videoDurationMs, Math.round(Number(value))),
++        ),
++      ),
++    });
++  };
 +  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +    style: {
 +      width: "100%",
@@ -751,6 +863,198 @@
 +                    className: "x-cfg-note",
 +                    style: { marginTop: 8 },
 +                    children: `${metadata.uploader || "YouTube"} · ${formatYouTubeTime(metadata.duration * 1e3)} · ${metadata.width || "?"}×${metadata.height || "?"} · ${metadata.fps || "?"} FPS`,
++                  }),
++                ],
++              })
++            : null,
++          metadata
++            ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                style: {
++                  marginTop: 16,
++                  padding: 18,
++                  border: "1px solid var(--border)",
++                  borderRadius: 14,
++                  background: "var(--bg-elevated)",
++                  maxWidth: 720,
++                },
++                children: [
++                  previewUrl
++                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
++                        src: previewUrl,
++                        controls: true,
++                        preload: "auto",
++                        style: {
++                          display: "block",
++                          width: "100%",
++                          maxHeight: 390,
++                          aspectRatio: "16 / 9",
++                          objectFit: "contain",
++                          background: "#000",
++                          borderRadius: 10,
++                        },
++                      })
++                    : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                        style: {
++                          display: "grid",
++                          placeItems: "center",
++                          width: "100%",
++                          aspectRatio: "16 / 9",
++                          maxHeight: 390,
++                          borderRadius: 10,
++                          background: "#090909",
++                          color: "#aaa",
++                        },
++                        children: previewBusy
++                          ? t2("youtube.previewBuffering")
++                          : t2("youtube.load"),
++                      }),
++                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                    style: { marginTop: 18 },
++                    children: [
++                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                        style: {
++                          display: "flex",
++                          alignItems: "center",
++                          justifyContent: "space-between",
++                          gap: 12,
++                        },
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", {
++                            children: t2("youtube.timeline"),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                            className: "x-cfg-note",
++                            children: t2("youtube.selection", {
++                              time: formatYouTubeTime(
++                                selectedEndMs - selectedStartMs,
++                              ),
++                            }),
++                          }),
++                        ],
++                      }),
++                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                        style: {
++                          position: "relative",
++                          height: 9,
++                          margin: "16px 3px 10px",
++                          borderRadius: 999,
++                          background: "var(--border)",
++                          overflow: "hidden",
++                        },
++                        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                          style: {
++                            position: "absolute",
++                            insetBlock: 0,
++                            left: `${(selectedStartMs / videoDurationMs) * 100}%`,
++                            width: `${((selectedEndMs - selectedStartMs) / videoDurationMs) * 100}%`,
++                            borderRadius: 999,
++                            background: "var(--primary)",
++                          },
++                        }),
++                      }),
++                      /* @__PURE__ */ jsxRuntimeExports.jsxs("label", {
++                        style: { display: "grid", gap: 5, marginBottom: 9 },
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                            className: "x-cfg-note",
++                            children: `${t2("youtube.start")}: ${formatYouTubeTime(selectedStartMs)}`,
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("input", {
++                            type: "range",
++                            min: 0,
++                            max: videoDurationMs,
++                            step: 1,
++                            value: selectedStartMs,
++                            onChange: (event) =>
++                              setTimelineStart(event.target.value),
++                            style: { width: "100%", accentColor: "var(--primary)" },
++                          }),
++                        ],
++                      }),
++                      /* @__PURE__ */ jsxRuntimeExports.jsxs("label", {
++                        style: { display: "grid", gap: 5 },
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                            className: "x-cfg-note",
++                            children: `${t2("youtube.end")}: ${formatYouTubeTime(selectedEndMs)}`,
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("input", {
++                            type: "range",
++                            min: 0,
++                            max: videoDurationMs,
++                            step: 1,
++                            value: selectedEndMs,
++                            onChange: (event) => setTimelineEnd(event.target.value),
++                            style: { width: "100%", accentColor: "var(--primary)" },
++                          }),
++                        ],
++                      }),
++                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                        style: {
++                          display: "grid",
++                          gridTemplateColumns: "1fr 1fr",
++                          gap: 10,
++                          marginTop: 14,
++                        },
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, {
++                            value: config.startTime,
++                            "aria-label": t2("youtube.start"),
++                            onChange: (event) => {
++                              previewAnchorRef.current = "start";
++                              update({ startTime: event.target.value });
++                            },
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, {
++                            value: config.endTime,
++                            "aria-label": t2("youtube.end"),
++                            onChange: (event) => {
++                              previewAnchorRef.current = "end";
++                              update({ endTime: event.target.value });
++                            },
++                          }),
++                        ],
++                      }),
++                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                        style: {
++                          display: "flex",
++                          flexWrap: "wrap",
++                          gap: 8,
++                          marginTop: 12,
++                        },
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                            type: "button",
++                            className: "x-cfg-action",
++                            onClick: () => setTimelineStart(0),
++                            children: t2("youtube.startBeginning"),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                            type: "button",
++                            className: "x-cfg-action",
++                            onClick: () => setTimelineEnd(videoDurationMs),
++                            children: t2("youtube.endFull"),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                            type: "button",
++                            className: "x-cfg-action",
++                            onClick: () => {
++                              previewAnchorRef.current = "start";
++                              update({
++                                startTime: formatYouTubeTime(0),
++                                endTime: formatYouTubeTime(videoDurationMs),
++                              });
++                            },
++                            children: t2("youtube.fullVideo"),
++                          }),
++                        ],
++                      }),
++                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                        className: "x-cfg-note",
++                        style: { marginTop: 12 },
++                        children: t2("youtube.previewHint"),
++                      }),
++                    ],
 +                  }),
 +                ],
 +              })
@@ -815,6 +1119,13 @@
 +                onChange: (url) => {
 +                  update({ url });
 +                  setMetadata(null);
++                  setPreviewUrl("");
++                  if (previewJobRef.current) {
++                    void window
++                      .x("cancelMediaJob", previewJobRef.current)
++                      .catch(() => {});
++                    previewJobRef.current = "";
++                  }
 +                },
 +              }),
 +              /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
@@ -823,20 +1134,6 @@
 +                disabled: busy || !config.url,
 +                onClick: inspect,
 +                children: stage === "inspecting" ? t2("youtube.loading") : t2("youtube.load"),
-+              }),
-+              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
-+                label: t2("youtube.start"),
-+                value: config.startTime,
-+                onChange: (startTime) => update({ startTime }),
-+              }),
-+              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
-+                label: t2("youtube.end"),
-+                value: config.endTime,
-+                onChange: (endTime) => update({ endTime }),
-+              }),
-+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
-+                className: "x-cfg-note",
-+                children: t2("youtube.timeHint"),
 +              }),
 +              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
 +                label: t2("flow.fps"),
@@ -971,7 +1268,7 @@
    collage,
    merge: merge$1,
    crop,
-@@ -44634,8 +45141,8 @@
+@@ -44634,8 +45435,8 @@
                !window.isWin
                  ? /* @__PURE__ */ jsxRuntimeExports.jsx(Titlebar, {
                      title: MODULE_LABEL_KEYS[currentTab]
@@ -982,7 +1279,7 @@
                    })
                  : null,
                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -45293,7 +45800,7 @@
+@@ -45293,7 +46094,7 @@
                        }),
                        /* @__PURE__ */ jsxRuntimeExports.jsx(Row, {
                          title: t2("settings.version"),
