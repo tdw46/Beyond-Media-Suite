@@ -138,7 +138,7 @@ video-to-animation, and every video output format exposed by xPic:
 - every completed creation flow offers **Back to edit**, restoring the same
   inputs and settings for another export while keeping **New batch** separate;
 - fork builds do not download upstream app updates over the patch.
-- Video → YouTube Clip uses a pinned, checksum-verified official yt-dlp macOS build plus the bundled FFmpeg. It downloads only the requested time range, creates a local frame-rate-controlled intermediate, and supports exact width/height, fill or fit framing, per-format target sizes, and millisecond time entry. A playable locally buffered preview and full-width dual-boundary timeline make the five-second default selection easy to trim or clamp to either/full video boundary.
+- Video → YouTube Clip uses a pinned, checksum-verified official yt-dlp macOS build plus the bundled FFmpeg. It downloads only the requested time range for final creation, creates a local frame-rate-controlled intermediate, and supports exact width/height, fill or fit framing, per-format target sizes, and millisecond time entry. Preview uses ranged streaming instead of pre-encoding a temporary clip, and the full-width timeline provides live seek, crossing handles that push the opposite boundary, a five-second configurable clip-length action, full-video clamps, and Shift-drag precision at two screen pixels per millisecond.
 
 The upstream repository publishes the website and releases, but not the
 unbundled Electron application source. To keep this change reviewable and

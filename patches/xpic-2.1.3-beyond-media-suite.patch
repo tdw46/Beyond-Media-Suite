@@ -25,10 +25,11 @@
      } catch (e) {
        console.log("Failed to remove temporary file:", filePath, e);
      }
-@@ -1716,6 +1723,90 @@
+@@ -1715,7 +1722,108 @@
+       width: dimensions ? Number(dimensions[1]) : null,
        height: dimensions ? Number(dimensions[2]) : null,
      };
-   };
++  };
 +  let youtubeNodeRuntime;
 +  const validateYouTubeUrl = (value) => {
 +    let parsed;
@@ -45,7 +46,7 @@
 +      throw new Error("Only YouTube video URLs are supported.");
 +    }
 +    return parsed.toString();
-+  };
+   };
 +  const ytDlpPath = () =>
 +    app2.isPackaged
 +      ? path.join(process.resourcesPath, "tools", "yt-dlp")
@@ -113,10 +114,27 @@
 +    thumbnail: String(info?.thumbnail || ""),
 +    uploader: String(info?.uploader || ""),
 +  });
++  const registerYouTubeStream = (url, headers, kind) => {
++    if (!/^https:\/\//.test(String(url || ""))) return "";
++    const streams = app2.__beyondYouTubeStreams || new Map();
++    app2.__beyondYouTubeStreams = streams;
++    const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
++    streams.set(token, {
++      url,
++      headers: headers && typeof headers === "object" ? headers : {},
++      kind,
++      createdAt: Date.now(),
++    });
++    for (const [key, value] of streams) {
++      if (streams.size <= 8 && Date.now() - value.createdAt < 216e5) break;
++      streams.delete(key);
++    }
++    return `xpic://youtube-stream/${token}`;
++  };
    const changeMenu = (opt) => {
      const { id, email, newId } = opt;
      const menu22 = electron.Menu.getApplicationMenu();
-@@ -1833,6 +1924,126 @@
+@@ -1833,6 +1941,137 @@
      getCachePath: () => {
        return app2.getPath("temp");
      },
@@ -125,11 +143,13 @@
 +      const url = validateYouTubeUrl(opt?.url);
 +      const executable = await ensureYtDlp();
 +      const printTemplate =
-+        '{"id":%(id)j,"title":%(title)j,"duration":%(duration)j,"width":%(width)j,"height":%(height)j,"fps":%(fps)j,"thumbnail":%(thumbnail)j,"uploader":%(uploader)j}';
++        '{"id":%(id)j,"title":%(title)j,"duration":%(duration)j,"width":%(width)j,"height":%(height)j,"fps":%(fps)j,"thumbnail":%(thumbnail)j,"uploader":%(uploader)j,"video_url":%(requested_formats.0.url)j,"audio_url":%(requested_formats.1.url)j,"video_headers":%(requested_formats.0.http_headers)j,"audio_headers":%(requested_formats.1.http_headers)j}';
 +      const { stdout } = await runMediaProcess(
 +        executable,
 +        [
 +          ...ytDlpArgs(),
++          "--format",
++          "bv*[vcodec^=avc1][height<=720]+ba[acodec^=mp4a]/bv*[height<=720]+ba/bv*",
 +          "--skip-download",
 +          "--print",
 +          printTemplate,
@@ -137,7 +157,20 @@
 +        ],
 +        ytDlpProcessOptions({ jobId: opt?.jobId }),
 +      );
-+      return safeYouTubeMetadata(JSON.parse(stdout));
++      const info = JSON.parse(stdout);
++      return {
++        ...safeYouTubeMetadata(info),
++        previewVideoUrl: registerYouTubeStream(
++          info.video_url,
++          info.video_headers,
++          "video",
++        ),
++        previewAudioUrl: registerYouTubeStream(
++          info.audio_url,
++          info.audio_headers,
++          "audio",
++        ),
++      };
 +    },
 +    youtubeDownloadClip: async (_, opt) => {
 +      const url = validateYouTubeUrl(opt?.url);
@@ -145,7 +178,6 @@
 +      const endMs = Math.max(0, Math.round(Number(opt?.endMs) || 0));
 +      if (endMs <= startMs) throw new Error("End time must be after start time.");
 +      const executable = await ensureYtDlp();
-+      const preview = Boolean(opt?.preview);
 +      const tempDir = fs.mkdtempSync(
 +        path.join(app2.getPath("temp"), "beyond-media-youtube-"),
 +      );
@@ -161,12 +193,9 @@
 +          section,
 +          "--force-keyframes-at-cuts",
 +          "--format",
-+          preview
-+            ? "b[ext=mp4][height<=720]/bv*[vcodec^=avc1][height<=720]+ba[ext=m4a]/bv*+ba/b"
-+            : "bv*+ba/b",
++          "bv*+ba/b",
 +          "--merge-output-format",
-+          preview ? "mp4" : "mkv",
-+          ...(preview ? ["--recode-video", "mp4"] : []),
++          "mkv",
 +          "--output",
 +          outputTemplate,
 +          "--print",
@@ -243,7 +272,7 @@
      moveFile: (_, src, dest) => {
        return new Promise((resolve, reject) => {
          fs.mkdir(path.dirname(dest), { recursive: true }, (err) => {
-@@ -1875,7 +2086,7 @@
+@@ -1875,7 +2114,7 @@
        try {
          await fs.promises.unlink(backup);
        } catch (error) {
@@ -252,7 +281,7 @@
        }
        return null;
      },
-@@ -3547,7 +3758,7 @@
+@@ -3547,7 +3786,7 @@
        submenu: [
          {
            role: "about",
@@ -261,7 +290,7 @@
          },
          {
            label: "检查更新",
-@@ -3579,7 +3790,7 @@
+@@ -3579,7 +3818,7 @@
                  defaultId: 1,
                  title: "警告",
                  detail:
@@ -270,7 +299,7 @@
                  cancelId: 0,
                  icon: icon$1,
                  noLink: true,
-@@ -3598,7 +3809,7 @@
+@@ -3598,7 +3837,7 @@
          { type: "separator" },
          {
            role: "hide",
@@ -279,7 +308,7 @@
          },
          {
            role: "hideOthers",
-@@ -3883,8 +4094,24 @@
+@@ -3883,8 +4122,24 @@
  const WIN_MIN_WIDTH = 800;
  const WIN_MIN_HEIGHT = 600;
  const app = electron.app;
@@ -305,7 +334,7 @@
  const store = new Store();
  {
    const cfg = store.get("xpic-config");
-@@ -3903,12 +4130,12 @@
+@@ -3903,12 +4158,12 @@
  );
  app.dock?.setIcon(icon);
  app.setAboutPanelOptions({
@@ -323,19 +352,41 @@
    iconPath: path.join(assetsBase, "main/icon.png"),
  });
  const isWin = os.platform() === "win32";
+@@ -4272,6 +4527,18 @@
+       let { host, pathname } = new URL(request.url);
+       pathname = decodeURIComponent(pathname).slice(1);
+       host = decodeURIComponent(host);
++      if (host === "youtube-stream") {
++        const stream = app.__beyondYouTubeStreams?.get(pathname);
++        if (!stream) return new Response("Preview stream expired", { status: 404 });
++        const headers = new Headers(stream.headers || {});
++        const range = request.headers.get("Range");
++        if (range) headers.set("Range", range);
++        return electron.net.fetch(stream.url, {
++          method: request.method === "HEAD" ? "HEAD" : "GET",
++          headers,
++          cache: "no-store",
++        });
++      }
+       if (host === THUMBNAIL_DOMAIN) {
+         return getThumbnail(pathname)
+           .then(
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22885,6 +22885,25 @@
+@@ -22883,6 +22883,26 @@
+   name: "vcompress",
+   initialConfig: {
      quality: "",
-   },
- });
++  },
++});
 +const youtubeSlice = createConfigSlice({
 +  name: "youtube",
 +  initialConfig: {
 +    url: "",
 +    startTime: "00:00:00.000",
 +    endTime: "00:00:05.000",
-+    rangeUiVersion: 1,
++    rangeUiVersion: 2,
++    clipLengthMs: 5000,
 +    fps: 24,
 +    width: 1280,
 +    height: 720,
@@ -346,12 +397,10 @@
 +    outputName: "youtube_clip",
 +    targetFileSizes: {},
 +    gifColorReduction: false,
-+  },
-+});
+   },
+ });
  const collageSlice = createConfigSlice({
-   name: "collage",
-   initialConfig: {
-@@ -22961,6 +22980,7 @@
+@@ -22961,6 +22981,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -359,7 +408,7 @@
  const { updateConfig: updateCollageConfig } = collageSlice.actions;
  const { updateGlobalConfig } = globalSlice.actions;
  const {
-@@ -22992,6 +23012,7 @@
+@@ -22992,6 +23013,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -367,7 +416,7 @@
      collage: collageSlice.reducer,
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
-@@ -23370,6 +23391,7 @@
+@@ -23370,6 +23392,7 @@
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
    "nav.collage": "拼贴画布",
@@ -375,7 +424,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23434,7 +23456,7 @@
+@@ -23434,7 +23457,7 @@
    "settings.updDev": "开发模式不检查更新",
    "settings.telemetry": "匿名使用统计",
    "settings.telemetryHint":
@@ -384,7 +433,7 @@
    "settings.replayGuide": "重放新手引导",
    "settings.feedback": "问题反馈",
    "settings.about": "关于作者",
-@@ -23470,6 +23492,7 @@
+@@ -23470,6 +23493,7 @@
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
    "flow.verb.collage": "创建",
@@ -392,7 +441,7 @@
    "flow.verb.merge": "合成",
    "flow.verb.crop": "裁剪",
    "flow.mergeName": "动图名称",
-@@ -23677,6 +23700,38 @@
+@@ -23677,6 +23701,40 @@
    "flow.nearLossless": "近乎无损",
    "flow.preset": "预处理风格",
    "flow.outFormat": "输出格式",
@@ -408,7 +457,9 @@
 +  "youtube.endFull": "结束设为视频结尾",
 +  "youtube.fullVideo": "选择完整视频",
 +  "youtube.previewBuffering": "正在缓冲实时预览…",
-+  "youtube.previewHint": "拖动任一边界后会自动缓冲该边界附近最多 12 秒的可播放预览；最终导出仍使用完整所选范围。",
++  "youtube.previewHint": "预览直接流式播放并在拖动时实时跳转。按住 Shift 拖动可精细调整：每移动 2 屏幕像素改变 1 毫秒。",
++  "youtube.clipLength": "片段长度（秒）",
++  "youtube.applyLength": "从当前开始时间设置长度",
 +  "youtube.width": "宽度 (px)",
 +  "youtube.height": "高度 (px)",
 +  "youtube.fit": "画面适配",
@@ -431,7 +482,7 @@
    "flow.jpegWarn": "转 JPEG 体积可能变大，建议用 WebP。",
    "flow.outDir": "输出目录",
    "flow.choose": "选择",
-@@ -23692,7 +23747,7 @@
+@@ -23692,7 +23750,7 @@
    "flow.placeholder.title": "该模块正在迁移到新界面",
    "flow.placeholder.desc": "其余模块将分阶段接入单窗工作流",
    // 系统提示 Alert
@@ -440,7 +491,7 @@
    "alert.proDesc":
      "当前为未激活状态。激活后解锁无限批量、视频处理与全部输出格式。",
    "alert.proFeat1": "每次处理无数量上限",
-@@ -23850,6 +23905,7 @@
+@@ -23850,6 +23908,7 @@
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
    "nav.collage": "Collage",
@@ -448,7 +499,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23912,7 +23968,7 @@
+@@ -23912,7 +23971,7 @@
    "settings.updDev": "Dev mode: update check skipped",
    "settings.telemetry": "Anonymous usage stats",
    "settings.telemetryHint":
@@ -457,7 +508,7 @@
    "settings.replayGuide": "Replay guide",
    "settings.feedback": "Feedback",
    "settings.about": "About",
-@@ -23947,6 +24003,7 @@
+@@ -23947,6 +24006,7 @@
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
    "flow.verb.collage": "Create",
@@ -465,7 +516,7 @@
    "flow.verb.merge": "Merge",
    "flow.verb.crop": "Crop",
    "flow.mergeName": "Animation name",
-@@ -24150,6 +24207,38 @@
+@@ -24150,6 +24210,40 @@
    "flow.nearLossless": "Near-lossless",
    "flow.preset": "Preset",
    "flow.outFormat": "Output format",
@@ -481,7 +532,9 @@
 +  "youtube.endFull": "End at video end",
 +  "youtube.fullVideo": "Use full video",
 +  "youtube.previewBuffering": "Buffering live preview…",
-+  "youtube.previewHint": "Moving either boundary automatically buffers up to 12 seconds near that edge for playback. The final export still uses the complete selected range.",
++  "youtube.previewHint": "The preview streams directly and seeks live while you drag. Hold Shift while dragging for precision: two screen pixels per millisecond.",
++  "youtube.clipLength": "Clip length (seconds)",
++  "youtube.applyLength": "Set length from current start",
 +  "youtube.width": "Width (px)",
 +  "youtube.height": "Height (px)",
 +  "youtube.fit": "Frame fitting",
@@ -504,7 +557,7 @@
    "flow.jpegWarn": "Converting to JPEG may grow the size; WebP is recommended.",
    "flow.outDir": "Output folder",
    "flow.choose": "Choose",
-@@ -24164,7 +24253,7 @@
+@@ -24164,7 +24258,7 @@
    "flow.sub.generic": "{n} file(s)",
    "flow.placeholder.title": "This module is moving to the new UI",
    "flow.placeholder.desc": "Remaining modules land in later stages",
@@ -513,7 +566,7 @@
    "alert.proDesc":
      "Currently unactivated. Activate to unlock unlimited batches, video processing and all output formats.",
    "alert.proFeat1": "No per-batch limit",
-@@ -25989,7 +26078,7 @@
+@@ -25989,7 +26083,7 @@
                                  " ",
                                  /* @__PURE__ */ jsxRuntimeExports.jsx("a", {
                                    className: "x-link-btn",
@@ -522,7 +575,7 @@
                                    target: "_blank",
                                    rel: "noreferrer",
                                    children: "付款页面",
-@@ -26511,6 +26600,7 @@
+@@ -26511,6 +26605,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -530,7 +583,7 @@
        { key: "collage", labelKey: "nav.collage", Icon: Layers },
      ],
    },
-@@ -26540,11 +26630,12 @@
+@@ -26540,11 +26635,12 @@
              className: "x-logo",
              src: logoSrc,
              draggable: false,
@@ -545,7 +598,7 @@
            }),
          ],
        }),
-@@ -43011,12 +43102,722 @@
+@@ -43011,12 +43107,807 @@
    Custom: WorkflowWorkspace,
    noDrag: true,
  };
@@ -594,78 +647,26 @@
 +  const [error, setError] = reactExports.useState("");
 +  const [result, setResult] = reactExports.useState(null);
 +  const [previewUrl, setPreviewUrl] = reactExports.useState("");
-+  const [previewBusy, setPreviewBusy] = reactExports.useState(false);
++  const [previewAudioUrl, setPreviewAudioUrl] = reactExports.useState("");
 +  const jobRef = reactExports.useRef("");
-+  const previewJobRef = reactExports.useRef("");
-+  const previewAnchorRef = reactExports.useRef("start");
++  const videoRef = reactExports.useRef(null);
++  const audioRef = reactExports.useRef(null);
++  const fineDragRef = reactExports.useRef(null);
 +  const cancelledRef = reactExports.useRef(false);
 +  const busy = !["idle", "done", "error"].includes(stage);
 +  reactExports.useEffect(() => {
-+    if (config.rangeUiVersion !== 1) {
-+      update({ endTime: "00:00:05.000", rangeUiVersion: 1 });
++    if (config.rangeUiVersion !== 2) {
++      update({
++        endTime: "00:00:05.000",
++        clipLengthMs: 5000,
++        rangeUiVersion: 2,
++      });
 +    }
 +    window
 +      .x("getDownloadsPath")
 +      .then((value) => setOutputDir(value || ""))
 +      .catch(() => {});
 +  }, []);
-+  reactExports.useEffect(
-+    () => () => {
-+      if (previewJobRef.current) {
-+        void window.x("cancelMediaJob", previewJobRef.current).catch(() => {});
-+      }
-+    },
-+    [],
-+  );
-+  const bufferPreview = async () => {
-+    const selectionStart = parseYouTubeTime(config.startTime);
-+    const selectionEnd = parseYouTubeTime(config.endTime);
-+    if (
-+      !metadata ||
-+      selectionStart == null ||
-+      selectionEnd == null ||
-+      selectionEnd <= selectionStart
-+    ) {
-+      return;
-+    }
-+    if (previewJobRef.current) {
-+      await window.x("cancelMediaJob", previewJobRef.current).catch(() => {});
-+    }
-+    const previewLength = Math.min(12e3, selectionEnd - selectionStart);
-+    const startMs =
-+      previewAnchorRef.current === "end"
-+        ? Math.max(selectionStart, selectionEnd - previewLength)
-+        : selectionStart;
-+    const endMs = Math.min(selectionEnd, startMs + previewLength);
-+    const jobId = `youtube-preview-${Date.now()}`;
-+    previewJobRef.current = jobId;
-+    setPreviewBusy(true);
-+    setPreviewUrl("");
-+    try {
-+      const downloaded = await window.x("youtubeDownloadClip", {
-+        url: config.url,
-+        startMs,
-+        endMs,
-+        preview: true,
-+        jobId,
-+      });
-+      if (previewJobRef.current === jobId) {
-+        setPreviewUrl(`xpic://${VIDEO_DOMAIN}/${downloaded.path}`);
-+      }
-+    } catch (cause) {
-+      if (previewJobRef.current === jobId) {
-+        setError(cause?.message || String(cause));
-+      }
-+      await window.x("finishMediaJob", jobId).catch(() => {});
-+    } finally {
-+      if (previewJobRef.current === jobId) setPreviewBusy(false);
-+    }
-+  };
-+  reactExports.useEffect(() => {
-+    if (!metadata) return;
-+    const timer = window.setTimeout(() => void bufferPreview(), 650);
-+    return () => window.clearTimeout(timer);
-+  }, [metadata?.id, config.startTime, config.endTime]);
 +  const inspect = async () => {
 +    const jobId = `youtube-inspect-${Date.now()}`;
 +    jobRef.current = jobId;
@@ -676,8 +677,9 @@
 +    try {
 +      const info = await window.x("youtubeInspect", { url: config.url, jobId });
 +      setMetadata(info);
++      setPreviewUrl(info.previewVideoUrl || "");
++      setPreviewAudioUrl(info.previewAudioUrl || "");
 +      const durationMs = Math.round(Number(info.duration || 0) * 1e3);
-+      previewAnchorRef.current = "start";
 +      update({
 +        outputName: safeYouTubeStem(info.title),
 +        startTime: "00:00:00.000",
@@ -805,24 +807,79 @@
 +    selectedStartMs + 1,
 +    Math.min(videoDurationMs, parseYouTubeTime(config.endTime) || 5e3),
 +  );
++  const seekPreview = (value) => {
++    const seconds = Math.max(0, Number(value) / 1e3);
++    if (videoRef.current && Number.isFinite(seconds)) {
++      videoRef.current.currentTime = seconds;
++    }
++    if (audioRef.current && Number.isFinite(seconds)) {
++      audioRef.current.currentTime = seconds;
++    }
++  };
 +  const setTimelineStart = (value) => {
-+    previewAnchorRef.current = "start";
++    let startMs = Math.max(
++      0,
++      Math.min(videoDurationMs - 1, Math.round(Number(value))),
++    );
++    let endMs = selectedEndMs;
++    if (startMs >= endMs) {
++      const pushLength = Math.max(
++        1,
++        Number(config.clipLengthMs) || selectedEndMs - selectedStartMs,
++      );
++      endMs = Math.min(videoDurationMs, startMs + pushLength);
++      if (endMs <= startMs) startMs = Math.max(0, videoDurationMs - 1);
++    }
 +    update({
-+      startTime: formatYouTubeTime(
-+        Math.min(selectedEndMs - 1, Math.max(0, Math.round(Number(value)))),
-+      ),
++      startTime: formatYouTubeTime(startMs),
++      endTime: formatYouTubeTime(endMs),
 +    });
++    seekPreview(startMs);
 +  };
 +  const setTimelineEnd = (value) => {
-+    previewAnchorRef.current = "end";
++    let endMs = Math.max(1, Math.min(videoDurationMs, Math.round(Number(value))));
++    let startMs = selectedStartMs;
++    if (endMs <= startMs) {
++      const pushLength = Math.max(
++        1,
++        Number(config.clipLengthMs) || selectedEndMs - selectedStartMs,
++      );
++      startMs = Math.max(0, endMs - pushLength);
++      if (endMs <= startMs) endMs = Math.min(videoDurationMs, startMs + 1);
++    }
 +    update({
-+      endTime: formatYouTubeTime(
-+        Math.max(
-+          selectedStartMs + 1,
-+          Math.min(videoDurationMs, Math.round(Number(value))),
-+        ),
-+      ),
++      startTime: formatYouTubeTime(startMs),
++      endTime: formatYouTubeTime(endMs),
 +    });
++    seekPreview(endMs);
++  };
++  const beginFineDrag = (event, edge) => {
++    if (!event.shiftKey) return;
++    event.preventDefault();
++    event.currentTarget.setPointerCapture?.(event.pointerId);
++    fineDragRef.current = {
++      edge,
++      pointerId: event.pointerId,
++      originX: event.clientX,
++      originMs: edge === "start" ? selectedStartMs : selectedEndMs,
++    };
++  };
++  const moveFineDrag = (event) => {
++    const drag = fineDragRef.current;
++    if (!drag || drag.pointerId !== event.pointerId) return;
++    event.preventDefault();
++    const value = drag.originMs + Math.round((event.clientX - drag.originX) / 2);
++    if (drag.edge === "start") setTimelineStart(value);
++    else setTimelineEnd(value);
++  };
++  const endFineDrag = (event) => {
++    if (fineDragRef.current?.pointerId === event.pointerId) {
++      fineDragRef.current = null;
++    }
++  };
++  const applyClipLength = () => {
++    const length = Math.max(1, Math.round(Number(config.clipLengthMs) || 5e3));
++    setTimelineEnd(Math.min(videoDurationMs, selectedStartMs + length));
 +  };
 +  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +    style: {
@@ -879,20 +936,57 @@
 +                },
 +                children: [
 +                  previewUrl
-+                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
-+                        src: previewUrl,
-+                        controls: true,
-+                        preload: "auto",
-+                        style: {
-+                          display: "block",
-+                          width: "100%",
-+                          maxHeight: 390,
-+                          aspectRatio: "16 / 9",
-+                          objectFit: "contain",
-+                          background: "#000",
-+                          borderRadius: 10,
++                    ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                        jsxRuntimeExports.Fragment,
++                        {
++                          children: [
++                            /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
++                              ref: videoRef,
++                              src: previewUrl,
++                              controls: true,
++                              preload: "metadata",
++                              onPlay: () => {
++                                if (audioRef.current) {
++                                  audioRef.current.currentTime =
++                                    videoRef.current?.currentTime || 0;
++                                  void audioRef.current.play().catch(() => {});
++                                }
++                              },
++                              onPause: () => audioRef.current?.pause(),
++                              onSeeked: () => {
++                                if (audioRef.current) {
++                                  audioRef.current.currentTime =
++                                    videoRef.current?.currentTime || 0;
++                                }
++                              },
++                              onTimeUpdate: () => {
++                                const video = videoRef.current;
++                                if (video && video.currentTime * 1e3 >= selectedEndMs) {
++                                  video.pause();
++                                  seekPreview(selectedStartMs);
++                                }
++                              },
++                              style: {
++                                display: "block",
++                                width: "100%",
++                                maxHeight: 390,
++                                aspectRatio: "16 / 9",
++                                objectFit: "contain",
++                                background: "#000",
++                                borderRadius: 10,
++                              },
++                            }),
++                            previewAudioUrl
++                              ? /* @__PURE__ */ jsxRuntimeExports.jsx("audio", {
++                                  ref: audioRef,
++                                  src: previewAudioUrl,
++                                  preload: "metadata",
++                                  style: { display: "none" },
++                                })
++                              : null,
++                          ],
 +                        },
-+                      })
++                      )
 +                    : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
 +                        style: {
 +                          display: "grid",
@@ -904,9 +998,7 @@
 +                          background: "#090909",
 +                          color: "#aaa",
 +                        },
-+                        children: previewBusy
-+                          ? t2("youtube.previewBuffering")
-+                          : t2("youtube.load"),
++                        children: t2("youtube.load"),
 +                      }),
 +                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
 +                    style: { marginTop: 18 },
@@ -965,8 +1057,16 @@
 +                            max: videoDurationMs,
 +                            step: 1,
 +                            value: selectedStartMs,
-+                            onChange: (event) =>
-+                              setTimelineStart(event.target.value),
++                            onChange: (event) => {
++                              if (!fineDragRef.current) {
++                                setTimelineStart(event.target.value);
++                              }
++                            },
++                            onPointerDown: (event) =>
++                              beginFineDrag(event, "start"),
++                            onPointerMove: moveFineDrag,
++                            onPointerUp: endFineDrag,
++                            onPointerCancel: endFineDrag,
 +                            style: { width: "100%", accentColor: "var(--primary)" },
 +                          }),
 +                        ],
@@ -984,7 +1084,16 @@
 +                            max: videoDurationMs,
 +                            step: 1,
 +                            value: selectedEndMs,
-+                            onChange: (event) => setTimelineEnd(event.target.value),
++                            onChange: (event) => {
++                              if (!fineDragRef.current) {
++                                setTimelineEnd(event.target.value);
++                              }
++                            },
++                            onPointerDown: (event) =>
++                              beginFineDrag(event, "end"),
++                            onPointerMove: moveFineDrag,
++                            onPointerUp: endFineDrag,
++                            onPointerCancel: endFineDrag,
 +                            style: { width: "100%", accentColor: "var(--primary)" },
 +                          }),
 +                        ],
@@ -1001,7 +1110,6 @@
 +                            value: config.startTime,
 +                            "aria-label": t2("youtube.start"),
 +                            onChange: (event) => {
-+                              previewAnchorRef.current = "start";
 +                              update({ startTime: event.target.value });
 +                            },
 +                          }),
@@ -1009,7 +1117,6 @@
 +                            value: config.endTime,
 +                            "aria-label": t2("youtube.end"),
 +                            onChange: (event) => {
-+                              previewAnchorRef.current = "end";
 +                              update({ endTime: event.target.value });
 +                            },
 +                          }),
@@ -1023,6 +1130,43 @@
 +                          marginTop: 12,
 +                        },
 +                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                            style: {
++                              display: "flex",
++                              alignItems: "center",
++                              gap: 8,
++                              width: "100%",
++                              marginBottom: 4,
++                            },
++                            children: [
++                              /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                                className: "x-cfg-note",
++                                style: { flex: "0 0 auto" },
++                                children: t2("youtube.clipLength"),
++                              }),
++                              /* @__PURE__ */ jsxRuntimeExports.jsx(InputNumber, {
++                                value: Math.max(
++                                  1,
++                                  Number(config.clipLengthMs) || 5000,
++                                ) / 1e3,
++                                min: 0.001,
++                                step: 0.001,
++                                onChange: (value) =>
++                                  update({
++                                    clipLengthMs: Math.max(
++                                      1,
++                                      Math.round((Number(value) || 5) * 1e3),
++                                    ),
++                                  }),
++                              }),
++                              /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                                type: "button",
++                                className: "x-cfg-action",
++                                onClick: applyClipLength,
++                                children: t2("youtube.applyLength"),
++                              }),
++                            ],
++                          }),
 +                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
 +                            type: "button",
 +                            className: "x-cfg-action",
@@ -1039,7 +1183,6 @@
 +                            type: "button",
 +                            className: "x-cfg-action",
 +                            onClick: () => {
-+                              previewAnchorRef.current = "start";
 +                              update({
 +                                startTime: formatYouTubeTime(0),
 +                                endTime: formatYouTubeTime(videoDurationMs),
@@ -1120,12 +1263,7 @@
 +                  update({ url });
 +                  setMetadata(null);
 +                  setPreviewUrl("");
-+                  if (previewJobRef.current) {
-+                    void window
-+                      .x("cancelMediaJob", previewJobRef.current)
-+                      .catch(() => {});
-+                    previewJobRef.current = "";
-+                  }
++                  setPreviewAudioUrl("");
 +                },
 +              }),
 +              /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
@@ -1268,7 +1406,7 @@
    collage,
    merge: merge$1,
    crop,
-@@ -44634,8 +45435,8 @@
+@@ -44634,8 +45525,8 @@
                !window.isWin
                  ? /* @__PURE__ */ jsxRuntimeExports.jsx(Titlebar, {
                      title: MODULE_LABEL_KEYS[currentTab]
@@ -1279,7 +1417,7 @@
                    })
                  : null,
                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -45293,7 +46094,7 @@
+@@ -45293,7 +46184,7 @@
                        }),
                        /* @__PURE__ */ jsxRuntimeExports.jsx(Row, {
                          title: t2("settings.version"),
