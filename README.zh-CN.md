@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="./assets/icon.png" width="100" alt="xPic" />
+  <img src="./assets/icon.png" width="100" alt="Beyond Media Suite" />
 </p>
 
-<h1 align="center">xPic</h1>
+<h1 align="center">Beyond Media Suite</h1>
 
-<p align="center">简洁强大的图片桌面工具箱——转换、压缩、裁剪,一应俱全。<br/>支持 macOS(Apple 芯片 &amp; Intel)与 Windows。</p>
+<p align="center">高度可配置的图片、动图、视频、拼贴与 YouTube 片段桌面套件。<br/>基于开源 xPic，当前构建支持 macOS。</p>
 
 <p align="center">
-  <a href="https://github.com/Xheldon/xPic/releases/latest"><b>⬇️ 下载</b></a>
+  <a href="https://github.com/tdw46/Beyond-Media-Suite/releases/latest"><b>⬇️ 下载</b></a>
   ·
   <a href="https://xpic.xheldon.com">官网</a>
   ·
@@ -19,7 +19,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./assets/screenshot-dark-zh.png" />
-    <img src="./assets/screenshot-light-zh.png" width="760" alt="xPic 截图" />
+    <img src="./assets/screenshot-light-zh.png" width="760" alt="Beyond Media Suite 截图" />
   </picture>
 </p>
 
@@ -31,6 +31,7 @@
 - **序列帧合成** — 多张图合成动态 WebP / APNG,循环次数与帧间隔可自定义。
 - **SVGA 预览** — 在应用内直接播放 SVGA 动画文件。
 - **视频处理** — 视频转换、压缩,或转成 GIF / WebP / APNG 动图。
+- **YouTube 片段** — 毫秒精度选择时间范围，按指定帧率和精确尺寸缓冲，并以目标文件大小导出 GIF / WebP / APNG / WebM / MP4 等格式。
 - **工作流** — 把转换 / 压缩 / 裁剪 / 合成串成一条流水线,一键跑完。
 - **本地 & 隐私** — 全部在你的电脑上处理,任何文件都不会被上传。
 
@@ -38,8 +39,8 @@
 
 ## 下载
 
-前往[最新版本](https://github.com/Xheldon/xPic/releases/latest)下载对应平台的安装包,或访问[官网](https://xpic.xheldon.com)——下载按钮永远指向最新版。
+前往本项目的[最新版本](https://github.com/tdw46/Beyond-Media-Suite/releases/latest)获取构建。
 
 ## 反馈
 
-问题与建议欢迎提交 [Issues](https://github.com/Xheldon/xPic/issues)。
+问题与建议欢迎提交 [Issues](https://github.com/tdw46/Beyond-Media-Suite/issues)。原始 xPic 项目：[Xheldon/xPic](https://github.com/Xheldon/xPic)。

@@ -604,8 +604,38 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.22/);
-  assert.match(build, /2\.1\.3\.22/);
+  assert.match(build, /2\.1\.3-fork\.23/);
+  assert.match(build, /2\.1\.3\.23/);
+});
+
+test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
+  const [patch, build] = await Promise.all([
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(
+        new URL(
+          "../patches/xpic-2.1.3-beyond-media-suite.patch",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ),
+    import("node:fs/promises").then(({ readFile }) =>
+      readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+    ),
+  ]);
+  assert.match(patch, /Beyond Media Suite/);
+  assert.match(patch, /youtubeInspect/);
+  assert.match(patch, /youtubeDownloadClip/);
+  assert.match(patch, /youtubeFrameBuffer/);
+  assert.match(patch, /parseYouTubeTime/);
+  assert.match(patch, /startTime: "00:00:00\.000"/);
+  assert.match(patch, /endTime: "00:00:03\.000"/);
+  assert.match(patch, /targetSizeFor\(config, format\)/);
+  assert.match(patch, /preparedInput: true/);
+  assert.match(patch, /\.\.\.vWriteOptions/);
+  assert.match(build, /yt-dlp\/releases\/download/);
+  assert.match(build, /ytDlpSha256/);
+  assert.match(build, /Beyond Media Suite\.app/);
 });
 
 test("Collage gradients and top-layer text render consistently with system fonts and shadows", async () => {

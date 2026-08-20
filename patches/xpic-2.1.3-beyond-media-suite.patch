@@ -1,0 +1,993 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1148,7 +1148,7 @@
+   }
+   return false;
+ };
+-const CHANGELOG_URL = "https://xpic.xheldon.com/changelog";
++const CHANGELOG_URL = "https://github.com/tdw46/Beyond-Media-Suite/releases";
+ const isNewer = (a, b) => {
+   const pa = String(a || "")
+     .split(".")
+@@ -1683,7 +1683,14 @@
+       : execFileP("chmod", ["-R", "+x", dir]).then(() => void 0);
+   const safeUnlink = (filePath) => {
+     try {
+-      if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
++      if (filePath && fs.existsSync(filePath)) {
++        const stat = fs.lstatSync(filePath);
++        if (stat.isDirectory()) {
++          fs.rmSync(filePath, { recursive: true, force: true });
++        } else {
++          fs.unlinkSync(filePath);
++        }
++      }
+     } catch (e) {
+       console.log("Failed to remove temporary file:", filePath, e);
+     }
+@@ -1715,7 +1722,91 @@
+       width: dimensions ? Number(dimensions[1]) : null,
+       height: dimensions ? Number(dimensions[2]) : null,
+     };
++  };
++  let youtubeNodeRuntime;
++  const validateYouTubeUrl = (value) => {
++    let parsed;
++    try {
++      parsed = new URL(String(value || "").trim());
++    } catch {
++      throw new Error("Enter a valid YouTube video URL.");
++    }
++    const host = parsed.hostname.toLowerCase();
++    if (
++      !["http:", "https:"].includes(parsed.protocol) ||
++      !(host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com"))
++    ) {
++      throw new Error("Only YouTube video URLs are supported.");
++    }
++    return parsed.toString();
++  };
++  const ytDlpPath = () =>
++    app2.isPackaged
++      ? path.join(process.resourcesPath, "tools", "yt-dlp")
++      : path.join(__dirname, "bin", "yt-dlp");
++  const findYouTubeNodeRuntime = () => {
++    if (youtubeNodeRuntime !== void 0) return youtubeNodeRuntime;
++    const candidates = [
++      process.env.BEYOND_MEDIA_NODE,
++      path.join(os.homedir(), ".volta", "bin", `node${isWin2 ? ".exe" : ""}`),
++      "/opt/homebrew/bin/node",
++      "/usr/local/bin/node",
++      process.execPath,
++    ].filter(Boolean);
++    youtubeNodeRuntime = null;
++    for (const candidate of candidates) {
++      try {
++        if (!fs.existsSync(candidate)) continue;
++        const env =
++          candidate === process.execPath
++            ? { ...process.env, ELECTRON_RUN_AS_NODE: "1" }
++            : process.env;
++        const version = node_child_process
++          .execFileSync(candidate, ["--version"], { env, encoding: "utf8" })
++          .trim();
++        if (Number(/^v?(\d+)/.exec(version)?.[1] || 0) >= 22) {
++          youtubeNodeRuntime = candidate;
++          break;
++        }
++      } catch {}
++    }
++    return youtubeNodeRuntime;
+   };
++  const ytDlpArgs = () => {
++    const runtime = findYouTubeNodeRuntime();
++    return [
++      "--no-config",
++      "--no-playlist",
++      "--ffmpeg-location",
++      binDir(),
++      ...(runtime ? ["--js-runtimes", `node:${runtime}`] : []),
++    ];
++  };
++  const ytDlpProcessOptions = (options = {}) => ({
++    ...options,
++    env:
++      findYouTubeNodeRuntime() === process.execPath
++        ? { ...process.env, ELECTRON_RUN_AS_NODE: "1" }
++        : process.env,
++  });
++  const ensureYtDlp = async () => {
++    const executable = ytDlpPath();
++    if (!fs.existsSync(executable)) {
++      throw new Error("The bundled YouTube downloader is missing. Reinstall Beyond Media Suite.");
++    }
++    await fs.promises.chmod(executable, 493);
++    return executable;
++  };
++  const safeYouTubeMetadata = (info) => ({
++    id: String(info?.id || ""),
++    title: String(info?.title || "YouTube clip"),
++    duration: Math.max(0, Number(info?.duration) || 0),
++    width: Math.max(0, Number(info?.width) || 0),
++    height: Math.max(0, Number(info?.height) || 0),
++    fps: Math.max(0, Number(info?.fps) || 0),
++    thumbnail: String(info?.thumbnail || ""),
++    uploader: String(info?.uploader || ""),
++  });
+   const changeMenu = (opt) => {
+     const { id, email, newId } = opt;
+     const menu22 = electron.Menu.getApplicationMenu();
+@@ -1833,6 +1924,122 @@
+     getCachePath: () => {
+       return app2.getPath("temp");
+     },
++    getDownloadsPath: () => app2.getPath("downloads"),
++    youtubeInspect: async (_, opt) => {
++      const url = validateYouTubeUrl(opt?.url);
++      const executable = await ensureYtDlp();
++      const printTemplate =
++        '{"id":%(id)j,"title":%(title)j,"duration":%(duration)j,"width":%(width)j,"height":%(height)j,"fps":%(fps)j,"thumbnail":%(thumbnail)j,"uploader":%(uploader)j}';
++      const { stdout } = await runMediaProcess(
++        executable,
++        [
++          ...ytDlpArgs(),
++          "--skip-download",
++          "--print",
++          printTemplate,
++          url,
++        ],
++        ytDlpProcessOptions({ jobId: opt?.jobId }),
++      );
++      return safeYouTubeMetadata(JSON.parse(stdout));
++    },
++    youtubeDownloadClip: async (_, opt) => {
++      const url = validateYouTubeUrl(opt?.url);
++      const startMs = Math.max(0, Math.round(Number(opt?.startMs) || 0));
++      const endMs = Math.max(0, Math.round(Number(opt?.endMs) || 0));
++      if (endMs <= startMs) throw new Error("End time must be after start time.");
++      const executable = await ensureYtDlp();
++      const tempDir = fs.mkdtempSync(
++        path.join(app2.getPath("temp"), "beyond-media-youtube-"),
++      );
++      trackMediaTemp(opt?.jobId, tempDir);
++      const outputTemplate = path.join(tempDir, "source.%(ext)s");
++      const section = `*${(startMs / 1e3).toFixed(3)}-${(endMs / 1e3).toFixed(3)}`;
++      const { stdout } = await runMediaProcess(
++        executable,
++        [
++          ...ytDlpArgs(),
++          "--force-overwrites",
++          "--download-sections",
++          section,
++          "--force-keyframes-at-cuts",
++          "--format",
++          "bv*+ba/b",
++          "--merge-output-format",
++          "mkv",
++          "--output",
++          outputTemplate,
++          "--print",
++          "after_move:filepath",
++          url,
++        ],
++        ytDlpProcessOptions({ jobId: opt?.jobId, cwd: tempDir }),
++      );
++      const printed = stdout
++        .split(/\r?\n/)
++        .map((value) => value.trim())
++        .filter(Boolean)
++        .reverse()
++        .find((value) => fs.existsSync(value));
++      const downloaded =
++        printed ||
++        fs
++          .readdirSync(tempDir)
++          .map((name) => path.join(tempDir, name))
++          .find((candidate) =>
++            fs.statSync(candidate).isFile() &&
++            !/\.(part|ytdl|json)$/i.test(candidate),
++          );
++      if (!downloaded) throw new Error("YouTube clip download completed without a media file.");
++      return { path: downloaded, durationMs: endMs - startMs };
++    },
++    youtubeFrameBuffer: async (_, opt) => {
++      const inputPath = String(opt?.inputPath || "");
++      if (!fs.existsSync(inputPath)) throw new Error("Downloaded YouTube clip is missing.");
++      const durationMs = Math.max(1, Math.round(Number(opt?.durationMs) || 0));
++      const fps = Math.max(1, Math.min(120, Math.round(Number(opt?.fps) || 24)));
++      const width = Math.max(2, Math.round(Number(opt?.width) || 1280));
++      const height = Math.max(2, Math.round(Number(opt?.height) || 720));
++      const fit = opt?.fitMode === "fit" ? "fit" : "fill";
++      const filter =
++        fit === "fit"
++          ? `fps=${fps},scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`
++          : `fps=${fps},scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}`;
++      const outPath = path.join(path.dirname(inputPath), "frames.mkv");
++      trackMediaTemp(opt?.jobId, outPath);
++      const ffmpeg = path.join(binDir(), `ffmpeg${isWin2 ? ".exe" : ""}`);
++      await ensureExecPerm(binDir());
++      await runMediaProcess(
++        ffmpeg,
++        [
++          "-hide_banner",
++          "-y",
++          "-i",
++          inputPath,
++          "-map",
++          "0:v:0",
++          "-map",
++          "0:a?",
++          "-vf",
++          filter,
++          "-t",
++          (durationMs / 1e3).toFixed(3),
++          "-fps_mode",
++          "cfr",
++          "-c:v",
++          "ffv1",
++          "-level",
++          "3",
++          "-pix_fmt",
++          "bgra",
++          "-c:a",
++          "pcm_s16le",
++          outPath,
++        ],
++        { jobId: opt?.jobId },
++      );
++      return { path: outPath, size: fs.statSync(outPath).size };
++    },
+     moveFile: (_, src, dest) => {
+       return new Promise((resolve, reject) => {
+         fs.mkdir(path.dirname(dest), { recursive: true }, (err) => {
+@@ -1875,7 +2082,7 @@
+       try {
+         await fs.promises.unlink(backup);
+       } catch (error) {
+-        console.warn("Unable to remove xPic source backup", backup, error);
++        console.warn("Unable to remove source backup", backup, error);
+       }
+       return null;
+     },
+@@ -3547,7 +3754,7 @@
+       submenu: [
+         {
+           role: "about",
+-          label: "关于 xPic",
++          label: "关于 Beyond Media Suite",
+         },
+         {
+           label: "检查更新",
+@@ -3579,7 +3786,7 @@
+                 defaultId: 1,
+                 title: "警告",
+                 detail:
+-                  "你仅应该在以后不打算使用 xPic，并将之卸载之前为了清理缓存文件执行此操作，是否继续？",
++                  "你仅应该在以后不打算使用 Beyond Media Suite，并将之卸载之前为了清理缓存文件执行此操作，是否继续？",
+                 cancelId: 0,
+                 icon: icon$1,
+                 noLink: true,
+@@ -3598,7 +3805,7 @@
+         { type: "separator" },
+         {
+           role: "hide",
+-          label: "隐藏 xPic 窗口",
++          label: "隐藏 Beyond Media Suite 窗口",
+         },
+         {
+           role: "hideOthers",
+@@ -3883,8 +4090,24 @@
+ const WIN_MIN_WIDTH = 800;
+ const WIN_MIN_HEIGHT = 600;
+ const app = electron.app;
+-app.setAppUserModelId("com.xheldon.xpic");
++app.setAppUserModelId("com.tdw46.beyond-media-suite");
+ app.commandLine.appendSwitch("js-flags", "--expose-gc");
++{
++  const legacyDir = path.join(app.getPath("appData"), "xPic Fork");
++  const currentDir = app.getPath("userData");
++  for (const fileName of ["config.json", "window-state.json"]) {
++    const legacyPath = path.join(legacyDir, fileName);
++    const currentPath = path.join(currentDir, fileName);
++    try {
++      if (!fs.existsSync(currentPath) && fs.existsSync(legacyPath)) {
++        fs.mkdirSync(currentDir, { recursive: true });
++        fs.copyFileSync(legacyPath, currentPath);
++      }
++    } catch (error) {
++      console.warn(`Unable to migrate ${fileName}`, error);
++    }
++  }
++}
+ const store = new Store();
+ {
+   const cfg = store.get("xpic-config");
+@@ -3903,12 +4126,12 @@
+ );
+ app.dock?.setIcon(icon);
+ app.setAboutPanelOptions({
+-  applicationName: "xPic",
+-  copyright: `©${/* @__PURE__ */ new Date().getFullYear()} build by Xheldon with ❤️`,
+-  version: "beta5 for best friends",
++  applicationName: "Beyond Media Suite",
++  copyright: `©${/* @__PURE__ */ new Date().getFullYear()} Beyond Media Suite contributors`,
++  version: app.getVersion(),
+   credits:
+-    "本项目使用并感谢以下开源库：Electron、Ant Design、React、TypeScript、Sharp、img2webp、FFmpeg、ImageMagick",
+-  authors: ["Xheldon"],
++    "Built from the open-source xPic foundation. Uses Electron, React, Sharp, FFmpeg, img2webp, ImageMagick, and yt-dlp.",
++  authors: ["Beyond Media Suite contributors", "Xheldon"],
+   iconPath: path.join(assetsBase, "main/icon.png"),
+ });
+ const isWin = os.platform() === "win32";
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -22883,6 +22883,24 @@
+   name: "vcompress",
+   initialConfig: {
+     quality: "",
++  },
++});
++const youtubeSlice = createConfigSlice({
++  name: "youtube",
++  initialConfig: {
++    url: "",
++    startTime: "00:00:00.000",
++    endTime: "00:00:03.000",
++    fps: 24,
++    width: 1280,
++    height: 720,
++    fitMode: "fill",
++    toFormat: "webm",
++    quality: 1,
++    loop: 0,
++    outputName: "youtube_clip",
++    targetFileSizes: {},
++    gifColorReduction: false,
+   },
+ });
+ const collageSlice = createConfigSlice({
+@@ -22961,6 +22979,7 @@
+ const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
+ const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
+ const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
++const { updateConfig: updateYouTubeConfig } = youtubeSlice.actions;
+ const { updateConfig: updateCollageConfig } = collageSlice.actions;
+ const { updateGlobalConfig } = globalSlice.actions;
+ const {
+@@ -22992,6 +23011,7 @@
+     v2image: v2ImageSlice.reducer,
+     vcompress: vCompressSlice.reducer,
+     vconvert: vConvertSlice.reducer,
++    youtube: youtubeSlice.reducer,
+     collage: collageSlice.reducer,
+     workflow: workflowSlice.reducer,
+     session: sessionSlice.reducer,
+@@ -23370,6 +23390,7 @@
+   "nav.vcompress": "视频压缩",
+   "nav.v2image": "动图生成",
+   "nav.collage": "拼贴画布",
++  "nav.youtube": "YouTube 片段",
+   // 侧栏
+   "sidebar.inactive": "未激活",
+   "sidebar.toggleTheme": "切换主题",
+@@ -23434,7 +23455,7 @@
+   "settings.updDev": "开发模式不检查更新",
+   "settings.telemetry": "匿名使用统计",
+   "settings.telemetryHint":
+-    "发送匿名的功能使用与崩溃报告，帮助改进 xPic（不含文件内容/路径）",
++    "发送匿名的功能使用与崩溃报告，帮助改进 Beyond Media Suite（不含文件内容/路径）",
+   "settings.replayGuide": "重放新手引导",
+   "settings.feedback": "问题反馈",
+   "settings.about": "关于作者",
+@@ -23470,6 +23491,7 @@
+   "flow.verb.vcompress": "压缩",
+   "flow.verb.v2image": "生成",
+   "flow.verb.collage": "创建",
++  "flow.verb.youtube": "创建片段",
+   "flow.verb.merge": "合成",
+   "flow.verb.crop": "裁剪",
+   "flow.mergeName": "动图名称",
+@@ -23677,6 +23699,31 @@
+   "flow.nearLossless": "近乎无损",
+   "flow.preset": "预处理风格",
+   "flow.outFormat": "输出格式",
++  "youtube.url": "YouTube 视频网址",
++  "youtube.load": "读取视频",
++  "youtube.loading": "正在读取视频信息…",
++  "youtube.start": "开始时间 (毫秒精度)",
++  "youtube.end": "结束时间 (毫秒精度)",
++  "youtube.timeHint": "使用 HH:MM:SS.mmm，例如 00:01:02.350。",
++  "youtube.width": "宽度 (px)",
++  "youtube.height": "高度 (px)",
++  "youtube.fit": "画面适配",
++  "youtube.fill": "填满并裁剪",
++  "youtube.contain": "完整画面",
++  "youtube.outputName": "输出文件名",
++  "youtube.outputFolder": "输出文件夹",
++  "youtube.rights": "仅下载您拥有或获准使用的媒体。片段在本机下载、缓冲和编码。",
++  "youtube.create": "创建片段",
++  "youtube.cancel": "取消",
++  "youtube.downloading": "正在下载精确时间范围…",
++  "youtube.buffering": "正在缓冲指定帧率的帧…",
++  "youtube.encoding": "正在编码并匹配目标大小…",
++  "youtube.done": "片段创建完成",
++  "youtube.reveal": "在访达中显示",
++  "youtube.again": "调整设置并重新导出",
++  "youtube.invalidTime": "结束时间必须晚于开始时间，并且不能超过视频时长。",
++  "youtube.evenDimensions": "视频尺寸必须是偶数像素。",
++  "youtube.noMetadata": "请先读取有效的 YouTube 视频。",
+   "flow.jpegWarn": "转 JPEG 体积可能变大，建议用 WebP。",
+   "flow.outDir": "输出目录",
+   "flow.choose": "选择",
+@@ -23692,7 +23739,7 @@
+   "flow.placeholder.title": "该模块正在迁移到新界面",
+   "flow.placeholder.desc": "其余模块将分阶段接入单窗工作流",
+   // 系统提示 Alert
+-  "alert.proTitle": "激活 xPic 专业版",
++  "alert.proTitle": "激活 Beyond Media Suite 专业版",
+   "alert.proDesc":
+     "当前为未激活状态。激活后解锁无限批量、视频处理与全部输出格式。",
+   "alert.proFeat1": "每次处理无数量上限",
+@@ -23850,6 +23897,7 @@
+   "nav.vcompress": "Compress",
+   "nav.v2image": "To Animation",
+   "nav.collage": "Collage",
++  "nav.youtube": "YouTube Clip",
+   "sidebar.inactive": "Unactivated",
+   "sidebar.toggleTheme": "Toggle theme",
+   "sidebar.resizeHint": "Drag to resize, double-click to reset",
+@@ -23912,7 +23960,7 @@
+   "settings.updDev": "Dev mode: update check skipped",
+   "settings.telemetry": "Anonymous usage stats",
+   "settings.telemetryHint":
+-    "Send anonymous feature-usage & crash reports to help improve xPic (no file content/paths)",
++    "Send anonymous feature-usage & crash reports to help improve Beyond Media Suite (no file content/paths)",
+   "settings.replayGuide": "Replay guide",
+   "settings.feedback": "Feedback",
+   "settings.about": "About",
+@@ -23947,6 +23995,7 @@
+   "flow.verb.vcompress": "Compress",
+   "flow.verb.v2image": "Generate",
+   "flow.verb.collage": "Create",
++  "flow.verb.youtube": "Create clip",
+   "flow.verb.merge": "Merge",
+   "flow.verb.crop": "Crop",
+   "flow.mergeName": "Animation name",
+@@ -24150,6 +24199,31 @@
+   "flow.nearLossless": "Near-lossless",
+   "flow.preset": "Preset",
+   "flow.outFormat": "Output format",
++  "youtube.url": "YouTube video URL",
++  "youtube.load": "Load video",
++  "youtube.loading": "Reading video information…",
++  "youtube.start": "Start time (millisecond precision)",
++  "youtube.end": "End time (millisecond precision)",
++  "youtube.timeHint": "Use HH:MM:SS.mmm, for example 00:01:02.350.",
++  "youtube.width": "Width (px)",
++  "youtube.height": "Height (px)",
++  "youtube.fit": "Frame fitting",
++  "youtube.fill": "Fill and crop",
++  "youtube.contain": "Show full frame",
++  "youtube.outputName": "Output file name",
++  "youtube.outputFolder": "Output folder",
++  "youtube.rights": "Only download media you own or have permission to use. Clips are downloaded, buffered, and encoded locally.",
++  "youtube.create": "Create clip",
++  "youtube.cancel": "Cancel",
++  "youtube.downloading": "Downloading the precise time range…",
++  "youtube.buffering": "Buffering frames at the selected frame rate…",
++  "youtube.encoding": "Encoding and matching the target size…",
++  "youtube.done": "Clip created",
++  "youtube.reveal": "Reveal in Finder",
++  "youtube.again": "Adjust settings and export again",
++  "youtube.invalidTime": "End time must be later than start time and within the video duration.",
++  "youtube.evenDimensions": "Video dimensions must use even pixel values.",
++  "youtube.noMetadata": "Load a valid YouTube video first.",
+   "flow.jpegWarn": "Converting to JPEG may grow the size; WebP is recommended.",
+   "flow.outDir": "Output folder",
+   "flow.choose": "Choose",
+@@ -24164,7 +24238,7 @@
+   "flow.sub.generic": "{n} file(s)",
+   "flow.placeholder.title": "This module is moving to the new UI",
+   "flow.placeholder.desc": "Remaining modules land in later stages",
+-  "alert.proTitle": "Activate xPic Pro",
++  "alert.proTitle": "Activate Beyond Media Suite Pro",
+   "alert.proDesc":
+     "Currently unactivated. Activate to unlock unlimited batches, video processing and all output formats.",
+   "alert.proFeat1": "No per-batch limit",
+@@ -25989,7 +26063,7 @@
+                                 " ",
+                                 /* @__PURE__ */ jsxRuntimeExports.jsx("a", {
+                                   className: "x-link-btn",
+-                                  href: "https://appledocs.dev/xpic",
++                                  href: "https://github.com/tdw46/Beyond-Media-Suite/issues",
+                                   target: "_blank",
+                                   rel: "noreferrer",
+                                   children: "付款页面",
+@@ -26511,6 +26585,7 @@
+       { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
+       { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
+       { key: "v2image", labelKey: "nav.v2image", Icon: Film },
++      { key: "youtube", labelKey: "nav.youtube", Icon: Film },
+       { key: "collage", labelKey: "nav.collage", Icon: Layers },
+     ],
+   },
+@@ -26540,11 +26615,12 @@
+             className: "x-logo",
+             src: logoSrc,
+             draggable: false,
+-            alt: "xPic",
++            alt: "Beyond Media Suite",
+           }),
+           /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
+             className: "x-wordmark",
+-            children: "xPic",
++            style: { fontSize: 15, lineHeight: 1.15 },
++            children: "Beyond Media Suite",
+           }),
+         ],
+       }),
+@@ -43011,12 +43087,443 @@
+   Custom: WorkflowWorkspace,
+   noDrag: true,
+ };
++const parseYouTubeTime = (value) => {
++  const text = String(value || "").trim();
++  if (/^\d+(?:\.\d{1,3})?$/.test(text)) {
++    return Math.max(0, Math.round(Number(text) * 1e3));
++  }
++  const match = /^(\d+):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/.exec(text);
++  if (!match || Number(match[2]) > 59 || Number(match[3]) > 59) return null;
++  return (
++    (Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])) *
++      1e3 +
++    Number((match[4] || "").padEnd(3, "0"))
++  );
++};
++const formatYouTubeTime = (ms) => {
++  const value = Math.max(0, Math.round(Number(ms) || 0));
++  const hours = Math.floor(value / 36e5);
++  const minutes = Math.floor((value % 36e5) / 6e4);
++  const seconds = Math.floor((value % 6e4) / 1e3);
++  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(value % 1e3).padStart(3, "0")}`;
++};
++const safeYouTubeStem = (value) =>
++  String(value || "youtube_clip")
++    .replace(/[\\/:*?"<>|]/g, "-")
++    .replace(/\s+/g, " ")
++    .trim()
++    .slice(0, 120) || "youtube_clip";
++const YOUTUBE_OUTPUT_OPTIONS = [
++  { label: "GIF", value: "gif" },
++  { label: "WebP", value: "webp" },
++  { label: "APNG", value: "apng" },
++  ...vWriteOptions,
++].filter(
++  (option, index, options) =>
++    options.findIndex((candidate) => candidate.value === option.value) === index,
++);
++const YouTubeClipWorkspace = reactExports.memo(function YouTubeClipWorkspace2() {
++  const t2 = useT();
++  const config = useSelector((state) => state.youtube.config);
++  const update = (payload) => store.dispatch(updateYouTubeConfig(payload));
++  const [metadata, setMetadata] = reactExports.useState(null);
++  const [outputDir, setOutputDir] = reactExports.useState("");
++  const [stage, setStage] = reactExports.useState("idle");
++  const [error, setError] = reactExports.useState("");
++  const [result, setResult] = reactExports.useState(null);
++  const jobRef = reactExports.useRef("");
++  const cancelledRef = reactExports.useRef(false);
++  const busy = !["idle", "done", "error"].includes(stage);
++  reactExports.useEffect(() => {
++    window
++      .x("getDownloadsPath")
++      .then((value) => setOutputDir(value || ""))
++      .catch(() => {});
++  }, []);
++  const inspect = async () => {
++    const jobId = `youtube-inspect-${Date.now()}`;
++    jobRef.current = jobId;
++    cancelledRef.current = false;
++    setStage("inspecting");
++    setError("");
++    setResult(null);
++    try {
++      const info = await window.x("youtubeInspect", { url: config.url, jobId });
++      setMetadata(info);
++      const durationMs = Math.round(Number(info.duration || 0) * 1e3);
++      const currentEnd = parseYouTubeTime(config.endTime);
++      update({
++        outputName: safeYouTubeStem(info.title),
++        ...(durationMs > 0 && (currentEnd == null || currentEnd > durationMs)
++          ? { endTime: formatYouTubeTime(durationMs) }
++          : {}),
++      });
++      setStage("idle");
++    } catch (cause) {
++      if (!cancelledRef.current) {
++        setError(cause?.message || String(cause));
++        setStage("error");
++      }
++    } finally {
++      await window.x("finishMediaJob", jobId).catch(() => {});
++    }
++  };
++  const createClip = async () => {
++    const startMs = parseYouTubeTime(config.startTime);
++    const endMs = parseYouTubeTime(config.endTime);
++    const durationMs = Math.round(Number(metadata?.duration || 0) * 1e3);
++    if (!metadata) {
++      setError(t2("youtube.noMetadata"));
++      setStage("error");
++      return;
++    }
++    if (
++      startMs == null ||
++      endMs == null ||
++      endMs <= startMs ||
++      (durationMs > 0 && endMs > durationMs)
++    ) {
++      setError(t2("youtube.invalidTime"));
++      setStage("error");
++      return;
++    }
++    const width = Math.max(2, Math.round(Number(config.width) || 1280));
++    const height = Math.max(2, Math.round(Number(config.height) || 720));
++    if (width % 2 || height % 2) {
++      setError(t2("youtube.evenDimensions"));
++      setStage("error");
++      return;
++    }
++    const jobId = `youtube-create-${Date.now()}`;
++    jobRef.current = jobId;
++    cancelledRef.current = false;
++    setError("");
++    setResult(null);
++    try {
++      setStage("downloading");
++      const downloaded = await window.x("youtubeDownloadClip", {
++        url: config.url,
++        startMs,
++        endMs,
++        jobId,
++      });
++      setStage("buffering");
++      const prepared = await window.x("youtubeFrameBuffer", {
++        inputPath: downloaded.path,
++        durationMs: endMs - startMs,
++        fps: config.fps,
++        width,
++        height,
++        fitMode: config.fitMode,
++        jobId,
++      });
++      const format = config.toFormat;
++      const stem = safeYouTubeStem(config.outputName);
++      const finalStem = stem.endsWith("_opt") ? stem : `${stem}_opt`;
++      const outPath = window.pj(outputDir, `${finalStem}.${format}`);
++      await window.x("createDirIfNotExist", outputDir);
++      setStage("encoding");
++      await window.x("vConvert", {
++        quality: config.quality,
++        inputPath: prepared.path,
++        preparedInput: true,
++        toFormat: format,
++        outPath,
++        fps: config.fps,
++        loop: config.loop,
++        targetFileSizeKb: targetSizeFor(config, format),
++        allowGifColorReduction: config.gifColorReduction,
++        jobId,
++      });
++      const info = await window.x("getFileInfo", outPath);
++      setResult({ path: outPath, name: `${finalStem}.${format}`, size: info.size });
++      setStage("done");
++    } catch (cause) {
++      if (!cancelledRef.current) {
++        setError(cause?.message || String(cause));
++        setStage("error");
++      }
++    } finally {
++      if (!cancelledRef.current) {
++        await window.x("finishMediaJob", jobId).catch(() => {});
++      }
++    }
++  };
++  const cancel = async () => {
++    cancelledRef.current = true;
++    await window.x("cancelMediaJob", jobRef.current).catch(() => {});
++    setStage("idle");
++  };
++  const chooseOutput = async () => {
++    const dirs = await window.x("selectDir");
++    if (dirs?.[0]) setOutputDir(dirs[0]);
++  };
++  const stageText =
++    stage === "inspecting"
++      ? t2("youtube.loading")
++      : stage === "downloading"
++        ? t2("youtube.downloading")
++        : stage === "buffering"
++          ? t2("youtube.buffering")
++          : stage === "encoding"
++            ? t2("youtube.encoding")
++            : "";
++  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++    style: {
++      width: "100%",
++      height: "100%",
++      display: "grid",
++      gridTemplateColumns: "minmax(0, 1fr) 390px",
++      overflow: "hidden",
++    },
++    children: [
++      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", {
++        style: { padding: 34, overflow: "auto" },
++        children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", {
++            style: { margin: "0 0 8px", fontSize: 26 },
++            children: t2("nav.youtube"),
++          }),
++          /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++            className: "x-cfg-note",
++            style: { maxWidth: 720, marginBottom: 24 },
++            children: t2("youtube.rights"),
++          }),
++          metadata
++            ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                style: {
++                  padding: 22,
++                  border: "1px solid var(--border)",
++                  borderRadius: 14,
++                  background: "var(--bg-elevated)",
++                  maxWidth: 720,
++                },
++                children: [
++                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                    style: { fontSize: 18, fontWeight: 650 },
++                    children: metadata.title,
++                  }),
++                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                    className: "x-cfg-note",
++                    style: { marginTop: 8 },
++                    children: `${metadata.uploader || "YouTube"} · ${formatYouTubeTime(metadata.duration * 1e3)} · ${metadata.width || "?"}×${metadata.height || "?"} · ${metadata.fps || "?"} FPS`,
++                  }),
++                ],
++              })
++            : null,
++          stageText
++            ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                style: { marginTop: 24, fontSize: 16, color: "var(--primary)" },
++                children: stageText,
++              })
++            : null,
++          error
++            ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                style: {
++                  marginTop: 24,
++                  padding: 16,
++                  borderRadius: 10,
++                  color: "#ff5a55",
++                  background: "rgba(255,75,70,.1)",
++                  whiteSpace: "pre-wrap",
++                },
++                children: error,
++              })
++            : null,
++          result
++            ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                style: { marginTop: 24 },
++                children: [
++                  /* @__PURE__ */ jsxRuntimeExports.jsx("h3", {
++                    children: t2("youtube.done"),
++                  }),
++                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                    children: `${result.name} · ${filesize(result.size)}`,
++                  }),
++                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                    type: "button",
++                    className: "x-cfg-action",
++                    onClick: () => window.x("showItemInFolder", result.path),
++                    children: t2("youtube.reveal"),
++                  }),
++                ],
++              })
++            : null,
++        ],
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", {
++        className: "x-config",
++        style: { minWidth: 0 },
++        children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++            className: "x-config-head",
++            children: /* @__PURE__ */ jsxRuntimeExports.jsx("h2", {
++              children: t2("youtube.create"),
++            }),
++          }),
++          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++            className: "x-config-body",
++            children: [
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
++                label: t2("youtube.url"),
++                value: config.url,
++                placeholder: "https://www.youtube.com/watch?v=…",
++                onChange: (url) => {
++                  update({ url });
++                  setMetadata(null);
++                },
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                type: "button",
++                className: "x-cfg-action",
++                disabled: busy || !config.url,
++                onClick: inspect,
++                children: stage === "inspecting" ? t2("youtube.loading") : t2("youtube.load"),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
++                label: t2("youtube.start"),
++                value: config.startTime,
++                onChange: (startTime) => update({ startTime }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
++                label: t2("youtube.end"),
++                value: config.endTime,
++                onChange: (endTime) => update({ endTime }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                className: "x-cfg-note",
++                children: t2("youtube.timeHint"),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                label: t2("flow.fps"),
++                value: config.fps,
++                min: 1,
++                max: 120,
++                onChange: (fps) => update({ fps }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                label: t2("youtube.width"),
++                value: config.width,
++                min: 2,
++                onChange: (width) => update({ width }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                label: t2("youtube.height"),
++                value: config.height,
++                min: 2,
++                onChange: (height) => update({ height }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
++                label: t2("youtube.fit"),
++                value: config.fitMode,
++                options: [
++                  { label: t2("youtube.fill"), value: "fill" },
++                  { label: t2("youtube.contain"), value: "fit" },
++                ],
++                onChange: (fitMode) => update({ fitMode }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                label: t2("flow.outFormat"),
++                value: config.toFormat,
++                options: YOUTUBE_OUTPUT_OPTIONS,
++                onChange: (toFormat) => update({ toFormat }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                label: t2("flow.targetSize"),
++                value: targetSizeFor(config, config.toFormat),
++                min: 0,
++                onChange: (value) => update(updateTargetSizeFor(config, config.toFormat, value)),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                className: "x-cfg-note",
++                children: t2("flow.targetSizeHint"),
++              }),
++              config.toFormat === "gif"
++                ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
++                    config,
++                    update,
++                    t: t2,
++                  })
++                : null,
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++                label: t2("flow.animQuality"),
++                value: config.quality,
++                min: 0,
++                max: 2,
++                onChange: (quality) => update({ quality }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                label: t2("flow.loop"),
++                value: config.loop,
++                min: 0,
++                onChange: (loop) => update({ loop }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
++                label: t2("youtube.outputName"),
++                value: config.outputName,
++                onChange: (outputName) => update({ outputName }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                className: "x-cfg-label x-cfg-label-block",
++                children: t2("youtube.outputFolder"),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                className: "x-cfg-note",
++                style: { overflowWrap: "anywhere" },
++                children: outputDir,
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                type: "button",
++                className: "x-cfg-action",
++                disabled: busy,
++                onClick: chooseOutput,
++                children: t2("flow.choose"),
++              }),
++            ],
++          }),
++          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++            className: "x-config-foot",
++            children: busy
++              ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                  type: "button",
++                  className: "x-cfg-action",
++                  onClick: cancel,
++                  children: t2("youtube.cancel"),
++                })
++              : /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                  type: "button",
++                  className: "x-cfg-action is-primary",
++                  disabled: !metadata || !outputDir,
++                  onClick: createClip,
++                  children: stage === "done" ? t2("youtube.again") : t2("youtube.create"),
++                }),
++          }),
++        ],
++      }),
++    ],
++  });
++});
++const youtube = {
++  key: "youtube",
++  labelKey: "nav.youtube",
++  verbKey: "flow.verb.youtube",
++  mediaType: "video",
++  domain: VIDEO_DOMAIN,
++  accept: [],
++  validation: { maxFiles: 0, minFiles: 0, requireActivation: false },
++  configKey: "youtube",
++  updateConfig: updateYouTubeConfig,
++  renderParams: () => null,
++  Custom: YouTubeClipWorkspace,
++  noDrag: true,
++};
+ const FLOW_MODULES = {
+   compress,
+   convert,
+   vconvert,
+   vcompress,
+   v2image,
++  youtube,
+   collage,
+   merge: merge$1,
+   crop,
+@@ -44634,8 +45141,8 @@
+               !window.isWin
+                 ? /* @__PURE__ */ jsxRuntimeExports.jsx(Titlebar, {
+                     title: MODULE_LABEL_KEYS[currentTab]
+-                      ? `xPic · ${t2(MODULE_LABEL_KEYS[currentTab])}`
+-                      : "xPic",
++                      ? `Beyond Media Suite · ${t2(MODULE_LABEL_KEYS[currentTab])}`
++                      : "Beyond Media Suite",
+                   })
+                 : null,
+               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+@@ -45293,7 +45800,7 @@
+                       }),
+                       /* @__PURE__ */ jsxRuntimeExports.jsx(Row, {
+                         title: t2("settings.version"),
+-                        desc: `xPic ${version}`,
++                        desc: `Beyond Media Suite ${version}`,
+                         children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                           "span",
+                          {},

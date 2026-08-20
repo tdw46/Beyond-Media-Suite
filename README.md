@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="./assets/icon.png" width="100" alt="xPic" />
+  <img src="./assets/icon.png" width="100" alt="Beyond Media Suite" />
 </p>
 
-<h1 align="center">xPic</h1>
+<h1 align="center">Beyond Media Suite</h1>
 
-<p align="center">A simple, powerful desktop toolbox for images — convert, compress, crop and more.<br/>For macOS (Apple Silicon &amp; Intel) and Windows.</p>
+<p align="center">A highly configurable desktop suite for images, animation, video, collage, and precise YouTube clips.<br/>For macOS (Apple Silicon &amp; Intel), built on the open-source xPic foundation.</p>
 
 <p align="center">
-  <a href="https://github.com/Xheldon/xPic/releases/latest"><b>⬇️ Download</b></a>
+  <a href="https://github.com/tdw46/Beyond-Media-Suite/releases/latest"><b>⬇️ Download</b></a>
   ·
   <a href="https://xpic.xheldon.com">Website</a>
   ·
@@ -19,7 +19,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./assets/screenshot-dark-en.png" />
-    <img src="./assets/screenshot-light-en.png" width="760" alt="xPic screenshot" />
+    <img src="./assets/screenshot-light-en.png" width="760" alt="Beyond Media Suite screenshot" />
   </picture>
 </p>
 
@@ -31,12 +31,13 @@
 - **Merge frames** — stitch a sequence of images into an animated WebP / APNG with custom loop & frame delay.
 - **SVGA preview** — play SVGA animation files right inside the app.
 - **Video tools** — convert or compress videos, or turn them into GIF / WebP / APNG animations.
+- **YouTube Clip** — select a millisecond-precise time range, buffer it at a chosen frame rate and exact dimensions, then export GIF, WebP, APNG, WebM, MP4, or another supported video container with an optional target file size.
 - **Workflow** — chain convert / compress / crop / merge into one pipeline and run it with a single click.
 - **Local & private** — everything is processed on your machine; nothing is ever uploaded.
 
 Light & dark themes, multiple accent colors, English & Chinese interface. Updates are checked automatically inside the app.
 
-## Tyler's target-size fork
+## Beyond Media Suite additions
 
 This fork adds a **Target output size (KB)** control to image conversion,
 video-to-animation, and every video output format exposed by xPic:
@@ -137,6 +138,7 @@ video-to-animation, and every video output format exposed by xPic:
 - every completed creation flow offers **Back to edit**, restoring the same
   inputs and settings for another export while keeping **New batch** separate;
 - fork builds do not download upstream app updates over the patch.
+- Video → YouTube Clip uses a pinned, checksum-verified official yt-dlp macOS build plus the bundled FFmpeg. It downloads only the requested time range, creates a local frame-rate-controlled intermediate, and supports exact width/height, fill or fit framing, per-format target sizes, and millisecond time entry.
 
 The upstream repository publishes the website and releases, but not the
 unbundled Electron application source. To keep this change reviewable and
@@ -146,7 +148,7 @@ application bundle plus a build script.
 ```sh
 npm install
 npm test
-npm run build:fork -- ./official-xPic-2.1.3.app ./dist/xPic.app
+npm run build:fork -- ./official-xPic-2.1.3.app "./dist/Beyond Media Suite.app"
 ```
 
 The first argument must be an unmodified xPic 2.1.3 application bundle. The
@@ -154,8 +156,8 @@ build is ad-hoc signed for local macOS use.
 
 ## Download
 
-Grab the installer for your platform from the [latest release](https://github.com/Xheldon/xPic/releases/latest), or from the [website](https://xpic.xheldon.com) — it always points to the newest version.
+Build the current macOS bundle with the command above. Release artifacts can be published from this fork's [releases](https://github.com/tdw46/Beyond-Media-Suite/releases).
 
 ## Feedback
 
-Questions, bugs and ideas are welcome in [Issues](https://github.com/Xheldon/xPic/issues).
+Questions, bugs and ideas are welcome in [Issues](https://github.com/tdw46/Beyond-Media-Suite/issues). The original xPic project remains credited at [Xheldon/xPic](https://github.com/Xheldon/xPic).
