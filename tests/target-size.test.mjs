@@ -604,8 +604,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.26/);
-  assert.match(build, /2\.1\.3\.26/);
+  assert.match(build, /2\.1\.3-fork\.27/);
+  assert.match(build, /2\.1\.3\.27/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -636,6 +636,14 @@ test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation
   assert.match(patch, /youtube\.fullVideo/);
   assert.match(patch, /loadYouTubeIframeApi/);
   assert.match(patch, /new YT\.Player/);
+  assert.match(patch, /disable-gpu-compositing/);
+  assert.match(patch, /autoplay: 1/);
+  assert.match(patch, /mute: 1/);
+  assert.match(patch, /event\.target\.mute\(\)/);
+  assert.match(patch, /event\.target\.playVideo\(\)/);
+  assert.match(patch, /event\.target\.seekTo\(range\.startMs \/ 1e3, true\);/);
+  assert.match(patch, /previewMuted/);
+  assert.match(patch, /beginTimelineScrub/);
   assert.match(patch, /youtubePlayerRef\.current\?\.seekTo/);
   assert.match(patch, /player\.getPlayerState\?\.\(\) !== 1/);
   assert.match(patch, /player\.playVideo\(\)/);
@@ -654,6 +662,9 @@ test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation
   assert.match(patch, /applyClipLength/);
   assert.match(patch, /Math\.round\(\(event\.clientX - drag\.originX\) \/ 2\)/);
   assert.match(patch, /targetSizeFor\(config, format\)/);
+  assert.match(patch, /includeAudio: config\.includeAudio !== false/);
+  assert.match(patch, /includeAudio && media\.hasAudio/);
+  assert.match(patch, /youtube\.includeAudio/);
   assert.match(patch, /preparedInput: true/);
   assert.match(patch, /\.\.\.vWriteOptions/);
   assert.match(build, /yt-dlp\/releases\/download/);

@@ -78,7 +78,7 @@
 +      } catch {}
 +    }
 +    return youtubeNodeRuntime;
-   };
++  };
 +  const ytDlpArgs = () => {
 +    const runtime = findYouTubeNodeRuntime();
 +    return [
@@ -103,7 +103,7 @@
 +    }
 +    await fs.promises.chmod(executable, 493);
 +    return executable;
-+  };
+   };
 +  const safeYouTubeMetadata = (info) => ({
 +    id: String(info?.id || ""),
 +    title: String(info?.title || "YouTube clip"),
@@ -117,7 +117,7 @@
    const changeMenu = (opt) => {
      const { id, email, newId } = opt;
      const menu22 = electron.Menu.getApplicationMenu();
-@@ -1832,6 +1923,123 @@
+@@ -1832,7 +1923,124 @@
      getSystemFontFamilies: () => getSystemFontFamilies(),
      getCachePath: () => {
        return app2.getPath("temp");
@@ -191,7 +191,7 @@
 +          );
 +      if (!downloaded) throw new Error("YouTube clip download completed without a media file.");
 +      return { path: downloaded, durationMs: endMs - startMs };
-+    },
+     },
 +    youtubeFrameBuffer: async (_, opt) => {
 +      const inputPath = String(opt?.inputPath || "");
 +      if (!fs.existsSync(inputPath)) throw new Error("Downloaded YouTube clip is missing.");
@@ -238,9 +238,10 @@
 +        { jobId: opt?.jobId },
 +      );
 +      return { path: outPath, size: fs.statSync(outPath).size };
-     },
++    },
      moveFile: (_, src, dest) => {
        return new Promise((resolve, reject) => {
+         fs.mkdir(path.dirname(dest), { recursive: true }, (err) => {
 @@ -1875,7 +2083,7 @@
        try {
          await fs.promises.unlink(backup);
@@ -250,7 +251,42 @@
        }
        return null;
      },
-@@ -3547,7 +3755,7 @@
+@@ -2646,6 +2854,7 @@
+         loseless,
+         targetFileSizeKb,
+         allowGifColorReduction = false,
++        includeAudio = true,
+         jobId,
+       } = opt;
+       const cwd = binDir();
+@@ -2795,7 +3004,7 @@
+         );
+         const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
+         const reserve = Math.max(4096, Math.floor(targetBytes * 0.02));
+-        const audioBitrate = media.hasAudio ? 64 : 0;
++        const audioBitrate = includeAudio && media.hasAudio ? 64 : 0;
+         const audioBytes = (audioBitrate * 1e3 * media.duration) / 8;
+         let bitrate = Math.max(
+           8,
+@@ -2861,7 +3070,7 @@
+               );
+             }
+             const finalArgs = [...video];
+-            if (media.hasAudio) {
++            if (includeAudio && media.hasAudio) {
+               finalArgs.push(
+                 "-map",
+                 "0:a?",
+@@ -2967,7 +3176,7 @@
+         } else {
+           args.push("-q:v", "4");
+         }
+-        if (media.hasAudio) {
++        if (includeAudio && media.hasAudio) {
+           args.push("-map", "0:a?", "-c:a", profile.audioCodec, "-b:a", "96k");
+         } else {
+           args.push("-an");
+@@ -3547,7 +3756,7 @@
        submenu: [
          {
            role: "about",
@@ -259,7 +295,7 @@
          },
          {
            label: "检查更新",
-@@ -3579,7 +3787,7 @@
+@@ -3579,7 +3788,7 @@
                  defaultId: 1,
                  title: "警告",
                  detail:
@@ -268,7 +304,7 @@
                  cancelId: 0,
                  icon: icon$1,
                  noLink: true,
-@@ -3598,7 +3806,7 @@
+@@ -3598,7 +3807,7 @@
          { type: "separator" },
          {
            role: "hide",
@@ -277,13 +313,16 @@
          },
          {
            role: "hideOthers",
-@@ -3883,8 +4091,24 @@
+@@ -3883,8 +4092,27 @@
  const WIN_MIN_WIDTH = 800;
  const WIN_MIN_HEIGHT = 600;
  const app = electron.app;
 -app.setAppUserModelId("com.xheldon.xpic");
 +app.setAppUserModelId("com.tdw46.beyond-media-suite");
  app.commandLine.appendSwitch("js-flags", "--expose-gc");
++if (process.platform === "darwin") {
++  app.commandLine.appendSwitch("disable-gpu-compositing");
++}
 +{
 +  const legacyDir = path.join(app.getPath("appData"), "xPic Fork");
 +  const currentDir = app.getPath("userData");
@@ -303,7 +342,7 @@
  const store = new Store();
  {
    const cfg = store.get("xpic-config");
-@@ -3903,12 +4127,12 @@
+@@ -3903,12 +4131,12 @@
  );
  app.dock?.setIcon(icon);
  app.setAboutPanelOptions({
@@ -321,7 +360,7 @@
    iconPath: path.join(assetsBase, "main/icon.png"),
  });
  const isWin = os.platform() === "win32";
-@@ -4105,6 +4329,28 @@
+@@ -4105,6 +4333,28 @@
        webSecurity: true,
      },
    });
@@ -352,7 +391,7 @@
      app.__win__?.show();
 --- a/out/renderer/assets/index-CRHVtslq.js
 +++ b/out/renderer/assets/index-CRHVtslq.js
-@@ -22885,6 +22885,26 @@
+@@ -22885,6 +22885,27 @@
      quality: "",
    },
  });
@@ -374,12 +413,13 @@
 +    outputName: "youtube_clip",
 +    targetFileSizes: {},
 +    gifColorReduction: false,
++    includeAudio: true,
 +  },
 +});
  const collageSlice = createConfigSlice({
    name: "collage",
    initialConfig: {
-@@ -22961,6 +22981,7 @@
+@@ -22961,6 +22982,7 @@
  const { updateConfig: updateV2ImageConfig } = v2ImageSlice.actions;
  const { updateConfig: updateVCompressConfig } = vCompressSlice.actions;
  const { updateConfig: updateVConvertConfig } = vConvertSlice.actions;
@@ -387,7 +427,7 @@
  const { updateConfig: updateCollageConfig } = collageSlice.actions;
  const { updateGlobalConfig } = globalSlice.actions;
  const {
-@@ -22992,6 +23013,7 @@
+@@ -22992,6 +23014,7 @@
      v2image: v2ImageSlice.reducer,
      vcompress: vCompressSlice.reducer,
      vconvert: vConvertSlice.reducer,
@@ -395,7 +435,7 @@
      collage: collageSlice.reducer,
      workflow: workflowSlice.reducer,
      session: sessionSlice.reducer,
-@@ -23370,6 +23392,7 @@
+@@ -23370,6 +23393,7 @@
    "nav.vcompress": "视频压缩",
    "nav.v2image": "动图生成",
    "nav.collage": "拼贴画布",
@@ -403,7 +443,7 @@
    // 侧栏
    "sidebar.inactive": "未激活",
    "sidebar.toggleTheme": "切换主题",
-@@ -23434,7 +23457,7 @@
+@@ -23434,7 +23458,7 @@
    "settings.updDev": "开发模式不检查更新",
    "settings.telemetry": "匿名使用统计",
    "settings.telemetryHint":
@@ -412,7 +452,7 @@
    "settings.replayGuide": "重放新手引导",
    "settings.feedback": "问题反馈",
    "settings.about": "关于作者",
-@@ -23470,6 +23493,7 @@
+@@ -23470,6 +23494,7 @@
    "flow.verb.vcompress": "压缩",
    "flow.verb.v2image": "生成",
    "flow.verb.collage": "创建",
@@ -420,7 +460,7 @@
    "flow.verb.merge": "合成",
    "flow.verb.crop": "裁剪",
    "flow.mergeName": "动图名称",
-@@ -23677,6 +23701,40 @@
+@@ -23677,6 +23702,44 @@
    "flow.nearLossless": "近乎无损",
    "flow.preset": "预处理风格",
    "flow.outFormat": "输出格式",
@@ -436,7 +476,11 @@
 +  "youtube.endFull": "结束设为视频结尾",
 +  "youtube.fullVideo": "选择完整视频",
 +  "youtube.previewBuffering": "正在缓冲实时预览…",
-+  "youtube.previewHint": "预览直接流式播放并在拖动时实时跳转。按住 Shift 拖动可精细调整：每移动 2 屏幕像素改变 1 毫秒。",
++  "youtube.previewHint": "预览默认静音并循环播放所选片段；拖动时会暂停并实时跳转，松开后继续循环。按住 Shift 拖动可精细调整：每移动 2 屏幕像素改变 1 毫秒。",
++  "youtube.mutePreview": "预览静音",
++  "youtube.unmutePreview": "取消预览静音",
++  "youtube.includeAudio": "保存的视频包含音频",
++  "youtube.includeAudioHint": "与预览静音相互独立。GIF、WebP 和 APNG 等无音频格式会忽略此选项。",
 +  "youtube.clipLength": "片段长度（秒）",
 +  "youtube.applyLength": "从当前开始时间设置长度",
 +  "youtube.width": "宽度 (px)",
@@ -461,7 +505,7 @@
    "flow.jpegWarn": "转 JPEG 体积可能变大，建议用 WebP。",
    "flow.outDir": "输出目录",
    "flow.choose": "选择",
-@@ -23692,7 +23750,7 @@
+@@ -23692,7 +23755,7 @@
    "flow.placeholder.title": "该模块正在迁移到新界面",
    "flow.placeholder.desc": "其余模块将分阶段接入单窗工作流",
    // 系统提示 Alert
@@ -470,7 +514,7 @@
    "alert.proDesc":
      "当前为未激活状态。激活后解锁无限批量、视频处理与全部输出格式。",
    "alert.proFeat1": "每次处理无数量上限",
-@@ -23850,6 +23908,7 @@
+@@ -23850,6 +23913,7 @@
    "nav.vcompress": "Compress",
    "nav.v2image": "To Animation",
    "nav.collage": "Collage",
@@ -478,7 +522,7 @@
    "sidebar.inactive": "Unactivated",
    "sidebar.toggleTheme": "Toggle theme",
    "sidebar.resizeHint": "Drag to resize, double-click to reset",
-@@ -23912,7 +23971,7 @@
+@@ -23912,7 +23976,7 @@
    "settings.updDev": "Dev mode: update check skipped",
    "settings.telemetry": "Anonymous usage stats",
    "settings.telemetryHint":
@@ -487,7 +531,7 @@
    "settings.replayGuide": "Replay guide",
    "settings.feedback": "Feedback",
    "settings.about": "About",
-@@ -23947,6 +24006,7 @@
+@@ -23947,6 +24011,7 @@
    "flow.verb.vcompress": "Compress",
    "flow.verb.v2image": "Generate",
    "flow.verb.collage": "Create",
@@ -495,7 +539,7 @@
    "flow.verb.merge": "Merge",
    "flow.verb.crop": "Crop",
    "flow.mergeName": "Animation name",
-@@ -24150,6 +24210,40 @@
+@@ -24150,6 +24215,44 @@
    "flow.nearLossless": "Near-lossless",
    "flow.preset": "Preset",
    "flow.outFormat": "Output format",
@@ -511,7 +555,11 @@
 +  "youtube.endFull": "End at video end",
 +  "youtube.fullVideo": "Use full video",
 +  "youtube.previewBuffering": "Buffering live preview…",
-+  "youtube.previewHint": "The preview streams directly and seeks live while you drag. Hold Shift while dragging for precision: two screen pixels per millisecond.",
++  "youtube.previewHint": "The selected clip loops automatically with preview audio muted. Dragging pauses the loop and seeks live; release to resume. Hold Shift for precision: two screen pixels per millisecond.",
++  "youtube.mutePreview": "Mute preview",
++  "youtube.unmutePreview": "Unmute preview",
++  "youtube.includeAudio": "Include audio in saved video",
++  "youtube.includeAudioHint": "Independent of preview mute. Audio-free formats such as GIF, WebP, and APNG ignore this setting.",
 +  "youtube.clipLength": "Clip length (seconds)",
 +  "youtube.applyLength": "Set length from current start",
 +  "youtube.width": "Width (px)",
@@ -536,7 +584,7 @@
    "flow.jpegWarn": "Converting to JPEG may grow the size; WebP is recommended.",
    "flow.outDir": "Output folder",
    "flow.choose": "Choose",
-@@ -24164,7 +24258,7 @@
+@@ -24164,7 +24267,7 @@
    "flow.sub.generic": "{n} file(s)",
    "flow.placeholder.title": "This module is moving to the new UI",
    "flow.placeholder.desc": "Remaining modules land in later stages",
@@ -545,7 +593,7 @@
    "alert.proDesc":
      "Currently unactivated. Activate to unlock unlimited batches, video processing and all output formats.",
    "alert.proFeat1": "No per-batch limit",
-@@ -25989,7 +26083,7 @@
+@@ -25989,7 +26092,7 @@
                                  " ",
                                  /* @__PURE__ */ jsxRuntimeExports.jsx("a", {
                                    className: "x-link-btn",
@@ -554,7 +602,7 @@
                                    target: "_blank",
                                    rel: "noreferrer",
                                    children: "付款页面",
-@@ -26511,6 +26605,7 @@
+@@ -26511,6 +26614,7 @@
        { key: "vconvert", labelKey: "nav.vconvert", Icon: RefreshCw },
        { key: "vcompress", labelKey: "nav.vcompress", Icon: Video },
        { key: "v2image", labelKey: "nav.v2image", Icon: Film },
@@ -562,7 +610,7 @@
        { key: "collage", labelKey: "nav.collage", Icon: Layers },
      ],
    },
-@@ -26540,11 +26635,12 @@
+@@ -26540,11 +26644,12 @@
              className: "x-logo",
              src: logoSrc,
              draggable: false,
@@ -577,11 +625,10 @@
            }),
          ],
        }),
-@@ -43009,6 +43105,945 @@
-   updateConfig: () => ({ type: "@@noop" }),
+@@ -43010,13 +43115,1017 @@
    renderParams: () => null,
    Custom: WorkflowWorkspace,
-+  noDrag: true,
+   noDrag: true,
 +};
 +const parseYouTubeTime = (value) => {
 +  const text = String(value || "").trim();
@@ -629,7 +676,7 @@
 +  } catch {
 +    return "";
 +  }
-+};
+ };
 +const youtubeStartMsFromUrl = (value) => {
 +  const input = String(value || "").trim();
 +  if (!input) return null;
@@ -711,6 +758,7 @@
 +  const [previewVideoId, setPreviewVideoId] = reactExports.useState(() =>
 +    youtubeVideoIdFromUrl(config.url),
 +  );
++  const [previewMuted, setPreviewMuted] = reactExports.useState(true);
 +  const jobRef = reactExports.useRef("");
 +  const youtubeHostRef = reactExports.useRef(null);
 +  const youtubePlayerRef = reactExports.useRef(null);
@@ -718,6 +766,8 @@
 +  const autoInspectUrlRef = reactExports.useRef("");
 +  const inspectSequenceRef = reactExports.useRef(0);
 +  const fineDragRef = reactExports.useRef(null);
++  const previewMutedRef = reactExports.useRef(true);
++  const previewScrubbingRef = reactExports.useRef(false);
 +  const cancelledRef = reactExports.useRef(false);
 +  const busy = !["idle", "done", "error"].includes(stage);
 +  reactExports.useEffect(() => {
@@ -848,6 +898,7 @@
 +        loop: config.loop,
 +        targetFileSizeKb: targetSizeFor(config, format),
 +        allowGifColorReduction: config.gifColorReduction,
++        includeAudio: config.includeAudio !== false,
 +        jobId,
 +      });
 +      const info = await window.x("getFileInfo", outPath);
@@ -900,6 +951,7 @@
 +    startMs: selectedStartMs,
 +    endMs: selectedEndMs,
 +  };
++  previewMutedRef.current = previewMuted;
 +  reactExports.useEffect(() => {
 +    if (!previewVideoId || !youtubeHostRef.current) {
 +      youtubePlayerRef.current = null;
@@ -916,6 +968,8 @@
 +          height: "100%",
 +          videoId: previewVideoId,
 +          playerVars: {
++            autoplay: 1,
++            mute: 1,
 +            controls: 1,
 +            playsinline: 1,
 +            rel: 0,
@@ -926,8 +980,16 @@
 +            onReady: (event) => {
 +              if (disposed) return;
 +              youtubePlayerRef.current = event.target;
++              if (previewMutedRef.current) event.target.mute();
++              else event.target.unMute();
 +              event.target.seekTo(selectedRangeRef.current.startMs / 1e3, true);
-+              event.target.pauseVideo();
++              event.target.playVideo();
++            },
++            onAutoplayBlocked: (event) => {
++              if (disposed) return;
++              event.target.mute();
++              setPreviewMuted(true);
++              event.target.playVideo();
 +            },
 +            onStateChange: (event) => {
 +              if (disposed || event.data !== YT.PlayerState.PLAYING) return;
@@ -935,6 +997,7 @@
 +              const range = selectedRangeRef.current;
 +              if (currentMs < range.startMs - 100 || currentMs >= range.endMs - 20) {
 +                event.target.seekTo(range.startMs / 1e3, true);
++                event.target.playVideo();
 +              }
 +            },
 +          },
@@ -954,6 +1017,7 @@
 +  reactExports.useEffect(() => {
 +    const timer = window.setInterval(() => {
 +      const player = youtubePlayerRef.current;
++      if (previewScrubbingRef.current) return;
 +      if (!player || player.getPlayerState?.() !== 1) return;
 +      const currentMs = player.getCurrentTime() * 1e3;
 +      const range = selectedRangeRef.current;
@@ -964,6 +1028,12 @@
 +    }, 50);
 +    return () => window.clearInterval(timer);
 +  }, []);
++  reactExports.useEffect(() => {
++    const player = youtubePlayerRef.current;
++    if (!player) return;
++    if (previewMuted) player.mute?.();
++    else player.unMute?.();
++  }, [previewMuted]);
 +  const seekPreview = (value) => {
 +    const seconds = Math.max(0, Number(value) / 1e3);
 +    if (Number.isFinite(seconds)) youtubePlayerRef.current?.seekTo?.(seconds, true);
@@ -1028,6 +1098,20 @@
 +    if (fineDragRef.current?.pointerId === event.pointerId) {
 +      fineDragRef.current = null;
 +    }
++  };
++  const beginTimelineScrub = (event, edge) => {
++    previewScrubbingRef.current = true;
++    youtubePlayerRef.current?.pauseVideo?.();
++    beginFineDrag(event, edge);
++  };
++  const endTimelineScrub = (event) => {
++    endFineDrag(event);
++    previewScrubbingRef.current = false;
++    const player = youtubePlayerRef.current;
++    if (!player) return;
++    if (previewMutedRef.current) player.mute?.();
++    else player.unMute?.();
++    player.playVideo?.();
 +  };
 +  const applyClipLength = () => {
 +    const length = Math.max(1, Math.round(Number(config.clipLengthMs) || 5e3));
@@ -1131,13 +1215,32 @@
 +                          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", {
 +                            children: t2("youtube.timeline"),
 +                          }),
-+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
-+                            className: "x-cfg-note",
-+                            children: t2("youtube.selection", {
-+                              time: formatYouTubeTime(
-+                                selectedEndMs - selectedStartMs,
-+                              ),
-+                            }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                            style: {
++                              display: "flex",
++                              alignItems: "center",
++                              gap: 8,
++                            },
++                            children: [
++                              /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                                className: "x-cfg-note",
++                                children: t2("youtube.selection", {
++                                  time: formatYouTubeTime(
++                                    selectedEndMs - selectedStartMs,
++                                  ),
++                                }),
++                              }),
++                              /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                                type: "button",
++                                className: "x-cfg-action",
++                                onClick: () => setPreviewMuted((muted) => !muted),
++                                children: t2(
++                                  previewMuted
++                                    ? "youtube.unmutePreview"
++                                    : "youtube.mutePreview",
++                                ),
++                              }),
++                            ],
 +                          }),
 +                        ],
 +                      }),
@@ -1180,10 +1283,10 @@
 +                              }
 +                            },
 +                            onPointerDown: (event) =>
-+                              beginFineDrag(event, "start"),
++                              beginTimelineScrub(event, "start"),
 +                            onPointerMove: moveFineDrag,
-+                            onPointerUp: endFineDrag,
-+                            onPointerCancel: endFineDrag,
++                            onPointerUp: endTimelineScrub,
++                            onPointerCancel: endTimelineScrub,
 +                            style: { width: "100%", accentColor: "var(--primary)" },
 +                          }),
 +                        ],
@@ -1207,10 +1310,10 @@
 +                              }
 +                            },
 +                            onPointerDown: (event) =>
-+                              beginFineDrag(event, "end"),
++                              beginTimelineScrub(event, "end"),
 +                            onPointerMove: moveFineDrag,
-+                            onPointerUp: endFineDrag,
-+                            onPointerCancel: endFineDrag,
++                            onPointerUp: endTimelineScrub,
++                            onPointerCancel: endTimelineScrub,
 +                            style: { width: "100%", accentColor: "var(--primary)" },
 +                          }),
 +                        ],
@@ -1433,6 +1536,14 @@
 +                options: YOUTUBE_OUTPUT_OPTIONS,
 +                onChange: (toFormat) => update({ toFormat }),
 +              }),
++              vWriteOptions.some((option) => option.value === config.toFormat)
++                ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++                    label: t2("youtube.includeAudio"),
++                    desc: t2("youtube.includeAudioHint"),
++                    checked: config.includeAudio !== false,
++                    onChange: (includeAudio) => update({ includeAudio }),
++                  })
++                : null,
 +              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
 +                label: t2("flow.targetSize"),
 +                value: targetSizeFor(config, config.toFormat),
@@ -1520,10 +1631,11 @@
 +  updateConfig: updateYouTubeConfig,
 +  renderParams: () => null,
 +  Custom: YouTubeClipWorkspace,
-   noDrag: true,
- };
++  noDrag: true,
++};
  const FLOW_MODULES = {
-@@ -43017,6 +44052,7 @@
+   compress,
+   convert,
    vconvert,
    vcompress,
    v2image,
@@ -1531,7 +1643,7 @@
    collage,
    merge: merge$1,
    crop,
-@@ -44634,8 +45670,8 @@
+@@ -44634,8 +45743,8 @@
                !window.isWin
                  ? /* @__PURE__ */ jsxRuntimeExports.jsx(Titlebar, {
                      title: MODULE_LABEL_KEYS[currentTab]
@@ -1542,7 +1654,7 @@
                    })
                  : null,
                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
-@@ -45293,7 +46329,7 @@
+@@ -45293,7 +46402,7 @@
                        }),
                        /* @__PURE__ */ jsxRuntimeExports.jsx(Row, {
                          title: t2("settings.version"),
