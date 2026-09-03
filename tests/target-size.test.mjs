@@ -154,6 +154,24 @@ test("MOV to MP4 keeps two-pass timing stable and distinguishes crashes from can
   assert.match(build, /movMp4FrameRatePatchPath/);
 });
 
+test("iPhone MOV inspection and conversion skip undecodable auxiliary audio streams", async () => {
+  const patch = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-beyond-media-suite.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(patch, /const findUsableAudioStream = \(stderr\) =>/);
+  assert.match(patch, /codec !== "none" && codec !== "unknown"/);
+  assert.match(patch, /audioStream = findUsableAudioStream\(stderr\)/);
+  assert.match(patch, /hasAudio: Boolean\(audioStream\)/);
+  assert.match(patch, /"-frames:v",\s*\n\+\s*"1"/);
+  assert.match(patch, /media\.audioStream/);
+});
+
 test("target-sized WebP starts at a frame-count-aware scale", async () => {
   const targetBytes = 750_000;
   const frames = 336;
@@ -604,8 +622,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.27/);
-  assert.match(build, /2\.1\.3\.27/);
+  assert.match(build, /2\.1\.3-fork\.28/);
+  assert.match(build, /2\.1\.3\.28/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {

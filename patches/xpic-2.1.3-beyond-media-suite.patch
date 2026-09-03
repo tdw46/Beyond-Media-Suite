@@ -9,7 +9,7 @@
  const isNewer = (a, b) => {
    const pa = String(a || "")
      .split(".")
-@@ -1683,7 +1683,14 @@
+@@ -1683,11 +1683,27 @@
        : execFileP("chmod", ["-R", "+x", dir]).then(() => void 0);
    const safeUnlink = (filePath) => {
      try {
@@ -25,7 +25,30 @@
      } catch (e) {
        console.log("Failed to remove temporary file:", filePath, e);
      }
-@@ -1715,7 +1722,91 @@
+   };
++  const findUsableAudioStream = (stderr) => {
++    for (const line of String(stderr || "").split(/\r?\n/)) {
++      const match = /Stream #(\d+:\d+).*Audio:\s*([^,\s]+)/.exec(line);
++      if (!match) continue;
++      const codec = match[2].toLowerCase();
++      if (codec !== "none" && codec !== "unknown") return match[1];
++    }
++    return null;
++  };
+   const probeMediaInfo = async (ffmpeg, inputPath, jobId) => {
+     const { stderr } = await runMediaProcess(
+       ffmpeg,
+@@ -1708,14 +1724,100 @@
+     const match = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(stderr);
+     if (!match) throw new Error("Could not determine source duration.");
+     const dimensions = /Video:.*?(\d{2,5})x(\d{2,5})/.exec(stderr);
++    const audioStream = findUsableAudioStream(stderr);
+     return {
+       duration:
+         Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]),
+-      hasAudio: /Stream\s+#\S+.*Audio:/.test(stderr),
++      hasAudio: Boolean(audioStream),
++      audioStream,
        width: dimensions ? Number(dimensions[1]) : null,
        height: dimensions ? Number(dimensions[2]) : null,
      };
@@ -46,7 +69,7 @@
 +      throw new Error("Only YouTube video URLs are supported.");
 +    }
 +    return parsed.toString();
-+  };
+   };
 +  const ytDlpPath = () =>
 +    app2.isPackaged
 +      ? path.join(process.resourcesPath, "tools", "yt-dlp")
@@ -103,7 +126,7 @@
 +    }
 +    await fs.promises.chmod(executable, 493);
 +    return executable;
-   };
++  };
 +  const safeYouTubeMetadata = (info) => ({
 +    id: String(info?.id || ""),
 +    title: String(info?.title || "YouTube clip"),
@@ -117,7 +140,7 @@
    const changeMenu = (opt) => {
      const { id, email, newId } = opt;
      const menu22 = electron.Menu.getApplicationMenu();
-@@ -1832,7 +1923,124 @@
+@@ -1832,6 +1934,123 @@
      getSystemFontFamilies: () => getSystemFontFamilies(),
      getCachePath: () => {
        return app2.getPath("temp");
@@ -191,7 +214,7 @@
 +          );
 +      if (!downloaded) throw new Error("YouTube clip download completed without a media file.");
 +      return { path: downloaded, durationMs: endMs - startMs };
-     },
++    },
 +    youtubeFrameBuffer: async (_, opt) => {
 +      const inputPath = String(opt?.inputPath || "");
 +      if (!fs.existsSync(inputPath)) throw new Error("Downloaded YouTube clip is missing.");
@@ -238,11 +261,10 @@
 +        { jobId: opt?.jobId },
 +      );
 +      return { path: outPath, size: fs.statSync(outPath).size };
-+    },
+     },
      moveFile: (_, src, dest) => {
        return new Promise((resolve, reject) => {
-         fs.mkdir(path.dirname(dest), { recursive: true }, (err) => {
-@@ -1875,7 +2083,7 @@
+@@ -1875,7 +2094,7 @@
        try {
          await fs.promises.unlink(backup);
        } catch (error) {
@@ -251,7 +273,7 @@
        }
        return null;
      },
-@@ -2646,6 +2854,7 @@
+@@ -2646,6 +2865,7 @@
          loseless,
          targetFileSizeKb,
          allowGifColorReduction = false,
@@ -259,7 +281,7 @@
          jobId,
        } = opt;
        const cwd = binDir();
-@@ -2795,7 +3004,7 @@
+@@ -2795,7 +3015,7 @@
          );
          const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
          const reserve = Math.max(4096, Math.floor(targetBytes * 0.02));
@@ -268,7 +290,7 @@
          const audioBytes = (audioBitrate * 1e3 * media.duration) / 8;
          let bitrate = Math.max(
            8,
-@@ -2861,7 +3070,7 @@
+@@ -2861,10 +3081,10 @@
                );
              }
              const finalArgs = [...video];
@@ -276,17 +298,47 @@
 +            if (includeAudio && media.hasAudio) {
                finalArgs.push(
                  "-map",
-                 "0:a?",
-@@ -2967,7 +3176,7 @@
+-                "0:a?",
++                media.audioStream,
+                 "-c:a",
+                 profile.audioCodec,
+                 "-b:a",
+@@ -2967,8 +3187,15 @@
          } else {
            args.push("-q:v", "4");
          }
 -        if (media.hasAudio) {
+-          args.push("-map", "0:a?", "-c:a", profile.audioCodec, "-b:a", "96k");
 +        if (includeAudio && media.hasAudio) {
-           args.push("-map", "0:a?", "-c:a", profile.audioCodec, "-b:a", "96k");
++          args.push(
++            "-map",
++            media.audioStream,
++            "-c:a",
++            profile.audioCodec,
++            "-b:a",
++            "96k",
++          );
          } else {
            args.push("-an");
-@@ -3547,7 +3756,7 @@
+         }
+@@ -3304,11 +3531,15 @@
+         ensureExecPerm(cwd)
+           .then(() =>
+             execFileP(ffmpeg, [
++              "-hide_banner",
+               "-i",
+               filePath,
++              "-map",
++              "0:v:0",
++              "-frames:v",
++              "1",
+               "-f",
+               "null",
+-              "-hide_banner",
+               "-",
+             ]),
+           )
+@@ -3547,7 +3778,7 @@
        submenu: [
          {
            role: "about",
@@ -295,7 +347,7 @@
          },
          {
            label: "检查更新",
-@@ -3579,7 +3788,7 @@
+@@ -3579,7 +3810,7 @@
                  defaultId: 1,
                  title: "警告",
                  detail:
@@ -304,7 +356,7 @@
                  cancelId: 0,
                  icon: icon$1,
                  noLink: true,
-@@ -3598,7 +3807,7 @@
+@@ -3598,7 +3829,7 @@
          { type: "separator" },
          {
            role: "hide",
@@ -313,7 +365,7 @@
          },
          {
            role: "hideOthers",
-@@ -3883,8 +4092,27 @@
+@@ -3883,8 +4114,27 @@
  const WIN_MIN_WIDTH = 800;
  const WIN_MIN_HEIGHT = 600;
  const app = electron.app;
@@ -342,7 +394,7 @@
  const store = new Store();
  {
    const cfg = store.get("xpic-config");
-@@ -3903,12 +4131,12 @@
+@@ -3903,12 +4153,12 @@
  );
  app.dock?.setIcon(icon);
  app.setAboutPanelOptions({
@@ -360,7 +412,7 @@
    iconPath: path.join(assetsBase, "main/icon.png"),
  });
  const isWin = os.platform() === "win32";
-@@ -4105,6 +4333,28 @@
+@@ -4105,6 +4355,28 @@
        webSecurity: true,
      },
    });
