@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 function targetVideoBitrateKbps(targetKb, durationSeconds, hasAudio = false) {
@@ -21,6 +22,10 @@ function nextScale(width, targetBytes, measuredBytes) {
 function optimizedStem(name = "") {
   const stem = String(name);
   return stem.endsWith("_opt") ? stem : `${stem}_opt`;
+}
+
+function sourceRatioTargetKb(bytes, ratio) {
+  return Math.max(10, Math.floor((bytes * ratio) / 100 / 1_000));
 }
 
 test("500 KB over 17.59 seconds leaves room for container overhead", () => {
@@ -622,8 +627,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.28/);
-  assert.match(build, /2\.1\.3\.28/);
+  assert.match(build, /2\.1\.3-fork\.29/);
+  assert.match(build, /2\.1\.3\.29/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -874,4 +879,73 @@ test("Text gradients expose the shared aesthetic presets and retain custom stops
   assert.match(patch, /textColorA:\s*\n\+\s*preset\.colors\[0\]/);
   assert.match(patch, /textColorB:\s*\n\+\s*preset\.colors\[1\]/);
   assert.ok((patch.match(/textGradientPreset: "custom"/g) || []).length >= 3);
+});
+
+test("Native Finder Quick Actions expose conversion and ratio-based compression", async () => {
+  assert.equal(sourceRatioTargetKb(60_000_000, 25), 15_000);
+  const [helper, build, convertInfo, convertWorkflow, compressInfo, compressWorkflow] =
+    await Promise.all([
+      readFile(
+        new URL("../finder-helper/BeyondFinderMedia.swift", import.meta.url),
+        "utf8",
+      ),
+      readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+      readFile(
+        new URL(
+          "../finder-services/Convert with Beyond Media Suite.workflow/Contents/Info.plist",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+      readFile(
+        new URL(
+          "../finder-services/Convert with Beyond Media Suite.workflow/Contents/Resources/document.wflow",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+      readFile(
+        new URL(
+          "../finder-services/Compress with Beyond Media Suite.workflow/Contents/Info.plist",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+      readFile(
+        new URL(
+          "../finder-services/Compress with Beyond Media Suite.workflow/Contents/Resources/document.wflow",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ]);
+  assert.match(helper, /NSSlider\(value: 25, minValue: 5, maxValue: 95/);
+  assert.match(helper, /sourceBytes \* Int64\(ratio\) \/ 100/);
+  assert.match(helper, /case "mp4", "mov":/);
+  assert.match(helper, /formatPopup\.selectItem\(withTitle: "MP4"\)/);
+  assert.match(helper, /mode == \.compress/);
+  assert.match(helper, /\["-c:v", "libvpx-vp9"\]/);
+  assert.match(helper, /NSVisualEffectView/);
+  assert.match(helper, /width: 500, height: 292/);
+  assert.match(helper, /ratioSlider\.numberOfTickMarks = 0/);
+  assert.match(helper, /process\.standardInput = FileHandle\.nullDevice/);
+  assert.match(helper, /activateFileViewerSelecting/);
+  assert.match(helper, /resources\.lastPathComponent != "Resources"/);
+  assert.match(build, /BeyondFinderMedia\.swift/);
+  assert.match(build, /BeyondFinderMedia\.app/);
+  assert.match(build, /"swiftc"/);
+  assert.match(build, /"-parse-as-library"/);
+  assert.match(build, /finder-services/);
+  for (const info of [convertInfo, compressInfo]) {
+    assert.match(info, /<string>public\.movie<\/string>/);
+    assert.match(info, /com\.apple\.finder/);
+  }
+  assert.match(convertWorkflow, /BeyondFinderMedia/);
+  assert.match(compressWorkflow, /BeyondFinderMedia/);
+  assert.match(convertWorkflow, /"\$helper" convert "\$@"/);
+  assert.match(compressWorkflow, /"\$helper" compress "\$@"/);
+  assert.doesNotMatch(convertWorkflow, /Contents\/MacOS\/xPic/);
+  assert.doesNotMatch(compressWorkflow, /Contents\/MacOS\/xPic/);
+  assert.match(convertWorkflow, /<key>inputMethod<\/key><integer>1<\/integer>/);
+  assert.match(compressWorkflow, /<key>inputMethod<\/key><integer>1<\/integer>/);
 });
