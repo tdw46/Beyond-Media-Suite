@@ -926,7 +926,10 @@ test("Native Finder Quick Actions expose conversion and ratio-based compression"
   assert.match(helper, /mode == \.compress/);
   assert.match(helper, /\["-c:v", "libvpx-vp9"\]/);
   assert.match(helper, /NSVisualEffectView/);
-  assert.match(helper, /width: 500, height: 292/);
+  assert.match(helper, /width: 520, height: 296/);
+  assert.match(helper, /constant: 20/);
+  assert.match(helper, /fileRow\.layer\?\.cornerRadius = 12/);
+  assert.match(helper, /footerRule\.boxType = \.separator/);
   assert.match(helper, /ratioSlider\.numberOfTickMarks = 0/);
   assert.match(helper, /process\.standardInput = FileHandle\.nullDevice/);
   assert.match(helper, /activateFileViewerSelecting/);

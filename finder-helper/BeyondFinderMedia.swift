@@ -82,7 +82,7 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func buildWindow() {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 292),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 296),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -103,16 +103,10 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let content = NSStackView()
         content.orientation = .vertical
         content.alignment = .leading
-        content.spacing = 10
-        content.edgeInsets = NSEdgeInsets(top: 34, left: 18, bottom: 14, right: 18)
+        content.distribution = .fill
+        content.spacing = 13
         content.translatesAutoresizingMaskIntoConstraints = false
         effect.addSubview(content)
-        NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
-            content.topAnchor.constraint(equalTo: effect.topAnchor),
-            content.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
-        ])
         let first = inputs[0]
         let icon = NSImageView(image: NSImage(systemSymbolName: "video.fill", accessibilityDescription: "Video") ?? NSImage())
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 21, weight: .medium)
@@ -136,13 +130,13 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         fileRow.orientation = .horizontal
         fileRow.alignment = .centerY
         fileRow.spacing = 10
-        fileRow.edgeInsets = NSEdgeInsets(top: 9, left: 11, bottom: 9, right: 11)
+        fileRow.edgeInsets = NSEdgeInsets(top: 10, left: 13, bottom: 10, right: 13)
         fileRow.wantsLayer = true
-        fileRow.layer?.cornerRadius = 9
+        fileRow.layer?.cornerRadius = 12
         fileRow.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.58).cgColor
         content.addArrangedSubview(fileRow)
         fileRow.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
-        fileRow.heightAnchor.constraint(equalToConstant: 58).isActive = true
+        fileRow.heightAnchor.constraint(equalToConstant: 62).isActive = true
 
         formatPopup.addItems(withTitles: Self.formats)
         formatPopup.selectItem(withTitle: "MP4")
@@ -185,9 +179,10 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let ratioGroup = NSStackView(views: [ratioSlider, targetLabel])
         ratioGroup.orientation = .vertical
-        ratioGroup.spacing = 3
+        ratioGroup.spacing = 5
         targetLabel.textColor = .secondaryLabelColor
         targetLabel.font = .systemFont(ofSize: 11.5)
+        targetLabel.alignment = .center
         content.addArrangedSubview(ratioGroup)
         ratioGroup.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
 
@@ -217,8 +212,29 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         buttons.orientation = .horizontal
         buttons.alignment = .centerY
         buttons.spacing = 8
-        content.addArrangedSubview(buttons)
-        buttons.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+
+        let footerRule = NSBox()
+        footerRule.boxType = .separator
+        footerRule.translatesAutoresizingMaskIntoConstraints = false
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+        effect.addSubview(footerRule)
+        effect.addSubview(buttons)
+
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 20),
+            content.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -20),
+            content.topAnchor.constraint(equalTo: effect.topAnchor, constant: 40),
+            content.bottomAnchor.constraint(lessThanOrEqualTo: footerRule.topAnchor, constant: -16),
+
+            footerRule.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 20),
+            footerRule.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -20),
+            footerRule.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -13),
+
+            buttons.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 20),
+            buttons.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -20),
+            buttons.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -15),
+            buttons.heightAnchor.constraint(equalToConstant: 28),
+        ])
         ratioChanged()
     }
 
