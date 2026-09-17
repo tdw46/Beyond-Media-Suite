@@ -39,6 +39,8 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let ratioSlider = NSSlider(value: 25, minValue: 5, maxValue: 95, target: nil, action: nil)
     private let ratioLabel = NSTextField(labelWithString: "")
     private let targetLabel = NSTextField(labelWithString: "")
+    private let speedSlider = NSSlider(value: 0, minValue: -4, maxValue: 4, target: nil, action: nil)
+    private let speedLabel = NSTextField(labelWithString: "1×")
     private let statusLabel = NSTextField(labelWithString: "Ready")
     private let progress = NSProgressIndicator()
     private let primaryButton = NSButton()
@@ -82,7 +84,7 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func buildWindow() {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 296),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 354),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -186,6 +188,34 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         content.addArrangedSubview(ratioGroup)
         ratioGroup.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
 
+        speedSlider.isContinuous = true
+        speedSlider.numberOfTickMarks = 0
+        speedSlider.target = self
+        speedSlider.action = #selector(speedChanged)
+        speedLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        speedLabel.alignment = .right
+        let speedTitle = NSTextField(labelWithString: "Playback speed")
+        speedTitle.font = .systemFont(ofSize: 12.5, weight: .medium)
+        let speedHeaderSpacer = NSView()
+        let speedHeader = NSStackView(views: [speedTitle, speedHeaderSpacer, speedLabel])
+        speedHeader.orientation = .horizontal
+        speedHeader.alignment = .centerY
+        let slowHint = NSTextField(labelWithString: "1/16×")
+        slowHint.font = .systemFont(ofSize: 10.5)
+        slowHint.textColor = .tertiaryLabelColor
+        let fastHint = NSTextField(labelWithString: "16×")
+        fastHint.font = .systemFont(ofSize: 10.5)
+        fastHint.textColor = .tertiaryLabelColor
+        let speedHintSpacer = NSView()
+        let speedHints = NSStackView(views: [slowHint, speedHintSpacer, fastHint])
+        speedHints.orientation = .horizontal
+        speedHints.alignment = .centerY
+        let speedGroup = NSStackView(views: [speedHeader, speedSlider, speedHints])
+        speedGroup.orientation = .vertical
+        speedGroup.spacing = 3
+        content.addArrangedSubview(speedGroup)
+        speedGroup.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+
         progress.style = .spinning
         progress.controlSize = .small
         progress.isIndeterminate = true
@@ -236,6 +266,7 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
             buttons.heightAnchor.constraint(equalToConstant: 28),
         ])
         ratioChanged()
+        speedChanged()
     }
 
     @objc private func ratioChanged() {
@@ -244,6 +275,14 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let source = inputs.reduce(Int64(0)) { $0 + fileSize($1) }
         let target = source * Int64(ratio) / 100
         targetLabel.stringValue = "\(formatBytes(source))  →  ≤ \(formatBytes(target))  •  saves about \(100 - ratio)%"
+    }
+
+    @objc private func speedChanged() {
+        let snappedExponent = (speedSlider.doubleValue * 4).rounded() / 4
+        if abs(speedSlider.doubleValue - snappedExponent) > 0.0001 {
+            speedSlider.doubleValue = snappedExponent
+        }
+        speedLabel.stringValue = formatSpeed(pow(2, snappedExponent))
     }
 
     @objc private func startEncoding() {
@@ -255,15 +294,17 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         outputs = []
         primaryButton.isEnabled = false
         ratioSlider.isEnabled = false
+        speedSlider.isEnabled = false
         formatPopup.isEnabled = false
         cancelButton.title = "Cancel"
         progress.isHidden = false
         progress.startAnimation(nil)
         statusLabel.stringValue = "Preparing…"
         let ratio = Int(ratioSlider.doubleValue.rounded())
+        let speed = pow(2, speedSlider.doubleValue)
         let selectedFormat = (formatPopup.titleOfSelectedItem ?? "MP4").lowercased()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.encodeAll(ratio: ratio, selectedFormat: selectedFormat)
+            self?.encodeAll(ratio: ratio, selectedFormat: selectedFormat, speed: speed)
         }
     }
 
@@ -277,7 +318,7 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    private func encodeAll(ratio: Int, selectedFormat: String) {
+    private func encodeAll(ratio: Int, selectedFormat: String, speed: Double) {
         var completed: [URL] = []
         var failures: [String] = []
         for (index, input) in inputs.enumerated() {
@@ -289,7 +330,7 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self?.statusLabel.stringValue = "\(index + 1) of \(self?.inputs.count ?? 0): \(input.lastPathComponent)"
             }
             do {
-                let output = try encode(input: input, format: format, ratio: ratio)
+                let output = try encode(input: input, format: format, ratio: ratio, speed: speed)
                 completed.append(output)
             } catch {
                 if !cancelled { failures.append("\(input.lastPathComponent): \(error.localizedDescription)") }
@@ -301,6 +342,7 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.progress.stopAnimation(nil)
             self.progress.isHidden = true
             self.ratioSlider.isEnabled = true
+            self.speedSlider.isEnabled = true
             self.formatPopup.isEnabled = true
             self.primaryButton.isEnabled = true
             self.outputs = completed
@@ -319,15 +361,16 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    private func encode(input: URL, format: String, ratio: Int) throws -> URL {
+    private func encode(input: URL, format: String, ratio: Int, speed: Double) throws -> URL {
         let profile = try profile(for: format)
         let media = try probe(input)
         let sourceBytes = fileSize(input)
         let targetBytes = max(Int64(10_000), sourceBytes * Int64(ratio) / 100)
         let reserve = max(Int64(4096), targetBytes * 2 / 100)
         let audioKbps = media.audioStream == nil ? 0 : 64
-        let audioBytes = Int64((Double(audioKbps * 1000) * media.duration / 8).rounded())
-        var bitrate = max(8, Int(Double((targetBytes - reserve - audioBytes) * 8) / media.duration / 1000))
+        let effectiveDuration = media.duration / max(1.0 / 16.0, min(16, speed))
+        let audioBytes = Int64((Double(audioKbps * 1000) * effectiveDuration / 8).rounded())
+        var bitrate = max(8, Int(Double((targetBytes - reserve - audioBytes) * 8) / effectiveDuration / 1000))
         let output = uniqueOutput(for: input, format: format)
         var best: URL?
         var bestSize: Int64 = 0
@@ -341,16 +384,24 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
             var video = ["-nostdin", "-hide_banner", "-loglevel", "error", "-y"] + inputDecoder + ["-i", input.path,
                          "-map", "0:v:0", "-c:v", profile.codec, "-pix_fmt", profile.pixelFormat,
                          "-b:v", "\(bitrate)k"]
-            if ["yuv420p", "yuva420p"].contains(profile.pixelFormat) {
-                video += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
+            var videoFilters: [String] = []
+            if abs(speed - 1) > 0.0001 {
+                videoFilters.append("setpts=PTS/\(ffmpegNumber(speed))")
             }
+            if ["yuv420p", "yuva420p"].contains(profile.pixelFormat) {
+                videoFilters.append("scale=trunc(iw/2)*2:trunc(ih/2)*2")
+            }
+            if !videoFilters.isEmpty { video += ["-vf", videoFilters.joined(separator: ",")] }
             video += profile.videoArguments
             if profile.twoPass {
                 try runFFmpeg(video + ["-an", "-pass", "1", "-passlogfile", passLog.path, "-f", "null", "/dev/null"])
             }
             var final = video
             if let stream = media.audioStream {
-                final += ["-map", stream, "-c:a", profile.audioCodec, "-b:a", "64k"]
+                final += ["-map", stream]
+                let tempo = atempoFilter(speed)
+                if !tempo.isEmpty { final += ["-filter:a", tempo] }
+                final += ["-c:a", profile.audioCodec, "-b:a", "64k"]
             } else {
                 final += ["-an"]
             }
@@ -496,6 +547,29 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         formatter.allowedUnits = [.useKB, .useMB, .useGB]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+
+    private func ffmpegNumber(_ value: Double) -> String {
+        String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
+    private func formatSpeed(_ value: Double) -> String {
+        let fractions: [(Double, String)] = [
+            (1.0 / 16.0, "1/16×"), (1.0 / 8.0, "1/8×"),
+            (1.0 / 4.0, "1/4×"), (1.0 / 2.0, "1/2×"),
+            (1, "1×"), (2, "2×"), (4, "4×"), (8, "8×"), (16, "16×"),
+        ]
+        if let exact = fractions.first(where: { abs($0.0 - value) < 0.0001 }) { return exact.1 }
+        return "\(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), value))×"
+    }
+
+    private func atempoFilter(_ value: Double) -> String {
+        var remaining = max(1.0 / 16.0, min(16, value))
+        var factors: [Double] = []
+        while remaining > 2.000001 { factors.append(2); remaining /= 2 }
+        while remaining < 0.499999 { factors.append(0.5); remaining /= 0.5 }
+        if abs(remaining - 1) > 0.0001 { factors.append(remaining) }
+        return factors.map { "atempo=\(ffmpegNumber($0))" }.joined(separator: ",")
     }
 
     private func match(_ pattern: String, in text: String) -> [String]? {

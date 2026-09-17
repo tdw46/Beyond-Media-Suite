@@ -1,0 +1,377 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -2866,6 +2866,7 @@
+         targetFileSizeKb,
+         allowGifColorReduction = false,
+         includeAudio = true,
++        speed = 1,
+         jobId,
+       } = opt;
+       const cwd = binDir();
+@@ -2878,9 +2879,31 @@
+         0,
+         Math.round(Number(longestEdge ?? scale) || 0),
+       );
++      const playbackSpeed = Math.max(1 / 16, Math.min(16, Number(speed) || 1));
++      const speedVideoFilters =
++        Math.abs(playbackSpeed - 1) < 1e-6
++          ? []
++          : [`setpts=PTS/${playbackSpeed.toFixed(6)}`];
++      const audioTempoFilters = (() => {
++        let remaining = playbackSpeed;
++        const factors = [];
++        while (remaining > 2.000001) {
++          factors.push(2);
++          remaining /= 2;
++        }
++        while (remaining < 0.499999) {
++          factors.push(0.5);
++          remaining /= 0.5;
++        }
++        if (Math.abs(remaining - 1) > 1e-6) factors.push(remaining);
++        return factors.map((factor) => `atempo=${factor.toFixed(6)}`);
++      })();
++      const audioTempoArgs = audioTempoFilters.length
++        ? ["-filter:a", audioTempoFilters.join(",")]
++        : [];
+       const longestEdgeFilter = (edge) =>
+         `scale=${edge}:${edge}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos`;
+-      const animationFilters = [];
++      const animationFilters = [...speedVideoFilters];
+       if (!preparedInput) {
+         animationFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
+         if (requestedLongestEdge) {
+@@ -3014,13 +3037,14 @@
+           Math.floor(Number(targetFileSizeKb) * 1e3),
+         );
+         const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
++        const effectiveDuration = media.duration / playbackSpeed;
+         const reserve = Math.max(4096, Math.floor(targetBytes * 0.02));
+         const audioBitrate = includeAudio && media.hasAudio ? 64 : 0;
+-        const audioBytes = (audioBitrate * 1e3 * media.duration) / 8;
++        const audioBytes = (audioBitrate * 1e3 * effectiveDuration) / 8;
+         let bitrate = Math.max(
+           8,
+           Math.floor(
+-            ((targetBytes - reserve - audioBytes) * 8) / media.duration / 1e3,
++            ((targetBytes - reserve - audioBytes) * 8) / effectiveDuration / 1e3,
+           ),
+         );
+         const nullOutput = isWin2 ? "NUL" : "/dev/null";
+@@ -3035,7 +3059,7 @@
+               ? 0
+               : Math.max(0, Number(fps) || 0);
+             const requestedScale = scaleLongest || requestedLongestEdge;
+-            const filters = [];
++            const filters = [...speedVideoFilters];
+             if (requestedFps) filters.push(`fps=${requestedFps}`);
+             if (requestedScale) {
+               filters.push(longestEdgeFilter(requestedScale));
+@@ -3085,6 +3109,7 @@
+               finalArgs.push(
+                 "-map",
+                 media.audioStream,
++                ...audioTempoArgs,
+                 "-c:a",
+                 profile.audioCodec,
+                 "-b:a",
+@@ -3155,7 +3180,7 @@
+         const tempPath = vtemp(`.${toFormat}`);
+         const requestedFps = preparedInput ? 0 : Math.max(0, Number(fps) || 0);
+         const requestedScale = preparedInput ? 0 : requestedLongestEdge;
+-        const filters = [];
++        const filters = [...speedVideoFilters];
+         if (requestedFps) filters.push(`fps=${requestedFps}`);
+         if (requestedScale) {
+           filters.push(longestEdgeFilter(requestedScale));
+@@ -3191,6 +3216,7 @@
+           args.push(
+             "-map",
+             media.audioStream,
++            ...audioTempoArgs,
+             "-c:a",
+             profile.audioCodec,
+             "-b:a",
+@@ -3228,7 +3254,7 @@
+           const outputFps = Math.max(1, Number(fps) || 10);
+           const estimatedFrames = Math.max(
+             1,
+-            Math.ceil(media.duration * outputFps),
++            Math.ceil((media.duration / playbackSpeed) * outputFps),
+           );
+           const aspect =
+             media.width && media.height ? media.width / media.height : 16 / 9;
+@@ -3248,7 +3274,7 @@
+         let fallbackSize = Number.POSITIVE_INFINITY;
+         const runCandidate = async (tuning) => {
+           const candidate = vtemp(`.${toFormat}`);
+-          const targetFilters = [];
++          const targetFilters = [...speedVideoFilters];
+           if (toFormat === "gif") {
+             targetFilters.push(`fps=${currentFps}`);
+           } else if (!preparedInput) {
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -22856,6 +22856,7 @@
+     ext: "webp",
+     targetFileSizes: {},
+     gifColorReduction: false,
++    speed: 1,
+   },
+ });
+ const v2ImageSlice = createConfigSlice({
+@@ -22869,6 +22870,7 @@
+     toFormat: "gif",
+     targetFileSizes: {},
+     gifColorReduction: false,
++    speed: 1,
+   },
+ });
+ const vConvertSlice = createConfigSlice({
+@@ -22877,12 +22879,14 @@
+     toFormat: "mov",
+     targetFileSizes: {},
+     gifColorReduction: false,
++    speed: 1,
+   },
+ });
+ const vCompressSlice = createConfigSlice({
+   name: "vcompress",
+   initialConfig: {
+     quality: "",
++    speed: 1,
+   },
+ });
+ const youtubeSlice = createConfigSlice({
+@@ -22904,6 +22908,7 @@
+     targetFileSizes: {},
+     gifColorReduction: false,
+     includeAudio: true,
++    speed: 1,
+   },
+ });
+ const collageSlice = createConfigSlice({
+@@ -22925,6 +22930,7 @@
+     longestEdge: 0,
+     targetFileSizes: {},
+     gifColorReduction: false,
++    speed: 1,
+     backgroundMode: "transparent",
+     gradientPreset: "sunset",
+     backgroundColorA: "#FE2C2B",
+@@ -23640,6 +23646,7 @@
+   "flow.compressRate": "压缩率",
+   "flow.animQuality": "动图质量",
+   "flow.fps": "帧率(帧/秒)",
++  "flow.speed": "播放速度",
+   "flow.scale": "宽度(px)",
+   "flow.loop": "循环(0=无限)",
+   "flow.dropTitle": "把文件拖到这里{verb}",
+@@ -24164,6 +24171,7 @@
+   "flow.compressRate": "Compression",
+   "flow.animQuality": "Quality",
+   "flow.fps": "FPS",
++  "flow.speed": "Playback speed",
+   "flow.scale": "Width (px)",
+   "flow.loop": "Loops (0=∞)",
+   "flow.dropTitle": "Drop files here to {verb}",
+@@ -28831,6 +28839,63 @@
+       ],
+     }),
+ );
++const normalizedPlaybackSpeed = (value) =>
++  Math.max(1 / 16, Math.min(16, Number(value) || 1));
++const playbackSpeedExponent = (value) =>
++  Math.max(-4, Math.min(4, Math.log2(normalizedPlaybackSpeed(value))));
++const playbackSpeedLabel = (value) => {
++  const speed = normalizedPlaybackSpeed(value);
++  const exact = new Map([
++    [1 / 16, "1/16×"],
++    [1 / 8, "1/8×"],
++    [1 / 4, "1/4×"],
++    [1 / 2, "1/2×"],
++    [1, "1×"],
++    [2, "2×"],
++    [4, "4×"],
++    [8, "8×"],
++    [16, "16×"],
++  ]);
++  for (const [candidate, label] of exact) {
++    if (Math.abs(speed - candidate) < 1e-6) return label;
++  }
++  return `${speed.toFixed(2)}×`;
++};
++const SpeedSlider = reactExports.memo(({ value, onChange, t: t2 }) => {
++  const speed = normalizedPlaybackSpeed(value);
++  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++    className: "x-cfg-field",
++    children: [
++      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++        className: "x-cfg-row",
++        children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++            className: "x-cfg-label",
++            children: t2("flow.speed"),
++          }),
++          /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++            className: "x-cfg-value",
++            children: playbackSpeedLabel(speed),
++          }),
++        ],
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsx(Slider, {
++        value: playbackSpeedExponent(speed),
++        min: -4,
++        max: 4,
++        step: 0.25,
++        onChange: (exponent) => onChange(2 ** exponent),
++      }),
++      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++        className: "x-cfg-ends",
++        children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "1/16×" }),
++          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "16×" }),
++        ],
++      }),
++    ],
++  });
++});
+ const LabeledSwitch = reactExports.memo(({ label, desc, checked, onChange }) =>
+   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+     className: "x-cfg-field x-cfg-switch",
+@@ -40293,6 +40358,11 @@
+                 })
+               : null,
+           ],
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
++          value: config.speed,
++          onChange: (speed) => update({ speed }),
++          t: t2,
+         }),
+       ],
+     }),
+@@ -40316,6 +40386,7 @@
+       outPath,
+       targetFileSizeKb: targetSizeFor(config, config.toFormat),
+       longestEdge: longestEdgeFor(config),
++      speed: normalizedPlaybackSpeed(config.speed),
+       allowGifColorReduction: config.gifColorReduction,
+       jobId,
+     });
+@@ -40360,6 +40431,11 @@
+           className: "x-cfg-note",
+           children: t2("flow.targetSizeHint"),
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
++          value: config.speed,
++          onChange: (speed) => update({ speed }),
++          t: t2,
++        }),
+       ],
+     }),
+   panelSub: (config, n2, t2) =>
+@@ -40382,6 +40458,7 @@
+       toFormat: fmt,
+       ...(targetKb > 0 ? { targetFileSizeKb: targetKb } : {}),
+       longestEdge: longestEdgeFor(config),
++      speed: normalizedPlaybackSpeed(config.speed),
+       jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+@@ -40444,6 +40521,11 @@
+           min: 1,
+           onChange: (v2) => update({ fps: v2 }),
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
++          value: config.speed,
++          onChange: (speed) => update({ speed }),
++          t: t2,
++        }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+           label: t2("flow.loop"),
+           value: config.loop,
+@@ -40483,6 +40565,7 @@
+       longestEdge: longestEdgeFor(config),
+       ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
+       loop: config.loop,
++      speed: normalizedPlaybackSpeed(config.speed),
+       targetFileSizeKb: targetSizeFor(config, toFormat),
+       allowGifColorReduction: config.gifColorReduction,
+       jobId,
+@@ -42220,6 +42303,11 @@
+                   min: 1,
+                   max: 120,
+                   onChange: (value) => update({ fps: value }),
++                }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
++                  value: config.speed,
++                  onChange: (speed) => update({ speed }),
++                  t: t2,
+                 }),
+                 /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+                   label: t2("flow.collageDuration"),
+@@ -42397,6 +42485,7 @@
+           outPath: outputPath,
+           fps,
+           preparedInput: true,
++          speed: normalizedPlaybackSpeed(config.speed),
+           longestEdge: 0,
+           quality: config.animationQuality,
+           loop: config.loop || 0,
+@@ -42612,6 +42701,11 @@
+           onChange: (v2) =>
+             update({ zl: v2, d: Math.max(1, Math.round(1e3 / (v2 || 1))) }),
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
++          value: config.speed,
++          onChange: (speed) => update({ speed }),
++          t: t2,
++        }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+           label: t2("flow.loop"),
+           value: config.loop ?? 0,
+@@ -42637,7 +42731,14 @@
+   }) {
+     const ext = config.ext || "webp";
+     const loop = config.loop ?? 0;
+-    const d = config.d || Math.max(1, Math.round(1e3 / (config.zl || 10)));
++    const speed = normalizedPlaybackSpeed(config.speed);
++    const d = Math.max(
++      1,
++      Math.round(
++        (config.d || Math.max(1, Math.round(1e3 / (config.zl || 10)))) /
++          speed,
++      ),
++    );
+     const configuredName = String(config.o || "").trim();
+     const name =
+       configuredName && configuredName !== "x_animate"
+@@ -42676,6 +42777,7 @@
+           fps: config.zl || 10,
+           longestEdge: 0,
+           preparedInput: true,
++          speed,
+           loop,
+           targetFileSizeKb: targetKb,
+           allowGifColorReduction: config.gifColorReduction,
+@@ -43382,6 +43484,7 @@
+         outPath,
+         fps: config.fps,
+         loop: config.loop,
++        speed: normalizedPlaybackSpeed(config.speed),
+         targetFileSizeKb: targetSizeFor(config, format),
+         allowGifColorReduction: config.gifColorReduction,
+         includeAudio: config.includeAudio !== false,
+@@ -44039,6 +44142,11 @@
+               /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
+                 className: "x-cfg-note",
+                 children: t2("flow.targetSizeHint"),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
++                value: config.speed,
++                onChange: (speed) => update({ speed }),
++                t: t2,
+               }),
+               config.toFormat === "gif"
+                 ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {

@@ -627,8 +627,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.29/);
-  assert.match(build, /2\.1\.3\.29/);
+  assert.match(build, /2\.1\.3-fork\.30/);
+  assert.match(build, /2\.1\.3\.30/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -926,7 +926,7 @@ test("Native Finder Quick Actions expose conversion and ratio-based compression"
   assert.match(helper, /mode == \.compress/);
   assert.match(helper, /\["-c:v", "libvpx-vp9"\]/);
   assert.match(helper, /NSVisualEffectView/);
-  assert.match(helper, /width: 520, height: 296/);
+  assert.match(helper, /width: 520, height: 354/);
   assert.match(helper, /constant: 20/);
   assert.match(helper, /fileRow\.layer\?\.cornerRadius = 12/);
   assert.match(helper, /footerRule\.boxType = \.separator/);
@@ -951,4 +951,36 @@ test("Native Finder Quick Actions expose conversion and ratio-based compression"
   assert.doesNotMatch(compressWorkflow, /Contents\/MacOS\/xPic/);
   assert.match(convertWorkflow, /<key>inputMethod<\/key><integer>1<\/integer>/);
   assert.match(compressWorkflow, /<key>inputMethod<\/key><integer>1<\/integer>/);
+});
+
+test("Playback speed spans 1/16x through 16x across native, video, and animation outputs", async () => {
+  const [patch, helper, build] = await Promise.all([
+    readFile(
+      new URL("../patches/xpic-2.1.3-playback-speed.patch", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../finder-helper/BeyondFinderMedia.swift", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(patch, /const normalizedPlaybackSpeed/);
+  assert.match(patch, /min: -4/);
+  assert.match(patch, /max: 4/);
+  assert.match(patch, /1\/16×/);
+  assert.match(patch, /16×/);
+  assert.ok((patch.match(/speed: 1/g) || []).length >= 6);
+  assert.ok((patch.match(/SpeedSlider/g) || []).length >= 7);
+  assert.ok((patch.match(/speed: normalizedPlaybackSpeed\(config\.speed\)/g) || []).length >= 5);
+  assert.match(patch, /setpts=PTS\/\$\{playbackSpeed\.toFixed\(6\)\}/);
+  assert.match(patch, /atempo=\$\{factor\.toFixed\(6\)\}/);
+  assert.match(patch, /effectiveDuration = media\.duration \/ playbackSpeed/);
+  assert.match(helper, /NSSlider\(value: 0, minValue: -4, maxValue: 4/);
+  assert.match(helper, /setpts=PTS\/\\\(ffmpegNumber\(speed\)\)/);
+  assert.match(helper, /atempoFilter\(speed\)/);
+  assert.match(helper, /effectiveDuration = media\.duration \/ max/);
+  assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
+  assert.match(build, /2\.1\.3-fork\.30/);
+  assert.match(build, /2\.1\.3\.30/);
 });
