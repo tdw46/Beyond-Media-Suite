@@ -198,7 +198,7 @@ try {
   );
 
   packagedJson.productName = "Beyond Media Suite";
-  packagedJson.version = "2.1.3-fork.31";
+  packagedJson.version = "2.1.3-fork.32";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -283,7 +283,7 @@ try {
         baseVersion: "2.1.3",
         ytDlpVersion,
         feature:
-          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow, unified-collage-layer-controls, text-gradient-presets, exact-collage-preview-export-svg, collage-background-text-patterns, per-media-edge-crop, auto-padded-no-crop-layout, unrestricted-canvas-space-layer-offsets, non-displacing-media-overlay-layers, one-percent-collage-layer-scaling, stable-two-pass-frame-timing, accurate-media-cancellation-errors, youtube-millisecond-clips-local-frame-buffer-exact-dimensions-target-size, native-youtube-preview-audio-selected-range-loop, native-finder-convert-compress-quick-actions-ratio-targets, logarithmic-playback-speed-video-animation-audio, shortcut-screen-recording-25-percent-mp4-delete-source-copy-output-to-clipboard",
+          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow, unified-collage-layer-controls, text-gradient-presets, exact-collage-preview-export-svg, collage-background-text-patterns, per-media-edge-crop, auto-padded-no-crop-layout, unrestricted-canvas-space-layer-offsets, non-displacing-media-overlay-layers, one-percent-collage-layer-scaling, stable-two-pass-frame-timing, accurate-media-cancellation-errors, youtube-millisecond-clips-local-frame-buffer-exact-dimensions-target-size, native-youtube-preview-audio-selected-range-loop, native-finder-convert-compress-quick-actions-ratio-targets, logarithmic-playback-speed-video-animation-audio, shortcut-screen-recording-25-percent-mp4-delete-source-finder-clipboard",
         rendererAsset: cacheBustedName,
       },
       null,
@@ -314,7 +314,7 @@ try {
     "com.tdw46.beyond-media-suite",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.31", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.32", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

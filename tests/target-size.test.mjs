@@ -627,8 +627,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.31/);
-  assert.match(build, /2\.1\.3\.31/);
+  assert.match(build, /2\.1\.3-fork\.32/);
+  assert.match(build, /2\.1\.3\.32/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -981,8 +981,8 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.31/);
-  assert.match(build, /2\.1\.3\.31/);
+  assert.match(build, /2\.1\.3-fork\.32/);
+  assert.match(build, /2\.1\.3\.32/);
 });
 
 test("New screen recordings run through a safe 25-percent MP4 Shortcut workflow", async () => {
@@ -1013,7 +1013,9 @@ test("New screen recordings run through a safe 25-percent MP4 Shortcut workflow"
   assert.match(helper, /if options\.deleteSource/);
   assert.match(helper, /FileManager\.default\.removeItem\(at: input\)/);
   assert.match(helper, /if options\.copyOutput/);
-  assert.match(helper, /NSPasteboard\.general\.writeObjects/);
+  assert.match(helper, /CFURLCreateFileReferenceURL/);
+  assert.match(helper, /referenceURL as NSURL/);
+  assert.match(helper, /com\.apple\.finder\.noderef/);
   assert.match(watcher, /Compress Screen Recording to MP4/);
   assert.match(watcher, /Screen Recording\*\.mov/);
   assert.match(watcher, /shortcuts run/);

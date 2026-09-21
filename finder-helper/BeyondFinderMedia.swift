@@ -1,4 +1,5 @@
 import AppKit
+import CoreFoundation
 import Foundation
 
 private enum FinderMode: String {
@@ -445,14 +446,7 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     try FileManager.default.removeItem(at: input)
                 }
                 if options.copyOutput {
-                    var copied = false
-                    DispatchQueue.main.sync {
-                        NSPasteboard.general.clearContents()
-                        copied = NSPasteboard.general.writeObjects([output as NSURL])
-                    }
-                    guard copied else {
-                        throw HelperError.message("The MP4 was saved, but it could not be copied to the clipboard.")
-                    }
+                    try copyFileToPasteboard(output)
                 }
                 writeLine(output.path, to: .standardOutput)
             } catch {
@@ -479,6 +473,35 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func writeLine(_ line: String, to handle: FileHandle) {
         if let data = "\(line)\n".data(using: .utf8) { handle.write(data) }
+    }
+
+    private func copyFileToPasteboard(_ output: URL) throws {
+        var referenceError: Unmanaged<CFError>?
+        guard let unmanagedReference = CFURLCreateFileReferenceURL(
+            kCFAllocatorDefault,
+            output as CFURL,
+            &referenceError
+        ) else {
+            let detail = referenceError?.takeRetainedValue().localizedDescription ?? "Unknown file-reference error."
+            throw HelperError.message("The MP4 was saved, but its Finder reference could not be created: \(detail)")
+        }
+        let referenceURL = unmanagedReference.takeRetainedValue()
+        var copied = false
+        DispatchQueue.main.sync {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            copied = pasteboard.writeObjects([referenceURL as NSURL])
+            if copied {
+                pasteboard.setData(
+                    Data([1]),
+                    forType: NSPasteboard.PasteboardType("com.apple.finder.noderef")
+                )
+                pasteboard.setString(output.lastPathComponent, forType: .string)
+            }
+        }
+        guard copied else {
+            throw HelperError.message("The MP4 was saved, but it could not be copied to the clipboard.")
+        }
     }
 
     private func encode(input: URL, format: String, ratio: Int, speed: Double) throws -> URL {
