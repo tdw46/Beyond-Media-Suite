@@ -627,8 +627,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.30/);
-  assert.match(build, /2\.1\.3\.30/);
+  assert.match(build, /2\.1\.3-fork\.31/);
+  assert.match(build, /2\.1\.3\.31/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -981,6 +981,44 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.30/);
-  assert.match(build, /2\.1\.3\.30/);
+  assert.match(build, /2\.1\.3-fork\.31/);
+  assert.match(build, /2\.1\.3\.31/);
+});
+
+test("New screen recordings run through a safe 25-percent MP4 Shortcut workflow", async () => {
+  const [helper, watcher, launchAgent, build] = await Promise.all([
+    readFile(
+      new URL("../finder-helper/BeyondFinderMedia.swift", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../screen-recording-automation/watch-screen-recordings.zsh",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../screen-recording-automation/com.tdw46.beyond-media-suite.screen-recordings.plist",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(helper, /arguments\.first == "--headless"/);
+  assert.match(helper, /ratio: max\(5, min\(95, ratio\)\)/);
+  assert.match(helper, /"-map", "0:v:0", "-f", "null", "-"/);
+  assert.match(helper, /if options\.deleteSource/);
+  assert.match(helper, /FileManager\.default\.removeItem\(at: input\)/);
+  assert.match(helper, /if options\.copyOutput/);
+  assert.match(helper, /NSPasteboard\.general\.writeObjects/);
+  assert.match(watcher, /Compress Screen Recording to MP4/);
+  assert.match(watcher, /Screen Recording\*\.mov/);
+  assert.match(watcher, /shortcuts run/);
+  assert.match(watcher, /the source MOV was preserved for retry/);
+  assert.match(launchAgent, /<key>WatchPaths<\/key>/);
+  assert.match(launchAgent, /<key>StartInterval<\/key>/);
+  assert.match(build, /screen-recording-automation/);
 });

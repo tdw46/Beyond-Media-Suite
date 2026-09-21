@@ -22,6 +22,14 @@ private struct MediaInfo {
     let height: Int
 }
 
+private struct HeadlessOptions {
+    let format: String
+    let ratio: Int
+    let speed: Double
+    let deleteSource: Bool
+    let copyOutput: Bool
+}
+
 private enum HelperError: LocalizedError {
     case message(String)
     var errorDescription: String? {
@@ -34,6 +42,7 @@ private enum HelperError: LocalizedError {
 final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let mode: FinderMode
     private let inputs: [URL]
+    private let headlessOptions: HeadlessOptions?
     private var window: NSWindow!
     private let formatPopup = NSPopUpButton()
     private let ratioSlider = NSSlider(value: 25, minValue: 5, maxValue: 95, target: nil, action: nil)
@@ -60,13 +69,65 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     override init() {
         let arguments = Array(CommandLine.arguments.dropFirst())
-        mode = FinderMode(rawValue: arguments.first ?? "") ?? .convert
-        inputs = arguments.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        if arguments.first == "--headless" {
+            var format = "mp4"
+            var ratio = 25
+            var speed = 1.0
+            var deleteSource = false
+            var copyOutput = false
+            var paths: [String] = []
+            var index = 1
+            while index < arguments.count {
+                switch arguments[index] {
+                case "--format" where index + 1 < arguments.count:
+                    format = arguments[index + 1].lowercased()
+                    index += 2
+                case "--ratio" where index + 1 < arguments.count:
+                    ratio = Int(arguments[index + 1]) ?? 25
+                    index += 2
+                case "--speed" where index + 1 < arguments.count:
+                    speed = Double(arguments[index + 1]) ?? 1
+                    index += 2
+                case "--delete-source":
+                    deleteSource = true
+                    index += 1
+                case "--copy-output":
+                    copyOutput = true
+                    index += 1
+                default:
+                    paths.append(arguments[index])
+                    index += 1
+                }
+            }
+            mode = .convert
+            inputs = paths.map { URL(fileURLWithPath: $0).standardizedFileURL }
+                .filter { FileManager.default.fileExists(atPath: $0.path) }
+            headlessOptions = HeadlessOptions(
+                format: format,
+                ratio: max(5, min(95, ratio)),
+                speed: max(1.0 / 16.0, min(16, speed)),
+                deleteSource: deleteSource,
+                copyOutput: copyOutput
+            )
+        } else {
+            mode = FinderMode(rawValue: arguments.first ?? "") ?? .convert
+            inputs = arguments.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
+                .filter { FileManager.default.fileExists(atPath: $0.path) }
+            headlessOptions = nil
+        }
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let options = headlessOptions {
+            guard !inputs.isEmpty else { exit(64) }
+            NSApp.setActivationPolicy(.prohibited)
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let status = self?.runHeadless(options) ?? 1
+                exit(Int32(status))
+            }
+            return
+        }
         guard !inputs.isEmpty else {
             showFatal("No media files were received from Finder.")
             return
@@ -359,6 +420,65 @@ final class FinderMediaApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.cancelButton.title = "Done"
             }
         }
+    }
+
+    private func runHeadless(_ options: HeadlessOptions) -> Int {
+        var failed = false
+        for input in inputs {
+            do {
+                let encoded = try encode(
+                    input: input,
+                    format: options.format,
+                    ratio: options.ratio,
+                    speed: options.speed
+                )
+                let output = try finalizeHeadlessOutput(encoded, for: input, format: options.format)
+                let targetBytes = max(Int64(10_000), fileSize(input) * Int64(options.ratio) / 100)
+                guard fileSize(output) > 0, fileSize(output) <= targetBytes else {
+                    throw HelperError.message("The encoded file did not meet the requested size ceiling.")
+                }
+                _ = try runFFmpeg([
+                    "-nostdin", "-v", "error", "-i", output.path,
+                    "-map", "0:v:0", "-f", "null", "-",
+                ])
+                if options.deleteSource {
+                    try FileManager.default.removeItem(at: input)
+                }
+                if options.copyOutput {
+                    var copied = false
+                    DispatchQueue.main.sync {
+                        NSPasteboard.general.clearContents()
+                        copied = NSPasteboard.general.writeObjects([output as NSURL])
+                    }
+                    guard copied else {
+                        throw HelperError.message("The MP4 was saved, but it could not be copied to the clipboard.")
+                    }
+                }
+                writeLine(output.path, to: .standardOutput)
+            } catch {
+                failed = true
+                writeLine("\(input.path): \(error.localizedDescription)", to: .standardError)
+            }
+        }
+        return failed ? 1 : 0
+    }
+
+    private func finalizeHeadlessOutput(_ encoded: URL, for input: URL, format: String) throws -> URL {
+        let folder = input.deletingLastPathComponent()
+        let stem = input.deletingPathExtension().lastPathComponent
+        var destination = folder.appendingPathComponent("\(stem).\(format)")
+        var index = 2
+        while FileManager.default.fileExists(atPath: destination.path) {
+            destination = folder.appendingPathComponent("\(stem)_\(index).\(format)")
+            index += 1
+        }
+        if destination.standardizedFileURL == input.standardizedFileURL { return encoded }
+        try FileManager.default.moveItem(at: encoded, to: destination)
+        return destination
+    }
+
+    private func writeLine(_ line: String, to handle: FileHandle) {
+        if let data = "\(line)\n".data(using: .utf8) { handle.write(data) }
     }
 
     private func encode(input: URL, format: String, ratio: Int, speed: Double) throws -> URL {
