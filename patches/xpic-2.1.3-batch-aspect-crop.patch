@@ -1,0 +1,890 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -2014,14 +2014,16 @@
+       const inputPath = String(opt?.inputPath || "");
+       if (!fs.existsSync(inputPath)) throw new Error("Downloaded YouTube clip is missing.");
+       const durationMs = Math.max(1, Math.round(Number(opt?.durationMs) || 0));
+-      const fps = Math.max(1, Math.min(120, Math.round(Number(opt?.fps) || 24)));
++      const requestedFps = Math.round(Number(opt?.fps) || 0);
++      const fps = requestedFps > 0 ? Math.max(1, Math.min(120, requestedFps)) : 0;
+       const width = Math.max(2, Math.round(Number(opt?.width) || 1280));
+       const height = Math.max(2, Math.round(Number(opt?.height) || 720));
+       const fit = opt?.fitMode === "fit" ? "fit" : "fill";
++      const fpsPrefix = fps > 0 ? `fps=${fps},` : "";
+       const filter =
+         fit === "fit"
+-          ? `fps=${fps},scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`
+-          : `fps=${fps},scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}`;
++          ? `${fpsPrefix}scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`
++          : `${fpsPrefix}scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}`;
+       const outPath = path.join(path.dirname(inputPath), "frames.mkv");
+       trackMediaTemp(opt?.jobId, outPath);
+       const ffmpeg = path.join(binDir(), `ffmpeg${isWin2 ? ".exe" : ""}`);
+@@ -2042,7 +2044,7 @@
+           "-t",
+           (durationMs / 1e3).toFixed(3),
+           "-fps_mode",
+-          "cfr",
++          fps > 0 ? "cfr" : "vfr",
+           "-c:v",
+           "ffv1",
+           "-level",
+@@ -2557,21 +2559,50 @@
+           });
+       });
+     },
+-    convert: (_, opt) => {
++    convert: async (_, opt) => {
+       const { quality, inputPath = "", outPath, toFormat, longestEdge } = opt;
+       const resizeEdge = Math.max(0, Math.round(Number(longestEdge) || 0));
++      let workingInputPath = inputPath;
++      let aspectTempPath = null;
++      if (opt.cropEnabled) {
++        const cropWidth = Math.max(0.01, Number(opt.cropAspectWidth) || 2);
++        const cropHeight = Math.max(0.01, Number(opt.cropAspectHeight) || 1);
++        const cropRatio = cropWidth / cropHeight;
++        const metadata = await sharp(inputPath, { limitInputPixels: false }).metadata();
++        const sourceWidth = Math.max(1, Number(metadata.width) || 1);
++        const sourceHeight = Math.max(1, Number(metadata.height) || 1);
++        const edge = resizeEdge || Math.max(sourceWidth, sourceHeight);
++        const width = Math.max(1, Math.round(cropRatio >= 1 ? edge : edge * cropRatio));
++        const height = Math.max(1, Math.round(cropRatio >= 1 ? edge / cropRatio : edge));
++        aspectTempPath = path.join(
++          app2.getPath("temp"),
++          `xpic_aspect_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`,
++        );
++        await sharp(inputPath, { limitInputPixels: false })
++          .rotate()
++          .resize(width, height, {
++            fit: opt.cropMode === "cover" ? "cover" : "contain",
++            position: "centre",
++            withoutEnlargement: false,
++            background: { r: 0, g: 0, b: 0, alpha: 0 },
++          })
++          .png()
++          .toFile(aspectTempPath);
++        workingInputPath = aspectTempPath;
++      }
+       const magickResizeArgs = resizeEdge
+         ? ["-resize", `${resizeEdge}x${resizeEdge}`]
+         : [];
+       const sipsResizeArgs = resizeEdge ? ["-Z", String(resizeEdge)] : [];
+       const isModify = outPath === inputPath;
++      const modifyInPlace = isModify && !aspectTempPath;
+       const onlyCompress = !toFormat;
+       const cwd = binDir();
+       const tempJpg = path.join(
+         app2.getPath("temp"),
+         `xpic_conv_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`,
+       );
+-      return new Promise((resolve, reject) => {
++      const conversion = new Promise((resolve, reject) => {
+         const result = new Promise((res) => {
+           try {
+             if (isWin2) {
+@@ -2583,7 +2614,7 @@
+                 const tempPath = tempJpg;
+                 node_child_process.execFile(
+                   path.join(cwd, "magick.exe"),
+-                  [inputPath, ...magickResizeArgs, tempPath],
++                  [workingInputPath, ...magickResizeArgs, tempPath],
+                   (err) => {
+                     if (err) {
+                       console.log("error:", err);
+@@ -2607,7 +2638,7 @@
+                 );
+               } else {
+                 if (onlyCompress) {
+-                  if (isModify) {
++                  if (modifyInPlace) {
+                     cmds = [
+                       "mogrify",
+                       ...magickResizeArgs,
+@@ -2617,7 +2648,7 @@
+                     ];
+                   } else {
+                     cmds = [
+-                      inputPath,
++                      workingInputPath,
+                       ...magickResizeArgs,
+                       "-quality",
+                       quality,
+@@ -2625,7 +2656,7 @@
+                     ];
+                   }
+                 } else {
+-                  if (isModify) {
++                  if (modifyInPlace) {
+                     cmds = [
+                       "mogrify",
+                       "-format",
+@@ -2637,7 +2668,7 @@
+                     ];
+                   } else {
+                     cmds = [
+-                      inputPath,
++                      workingInputPath,
+                       ...magickResizeArgs,
+                       "-quality",
+                       quality,
+@@ -2663,7 +2694,7 @@
+             } else {
+               let cmds;
+               if (onlyCompress) {
+-                if (isModify) {
++                if (modifyInPlace) {
+                   cmds = Promise.resolve([
+                     "-s",
+                     "formatOptions",
+@@ -2676,20 +2707,20 @@
+                     "-s",
+                     "formatOptions",
+                     quality,
+-                    inputPath,
++                    workingInputPath,
+                     ...sipsResizeArgs,
+                     "--out",
+                     outPath,
+                   ]);
+                 }
+               } else {
+-                if (isModify) {
++                if (modifyInPlace) {
+                   if (toFormat === "webp") {
+                     const tempPath = tempJpg;
+                     cmds = new Promise((res2) => {
+                       node_child_process.execFile(
+                         "sips",
+-                        ["-s", "format", "jpeg", inputPath, "--out", tempPath],
++                        ["-s", "format", "jpeg", workingInputPath, "--out", tempPath],
+                         (error, _stdout, stderr) => {
+                           if (error) {
+                             console.log("error:", error);
+@@ -2736,7 +2767,7 @@
+                     cmds = new Promise((res2) => {
+                       node_child_process.execFile(
+                         "sips",
+-                        ["-s", "format", "jpeg", inputPath, "--out", tempPath],
++                        ["-s", "format", "jpeg", workingInputPath, "--out", tempPath],
+                         (error, _stdout, stderr) => {
+                           if (error) {
+                             console.log("error:", error);
+@@ -2772,7 +2803,7 @@
+                       "-s",
+                       "formatOptions",
+                       quality,
+-                      inputPath,
++                      workingInputPath,
+                       ...sipsResizeArgs,
+                       "--out",
+                       outPath,
+@@ -2855,6 +2886,7 @@
+             reject(e);
+           });
+       });
++      return conversion.finally(() => safeUnlink(aspectTempPath));
+     },
+     vConvert: (_, opt) => {
+       const {
+@@ -2873,6 +2905,10 @@
+         includeAudio = true,
+         speed = 1,
+         matchFps = true,
++        cropEnabled = false,
++        cropAspectWidth = 2,
++        cropAspectHeight = 1,
++        cropMode = "contain",
+         jobId,
+       } = opt;
+       const cwd = binDir();
+@@ -2910,10 +2946,34 @@
+         : [];
+       const longestEdgeFilter = (edge) =>
+         `scale=${edge}:${edge}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos`;
++      const cropRatio = Math.max(
++        0.01,
++        Number(cropAspectWidth) / Math.max(0.01, Number(cropAspectHeight)),
++      );
++      const aspectCropFilters = (() => {
++        if (!cropEnabled) return [];
++        const ratio = cropRatio.toFixed(8);
++        if (cropMode === "cover") {
++          return [
++            "format=rgba",
++            `crop=w='max(2,trunc(min(iw,ih*${ratio})/2)*2)':h='max(2,trunc(min(ih,iw/${ratio})/2)*2)':x='(iw-ow)/2':y='(ih-oh)/2'`,
++          ];
++        }
++        const boxWidth =
++          cropRatio >= 1 ? "max(iw,ih)" : `max(iw,ih)*${ratio}`;
++        const boxHeight =
++          cropRatio >= 1 ? `max(iw,ih)/${ratio}` : "max(iw,ih)";
++        return [
++          "format=rgba",
++          `scale=w='max(2,trunc((${boxWidth})/2)*2)':h='max(2,trunc((${boxHeight})/2)*2)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos`,
++          `pad=w='max(2,ceil(max(iw,ih*${ratio})/2)*2)':h='max(2,ceil(max(ih,iw/${ratio})/2)*2)':x='(ow-iw)/2':y='(oh-ih)/2':color=0x00000000`,
++        ];
++      })();
+       const animationFilters = [...speedVideoFilters];
+       if (!preparedInput && !preserveSourceTiming) {
+         animationFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
+       }
++      animationFilters.push(...aspectCropFilters);
+       if (!preparedInput) {
+         if (requestedLongestEdge) {
+           animationFilters.push(longestEdgeFilter(requestedLongestEdge));
+@@ -3070,6 +3130,7 @@
+             const requestedScale = scaleLongest || requestedLongestEdge;
+             const filters = [...speedVideoFilters];
+             if (requestedFps) filters.push(`fps=${requestedFps}`);
++            filters.push(...aspectCropFilters);
+             if (requestedScale) {
+               filters.push(longestEdgeFilter(requestedScale));
+             } else if (profile.pixelFormat.includes("420")) {
+@@ -3094,7 +3155,12 @@
+               `${bitrate}k`,
+               ...videoFilter,
+               ...profile.videoArgs,
+-              ...(profile.fpsMode ? ["-fps_mode", profile.fpsMode] : []),
++              ...(profile.fpsMode
++                ? [
++                    "-fps_mode",
++                    preserveSourceTiming ? "vfr" : profile.fpsMode,
++                  ]
++                : []),
+             ];
+             if (profile.twoPass) {
+               await runMediaProcess(
+@@ -3194,6 +3260,7 @@
+         const requestedScale = preparedInput ? 0 : requestedLongestEdge;
+         const filters = [...speedVideoFilters];
+         if (requestedFps) filters.push(`fps=${requestedFps}`);
++        filters.push(...aspectCropFilters);
+         if (requestedScale) {
+           filters.push(longestEdgeFilter(requestedScale));
+         } else if (profile.pixelFormat.includes("420")) {
+@@ -3214,7 +3281,9 @@
+           profile.pixelFormat,
+           ...videoFilter,
+           ...profile.videoArgs,
+-          ...(profile.fpsMode ? ["-fps_mode", profile.fpsMode] : []),
++          ...(profile.fpsMode
++            ? ["-fps_mode", preserveSourceTiming ? "vfr" : profile.fpsMode]
++            : []),
+         ];
+         if (profile.videoCodec === "libx264") {
+           args.push("-crf", "23");
+@@ -3273,8 +3342,11 @@
+             1,
+             Math.ceil((media.duration / playbackSpeed) * outputFps),
+           );
+-          const aspect =
+-            media.width && media.height ? media.width / media.height : 16 / 9;
++          const aspect = cropEnabled
++            ? cropRatio
++            : media.width && media.height
++              ? media.width / media.height
++              : 16 / 9;
+           const targetPixelsPerFrame = targetBytes / estimatedFrames / 0.004;
+           const targetAwareLongest = Math.floor(
+             Math.sqrt(
+@@ -3297,6 +3369,7 @@
+           } else if (!preparedInput && !preserveSourceTiming) {
+             targetFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
+           }
++          targetFilters.push(...aspectCropFilters);
+           if (currentScale !== sourceLongest || !preparedInput) {
+             targetFilters.push(longestEdgeFilter(currentScale));
+           }
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -22815,6 +22815,11 @@
+     effort: 4,
+     wEffort: 4,
+     preset: "default",
++    cropEnabled: true,
++    cropAspect: "2:1",
++    cropMode: "contain",
++    cropCustomWidth: 2,
++    cropCustomHeight: 1,
+   },
+ });
+ const compressSlice = createConfigSlice({
+@@ -22823,6 +22828,11 @@
+     quality: 80,
+     overwrite: false,
+     gifColorReduction: false,
++    cropEnabled: true,
++    cropAspect: "2:1",
++    cropMode: "contain",
++    cropCustomWidth: 2,
++    cropCustomHeight: 1,
+   },
+ });
+ const cropSlice = createConfigSlice({
+@@ -22857,6 +22867,11 @@
+     targetFileSizes: {},
+     gifColorReduction: false,
+     speed: 1,
++    cropEnabled: true,
++    cropAspect: "2:1",
++    cropMode: "contain",
++    cropCustomWidth: 2,
++    cropCustomHeight: 1,
+   },
+ });
+ const v2ImageSlice = createConfigSlice({
+@@ -22872,6 +22887,11 @@
+     targetFileSizes: {},
+     gifColorReduction: false,
+     speed: 1,
++    cropEnabled: true,
++    cropAspect: "2:1",
++    cropMode: "contain",
++    cropCustomWidth: 2,
++    cropCustomHeight: 1,
+   },
+ });
+ const vConvertSlice = createConfigSlice({
+@@ -22881,6 +22901,13 @@
+     targetFileSizes: {},
+     gifColorReduction: false,
+     speed: 1,
++    fps: 30,
++    matchFps: true,
++    cropEnabled: true,
++    cropAspect: "2:1",
++    cropMode: "contain",
++    cropCustomWidth: 2,
++    cropCustomHeight: 1,
+   },
+ });
+ const vCompressSlice = createConfigSlice({
+@@ -22888,6 +22915,13 @@
+   initialConfig: {
+     quality: "",
+     speed: 1,
++    fps: 30,
++    matchFps: true,
++    cropEnabled: true,
++    cropAspect: "2:1",
++    cropMode: "contain",
++    cropCustomWidth: 2,
++    cropCustomHeight: 1,
+   },
+ });
+ const youtubeSlice = createConfigSlice({
+@@ -22910,6 +22944,12 @@
+     gifColorReduction: false,
+     includeAudio: true,
+     speed: 1,
++    matchFps: true,
++    cropEnabled: true,
++    cropAspect: "2:1",
++    cropMode: "contain",
++    cropCustomWidth: 2,
++    cropCustomHeight: 1,
+   },
+ });
+ const collageSlice = createConfigSlice({
+@@ -23649,6 +23689,15 @@
+   "flow.fps": "帧率(帧/秒)",
+   "flow.matchFps": "匹配源帧率",
+   "flow.matchFpsDesc": "保留源媒体的帧时间和可变帧率。",
++  "flow.aspectCrop": "输出画布比例",
++  "flow.aspectCropDesc": "将相同比例应用于批次中的每个输出。",
++  "flow.aspectRatio": "宽高比",
++  "flow.aspectMode": "适配模式",
++  "flow.letterbox": "留白",
++  "flow.cover": "铺满",
++  "flow.customWidth": "自定义宽比",
++  "flow.customHeight": "自定义高比",
++  "flow.transparentPadding": "支持透明度的格式会使用透明背景。",
+   "flow.speed": "播放速度",
+   "flow.scale": "宽度(px)",
+   "flow.loop": "循环(0=无限)",
+@@ -24176,6 +24225,15 @@
+   "flow.fps": "FPS",
+   "flow.matchFps": "Match source FPS",
+   "flow.matchFpsDesc": "Preserves source frame timing and variable frame rates.",
++  "flow.aspectCrop": "Output canvas crop",
++  "flow.aspectCropDesc": "Applies one aspect ratio to every output in the batch.",
++  "flow.aspectRatio": "Aspect ratio",
++  "flow.aspectMode": "Fit mode",
++  "flow.letterbox": "Letterbox",
++  "flow.cover": "Cover",
++  "flow.customWidth": "Custom width ratio",
++  "flow.customHeight": "Custom height ratio",
++  "flow.transparentPadding": "Alpha-capable formats use transparent padding.",
+   "flow.speed": "Playback speed",
+   "flow.scale": "Width (px)",
+   "flow.loop": "Loops (0=∞)",
+@@ -39882,6 +39940,160 @@
+       }
+     : null;
+ };
++const ASPECT_CROP_PRESETS = [
++  { label: "2:1", value: "2:1" },
++  { label: "16:9", value: "16:9" },
++  { label: "3:2", value: "3:2" },
++  { label: "4:3", value: "4:3" },
++  { label: "1:1", value: "1:1" },
++  { label: "4:5", value: "4:5" },
++  { label: "9:16", value: "9:16" },
++  { label: "Custom", value: "custom" },
++];
++const aspectCropFor = (config) => {
++  const preset = String(config.cropAspect || "2:1");
++  const [presetWidth, presetHeight] = preset.split(":").map(Number);
++  const width = Math.max(
++    0.01,
++    preset === "custom"
++      ? Number(config.cropCustomWidth) || 2
++      : presetWidth || 2,
++  );
++  const height = Math.max(
++    0.01,
++    preset === "custom"
++      ? Number(config.cropCustomHeight) || 1
++      : presetHeight || 1,
++  );
++  return {
++    enabled: config.cropEnabled !== false,
++    width,
++    height,
++    ratio: width / height,
++    mode: config.cropMode === "cover" ? "cover" : "contain",
++  };
++};
++const aspectCropRequest = (config) => {
++  const crop = aspectCropFor(config);
++  return {
++    cropEnabled: crop.enabled,
++    cropAspectWidth: crop.width,
++    cropAspectHeight: crop.height,
++    cropMode: crop.mode,
++  };
++};
++const aspectCropResize = (config, item) => {
++  const crop = aspectCropFor(config);
++  if (!crop.enabled) return longestEdgeResize(config);
++  const sourceWidth = Math.max(1, Number(item?.meta?.width) || 1);
++  const sourceHeight = Math.max(1, Number(item?.meta?.height) || 1);
++  const edge = longestEdgeFor(config) || Math.max(sourceWidth, sourceHeight);
++  const width = Math.max(
++    1,
++    Math.round(crop.ratio >= 1 ? edge : edge * crop.ratio),
++  );
++  const height = Math.max(
++    1,
++    Math.round(crop.ratio >= 1 ? edge / crop.ratio : edge),
++  );
++  return {
++    width,
++    height,
++    options: {
++      fit: crop.mode === "cover" ? "cover" : "contain",
++      position: "centre",
++      withoutEnlargement: false,
++      background: { r: 0, g: 0, b: 0, alpha: 0 },
++    },
++  };
++};
++const AspectCropControls = reactExports.memo(({ config, update, t: t2 }) => {
++  const enabled = config.cropEnabled !== false;
++  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++    children: [
++      /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++        label: t2("flow.aspectCrop"),
++        desc: t2("flow.aspectCropDesc"),
++        checked: enabled,
++        onChange: (cropEnabled) => update({ cropEnabled }),
++      }),
++      enabled
++        ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++            children: [
++              /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                label: t2("flow.aspectRatio"),
++                value: config.cropAspect || "2:1",
++                options: ASPECT_CROP_PRESETS,
++                onChange: (cropAspect) => update({ cropAspect }),
++              }),
++              config.cropAspect === "custom"
++                ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                    jsxRuntimeExports.Fragment,
++                    {
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: t2("flow.customWidth"),
++                          value: config.cropCustomWidth || 2,
++                          min: 0.01,
++                          step: 0.01,
++                          onChange: (cropCustomWidth) =>
++                            update({ cropCustomWidth }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: t2("flow.customHeight"),
++                          value: config.cropCustomHeight || 1,
++                          min: 0.01,
++                          step: 0.01,
++                          onChange: (cropCustomHeight) =>
++                            update({ cropCustomHeight }),
++                        }),
++                      ],
++                    },
++                  )
++                : null,
++              /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
++                label: t2("flow.aspectMode"),
++                value: config.cropMode === "cover" ? "cover" : "contain",
++                options: [
++                  { label: t2("flow.letterbox"), value: "contain" },
++                  { label: t2("flow.cover"), value: "cover" },
++                ],
++                onChange: (cropMode) => update({ cropMode }),
++              }),
++              config.cropMode !== "cover"
++                ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                    className: "x-cfg-note",
++                    children: t2("flow.transparentPadding"),
++                  })
++                : null,
++            ],
++          })
++        : null,
++    ],
++  });
++});
++const MatchFpsControls = reactExports.memo(
++  ({ config, update, t: t2, max = 120 }) =>
++    /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++          label: t2("flow.matchFps"),
++          desc: t2("flow.matchFpsDesc"),
++          checked: config.matchFps !== false,
++          onChange: (matchFps) => update({ matchFps }),
++        }),
++        config.matchFps === false
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++              label: t2("flow.fps"),
++              value: config.fps,
++              min: 1,
++              max,
++              onChange: (fps) => update({ fps }),
++            })
++          : null,
++      ],
++    }),
++);
+ async function writeBufferOut(buffer, item, outPath, pureName, outFormat) {
+   let destination = outPath;
+   if (outPath === item.path) {
+@@ -39910,9 +40122,13 @@
+   const sourceWidth = Math.max(1, Number(item.meta?.width) || 1);
+   const sourceHeight = Math.max(1, Number(item.meta?.height) || 1);
+   const sourceLongest = Math.max(sourceWidth, sourceHeight);
++  const baseResize = recipe.resize;
++  const baseLongest = baseResize
++    ? Math.max(Number(baseResize.width) || 1, Number(baseResize.height) || 1)
++    : sourceLongest;
+   let currentLongest = Math.max(
+     1,
+-    Number(longestEdge) > 0 ? Number(longestEdge) : sourceLongest,
++    Number(longestEdge) > 0 ? Number(longestEdge) : baseLongest,
+   );
+   let lastSmallest = null;
+   let smallestSize = Number.POSITIVE_INFINITY;
+@@ -39930,19 +40146,40 @@
+       tuningAttempt += 1
+     ) {
+       const tuning = Math.floor((low + high) / 2);
++      const resize = baseResize
++        ? {
++            width:
++              baseResize.width >= baseResize.height
++                ? currentLongest
++                : Math.max(
++                    1,
++                    Math.round(
++                      (currentLongest * baseResize.width) / baseResize.height,
++                    ),
++                  ),
++            height:
++              baseResize.height >= baseResize.width
++                ? currentLongest
++                : Math.max(
++                    1,
++                    Math.round(
++                      (currentLongest * baseResize.height) / baseResize.width,
++                    ),
++                  ),
++            options: baseResize.options,
++          }
++        : currentLongest !== sourceLongest
++          ? {
++              width: currentLongest,
++              height: currentLongest,
++              options: { fit: "inside", withoutEnlargement: false },
++            }
++          : null;
+       const buffer = await window.x("sharpToBuffer", {
+         ...recipe,
+         inputPath: item.path,
+         toFormat: outFormat,
+-        ...(currentLongest !== sourceLongest
+-          ? {
+-              resize: {
+-                width: currentLongest,
+-                height: currentLongest,
+-                options: { fit: "inside", withoutEnlargement: false },
+-              },
+-            }
+-          : {}),
++        ...(resize ? { resize } : {}),
+         formatOptions: {
+           ...(recipe.formatOptions || {}),
+           ...(isGif
+@@ -40033,6 +40270,11 @@
+           className: "x-cfg-note",
+           children: t2("flow.targetSizeHint"),
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++          config,
++          update,
++          t: t2,
++        }),
+         sessionHasGif(session)
+           ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
+               config,
+@@ -40074,7 +40316,7 @@
+     } else {
+       recipe = "flag";
+     }
+-    const resize = longestEdgeResize(config);
++    const resize = aspectCropResize(config, item);
+     if (recipe !== "flag" && resize) recipe = { ...recipe, resize };
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+     const { pureName, outPath } = await resolveOut(
+@@ -40091,6 +40333,7 @@
+         inputPath: item.path,
+         outPath,
+         longestEdge: longestEdgeFor(config),
++        ...aspectCropRequest(config),
+       });
+       return { outName, outPath, outSize: r22.size };
+     }
+@@ -40172,6 +40415,11 @@
+               t: t2,
+             })
+           : null,
++        /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++          config,
++          update,
++          t: t2,
++        }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+           label: t2("flow.quality"),
+           value: config.quality,
+@@ -40274,7 +40522,7 @@
+     } else {
+       recipe = "flag";
+     }
+-    const resize = longestEdgeResize(config);
++    const resize = aspectCropResize(config, item);
+     if (recipe !== "flag" && resize) recipe = { ...recipe, resize };
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+     const { pureName, outPath } = await resolveOut(
+@@ -40293,6 +40541,7 @@
+         toFormat,
+         fromFormat: fmt,
+         longestEdge: longestEdgeFor(config),
++        ...aspectCropRequest(config),
+       });
+       return { outName, outPath, outSize: r22.size };
+     }
+@@ -40367,6 +40616,16 @@
+         /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
+           value: config.speed,
+           onChange: (speed) => update({ speed }),
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MatchFpsControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++          config,
++          update,
+           t: t2,
+         }),
+       ],
+@@ -40392,6 +40651,9 @@
+       targetFileSizeKb: targetSizeFor(config, config.toFormat),
+       longestEdge: longestEdgeFor(config),
+       speed: normalizedPlaybackSpeed(config.speed),
++      fps: config.fps,
++      matchFps: config.matchFps !== false,
++      ...aspectCropRequest(config),
+       allowGifColorReduction: config.gifColorReduction,
+       jobId,
+     });
+@@ -40439,8 +40701,18 @@
+         /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
+           value: config.speed,
+           onChange: (speed) => update({ speed }),
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MatchFpsControls, {
++          config,
++          update,
+           t: t2,
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++          config,
++          update,
++          t: t2,
++        }),
+       ],
+     }),
+   panelSub: (config, n2, t2) =>
+@@ -40464,6 +40736,9 @@
+       ...(targetKb > 0 ? { targetFileSizeKb: targetKb } : {}),
+       longestEdge: longestEdgeFor(config),
+       speed: normalizedPlaybackSpeed(config.speed),
++      fps: config.fps,
++      matchFps: config.matchFps !== false,
++      ...aspectCropRequest(config),
+       jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+@@ -40520,20 +40795,16 @@
+           max: 2,
+           onChange: (v2) => update({ quality: v2 }),
+         }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
+-          label: t2("flow.matchFps"),
+-          desc: t2("flow.matchFpsDesc"),
+-          checked: config.matchFps !== false,
+-          onChange: (matchFps) => update({ matchFps }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MatchFpsControls, {
++          config,
++          update,
++          t: t2,
+         }),
+-        config.matchFps === false
+-          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-              label: t2("flow.fps"),
+-              value: config.fps,
+-              min: 1,
+-              onChange: (v2) => update({ fps: v2 }),
+-            })
+-          : null,
++        /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++          config,
++          update,
++          t: t2,
++        }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
+           value: config.speed,
+           onChange: (speed) => update({ speed }),
+@@ -40576,6 +40847,7 @@
+       outPath,
+       fps: config.fps,
+       matchFps: config.matchFps !== false,
++      ...aspectCropRequest(config),
+       longestEdge: longestEdgeFor(config),
+       ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
+       loop: config.loop,
+@@ -42715,6 +42987,11 @@
+           onChange: (v2) =>
+             update({ zl: v2, d: Math.max(1, Math.round(1e3 / (v2 || 1))) }),
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++          config,
++          update,
++          t: t2,
++        }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
+           value: config.speed,
+           onChange: (speed) => update({ speed }),
+@@ -42778,7 +43055,7 @@
+         await window.x("mergeFramesIntermediate", {
+           files: files.map((item) => item.path),
+           fps: config.zl || 10,
+-          longestEdge: longestEdgeFor(config),
++          longestEdge: 0,
+           pixelFormat: ext === "webm" ? "yuva420p" : "bgra",
+           outPath: bridgePath,
+           jobId,
+@@ -42789,9 +43066,10 @@
+           toFormat: ext,
+           outPath: outputPath,
+           fps: config.zl || 10,
+-          longestEdge: 0,
++          longestEdge: longestEdgeFor(config),
+           preparedInput: true,
+           speed,
++          ...aspectCropRequest(config),
+           loop,
+           targetFileSizeKb: targetKb,
+           allowGifColorReduction: config.gifColorReduction,
+@@ -42817,8 +43095,8 @@
+         info = await window.x("sharpToFile", {
+           inputPath: fakePath,
+           inputOptions: { animated: true },
+-          ...(longestEdgeResize(config)
+-            ? { resize: longestEdgeResize(config) }
++          ...(aspectCropResize(config, files[0])
++            ? { resize: aspectCropResize(config, files[0]) }
+             : {}),
+           toFormat: ext,
+           formatOptions:
+@@ -43478,7 +43756,7 @@
+       const prepared = await window.x("youtubeFrameBuffer", {
+         inputPath: downloaded.path,
+         durationMs: endMs - startMs,
+-        fps: config.fps,
++        fps: config.matchFps === false ? config.fps : 0,
+         width,
+         height,
+         fitMode: config.fitMode,
+@@ -43497,6 +43775,8 @@
+         toFormat: format,
+         outPath,
+         fps: config.fps,
++        matchFps: config.matchFps !== false,
++        ...aspectCropRequest(config),
+         loop: config.loop,
+         speed: normalizedPlaybackSpeed(config.speed),
+         targetFileSizeKb: targetSizeFor(config, format),
+@@ -44105,12 +44385,10 @@
+                 onClick: () => inspect(),
+                 children: stage === "inspecting" ? t2("youtube.loading") : t2("youtube.load"),
+               }),
+-              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-                label: t2("flow.fps"),
+-                value: config.fps,
+-                min: 1,
+-                max: 120,
+-                onChange: (fps) => update({ fps }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(MatchFpsControls, {
++                config,
++                update,
++                t: t2,
+               }),
+               /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+                 label: t2("youtube.width"),
+@@ -44133,6 +44411,11 @@
+                 ],
+                 onChange: (fitMode) => update({ fitMode }),
+               }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++                config,
++                update,
++                t: t2,
++              }),
+               /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
+                 label: t2("flow.outFormat"),
+                 value: config.toFormat,
+

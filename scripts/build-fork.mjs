@@ -8,16 +8,25 @@ import * as asar from "@electron/asar";
 import prettier from "prettier";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const baseApp = path.resolve(process.argv[2] || "/Applications/xPic.app");
+const explicitBaseApp = process.argv[2] ? path.resolve(process.argv[2]) : null;
 const outputApp = path.resolve(
   process.argv[3] || path.join(repoRoot, "dist", "Beyond Media Suite.app"),
+);
+const upstreamVersion = "2.1.3";
+const upstreamUrl = `https://github.com/Xheldon/xPic/releases/download/v${upstreamVersion}/xPic-${upstreamVersion}-arm64-mac.zip`;
+const upstreamSha256 =
+  "0d7d2aec37857a6423ec5e73d99d22ea221f3f72b7e766bbcd9c309899cca096";
+const upstreamCache = path.join(
+  repoRoot,
+  ".cache",
+  "xpic",
+  `xPic-${upstreamVersion}-arm64-mac.zip`,
 );
 const ytDlpVersion = "2026.08.19";
 const ytDlpUrl = `https://github.com/yt-dlp/yt-dlp/releases/download/${ytDlpVersion}/yt-dlp_macos`;
 const ytDlpSha256 =
   "0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202";
 const ytDlpCache = path.join(repoRoot, ".cache", "yt-dlp", "yt-dlp_macos");
-const sourceAsar = path.join(baseApp, "Contents", "Resources", "app.asar");
 const patchPath = path.join(
   repoRoot,
   "patches",
@@ -78,6 +87,16 @@ const playbackSpeedPatchPath = path.join(
   "patches",
   "xpic-2.1.3-playback-speed.patch",
 );
+const matchSourceFpsPatchPath = path.join(
+  repoRoot,
+  "patches",
+  "xpic-2.1.3-match-source-fps.patch",
+);
+const batchAspectCropPatchPath = path.join(
+  repoRoot,
+  "patches",
+  "xpic-2.1.3-batch-aspect-crop.patch",
+);
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xpic-fork-build-"));
 const extracted = path.join(tempRoot, "app");
 const packedAsar = path.join(tempRoot, "app.asar");
@@ -126,7 +145,38 @@ async function ensureYtDlp() {
   return ytDlpCache;
 }
 
+async function ensureUpstreamApp(tempRoot) {
+  if (explicitBaseApp) return explicitBaseApp;
+  await fs.mkdir(path.dirname(upstreamCache), { recursive: true });
+  let validCache = false;
+  try {
+    const bytes = await fs.readFile(upstreamCache);
+    validCache =
+      createHash("sha256").update(bytes).digest("hex") === upstreamSha256;
+  } catch {}
+  if (!validCache) {
+    const response = await fetch(upstreamUrl);
+    if (!response.ok) {
+      throw new Error(
+        `Unable to download upstream xPic ${upstreamVersion}: ${response.status}`,
+      );
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    if (hash !== upstreamSha256) {
+      throw new Error(`Upstream xPic checksum mismatch: ${hash}`);
+    }
+    await fs.writeFile(upstreamCache, bytes);
+  }
+  const upstreamRoot = path.join(tempRoot, "upstream");
+  await fs.mkdir(upstreamRoot, { recursive: true });
+  run("ditto", ["-x", "-k", upstreamCache, upstreamRoot]);
+  return path.join(upstreamRoot, "xPic.app");
+}
+
 try {
+  const baseApp = await ensureUpstreamApp(tempRoot);
+  const sourceAsar = path.join(baseApp, "Contents", "Resources", "app.asar");
   const info = await fs.stat(sourceAsar);
   if (!info.isFile())
     throw new Error(`Missing base app archive: ${sourceAsar}`);
@@ -173,6 +223,8 @@ try {
   run("patch", ["-p1", "-d", extracted, "-i", movMp4FrameRatePatchPath]);
   run("patch", ["-p1", "-d", extracted, "-i", beyondMediaSuitePatchPath]);
   run("patch", ["-p1", "-d", extracted, "-i", playbackSpeedPatchPath]);
+  run("patch", ["-p1", "-d", extracted, "-i", matchSourceFpsPatchPath]);
+  run("patch", ["-p1", "-d", extracted, "-i", batchAspectCropPatchPath]);
 
   const rendererHtml = path.join(extracted, "out", "renderer", "index.html");
   const rendererName = path.basename(rendererBundle);
@@ -198,7 +250,7 @@ try {
   );
 
   packagedJson.productName = "Beyond Media Suite";
-  packagedJson.version = "2.1.3-fork.32";
+  packagedJson.version = "2.1.3-fork.34";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -283,7 +335,7 @@ try {
         baseVersion: "2.1.3",
         ytDlpVersion,
         feature:
-          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow, unified-collage-layer-controls, text-gradient-presets, exact-collage-preview-export-svg, collage-background-text-patterns, per-media-edge-crop, auto-padded-no-crop-layout, unrestricted-canvas-space-layer-offsets, non-displacing-media-overlay-layers, one-percent-collage-layer-scaling, stable-two-pass-frame-timing, accurate-media-cancellation-errors, youtube-millisecond-clips-local-frame-buffer-exact-dimensions-target-size, native-youtube-preview-audio-selected-range-loop, native-finder-convert-compress-quick-actions-ratio-targets, logarithmic-playback-speed-video-animation-audio, shortcut-screen-recording-25-percent-mp4-delete-source-finder-clipboard",
+          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow, unified-collage-layer-controls, text-gradient-presets, exact-collage-preview-export-svg, collage-background-text-patterns, per-media-edge-crop, auto-padded-no-crop-layout, unrestricted-canvas-space-layer-offsets, non-displacing-media-overlay-layers, one-percent-collage-layer-scaling, stable-two-pass-frame-timing, accurate-media-cancellation-errors, youtube-millisecond-clips-local-frame-buffer-exact-dimensions-target-size, native-youtube-preview-audio-selected-range-loop, native-finder-convert-compress-quick-actions-ratio-targets, logarithmic-playback-speed-video-animation-audio, match-source-animation-frame-timing, default-2-to-1-batch-aspect-letterbox-cover, shortcut-screen-recording-25-percent-mp4-delete-source-finder-clipboard",
         rendererAsset: cacheBustedName,
       },
       null,
@@ -314,7 +366,7 @@ try {
     "com.tdw46.beyond-media-suite",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.32", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.34", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

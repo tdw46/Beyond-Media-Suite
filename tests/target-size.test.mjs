@@ -149,7 +149,10 @@ test("MOV to MP4 keeps two-pass timing stable and distinguishes crashes from can
     /\.\.\.\(profile\.fpsMode \? \["-fps_mode", profile\.fpsMode\] : \[\]\)/,
   );
   assert.match(patch, /cancelledMediaProcesses\.add\(child\)/);
-  assert.match(patch, /const cancelled = cancelledMediaProcesses\.has\(child\)/);
+  assert.match(
+    patch,
+    /const cancelled = cancelledMediaProcesses\.has\(child\)/,
+  );
   assert.match(patch, /terminated unexpectedly \(\$\{signal\}\)/);
   assert.match(
     patch,
@@ -419,14 +422,8 @@ test("Collage packs every requested layout without distorting source aspect rati
   assert.match(patch, /const columnWidth =/);
   assert.match(patch, /const sourceWidth = Math\.max/);
   assert.match(patch, /const sourceHeight = Math\.max/);
-  assert.match(
-    patch,
-    /baseWidth \/ croppedSourceWidth/,
-  );
-  assert.match(
-    patch,
-    /baseWidth \/ croppedSourceWidth/,
-  );
+  assert.match(patch, /baseWidth \/ croppedSourceWidth/);
+  assert.match(patch, /baseWidth \/ croppedSourceWidth/);
   assert.match(patch, /croppedSourceWidth \* fitScale \* userScale/);
   assert.match(patch, /croppedSourceHeight \* fitScale \* userScale/);
   assert.match(patch, /objectFit: "fill"/);
@@ -627,8 +624,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.32/);
-  assert.match(build, /2\.1\.3\.32/);
+  assert.match(build, /2\.1\.3-fork\.34/);
+  assert.match(build, /2\.1\.3\.34/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -680,7 +677,10 @@ test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation
   assert.match(patch, /void inspect\(url\)/);
   assert.match(patch, /startTime: formatYouTubeTime\(startMs\)/);
   assert.match(patch, /if \(startMs >= endMs\)/);
-  assert.match(patch, /endMs = Math\.min\(videoDurationMs, startMs \+ pushLength\)/);
+  assert.match(
+    patch,
+    /endMs = Math\.min\(videoDurationMs, startMs \+ pushLength\)/,
+  );
   assert.match(patch, /clipLengthMs: 5000/);
   assert.match(patch, /applyClipLength/);
   assert.match(patch, /Math\.round\(\(event\.clientX - drag\.originX\) \/ 2\)/);
@@ -735,7 +735,14 @@ test("Collage preview and export share SVG overlays and expose patterns", async 
     ),
   );
   assert.match(patch, /const collagePatternOptions =/);
-  for (const pattern of ["dots", "hex", "stripes", "checker", "grid", "waves"]) {
+  for (const pattern of [
+    "dots",
+    "hex",
+    "stripes",
+    "checker",
+    "grid",
+    "waves",
+  ]) {
     assert.match(patch, new RegExp(`value: "${pattern}"`));
   }
   assert.match(patch, /backgroundPattern: "none"/);
@@ -760,7 +767,10 @@ test("Collage edge crops and optional equal padding use one preview/export geome
   }
   assert.match(patch, /const collageCropFractions =/);
   assert.match(patch, /crop=iw\*\$\{cropWidth\.toFixed\(6\)\}/);
-  assert.match(patch, /left: `\$\{\(-rect\.crop\.left \/ cropWidth\) \* 100\}%`/);
+  assert.match(
+    patch,
+    /left: `\$\{\(-rect\.crop\.left \/ cropWidth\) \* 100\}%`/,
+  );
   assert.match(patch, /autoPadding: false/);
   assert.match(patch, /tilePadding: 16/);
   assert.match(patch, /const requestedPadding = config\.autoPadding/);
@@ -772,10 +782,7 @@ test("Add overlay creates independent layers without repacking collage tiles", a
   const [patch, build] = await Promise.all([
     import("node:fs/promises").then(({ readFile }) =>
       readFile(
-        new URL(
-          "../patches/xpic-2.1.3-collage-overlay.patch",
-          import.meta.url,
-        ),
+        new URL("../patches/xpic-2.1.3-collage-overlay.patch", import.meta.url),
         "utf8",
       ),
     ),
@@ -825,7 +832,10 @@ test("All collage media and text layers scale down to one percent", async () => 
   assert.match(patch, /Math\.max\(1, Number\(item\.scale\) \|\| 100\)/);
   assert.match(patch, /Math\.max\(1, Number\(config\.textScale\) \|\| 100\)/);
   assert.match(patch, /step = suffix === "%" \? 5 : 1/);
-  assert.match(patch, /\(value\) => patchItem\(item\.id, \{ scale: value \}\),[\s\S]{0,80}"%",\s*\+\s*1/);
+  assert.match(
+    patch,
+    /\(value\) => patchItem\(item\.id, \{ scale: value \}\),[\s\S]{0,80}"%",\s*\+\s*1/,
+  );
   assert.match(build, /xpic-2\.1\.3-collage-tiny-scale\.patch/);
   assert.match(build, /collageTinyScalePatchPath/);
 });
@@ -883,42 +893,48 @@ test("Text gradients expose the shared aesthetic presets and retain custom stops
 
 test("Native Finder Quick Actions expose conversion and ratio-based compression", async () => {
   assert.equal(sourceRatioTargetKb(60_000_000, 25), 15_000);
-  const [helper, build, convertInfo, convertWorkflow, compressInfo, compressWorkflow] =
-    await Promise.all([
-      readFile(
-        new URL("../finder-helper/BeyondFinderMedia.swift", import.meta.url),
-        "utf8",
+  const [
+    helper,
+    build,
+    convertInfo,
+    convertWorkflow,
+    compressInfo,
+    compressWorkflow,
+  ] = await Promise.all([
+    readFile(
+      new URL("../finder-helper/BeyondFinderMedia.swift", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+    readFile(
+      new URL(
+        "../finder-services/Convert with Beyond Media Suite.workflow/Contents/Info.plist",
+        import.meta.url,
       ),
-      readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
-      readFile(
-        new URL(
-          "../finder-services/Convert with Beyond Media Suite.workflow/Contents/Info.plist",
-          import.meta.url,
-        ),
-        "utf8",
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../finder-services/Convert with Beyond Media Suite.workflow/Contents/Resources/document.wflow",
+        import.meta.url,
       ),
-      readFile(
-        new URL(
-          "../finder-services/Convert with Beyond Media Suite.workflow/Contents/Resources/document.wflow",
-          import.meta.url,
-        ),
-        "utf8",
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../finder-services/Compress with Beyond Media Suite.workflow/Contents/Info.plist",
+        import.meta.url,
       ),
-      readFile(
-        new URL(
-          "../finder-services/Compress with Beyond Media Suite.workflow/Contents/Info.plist",
-          import.meta.url,
-        ),
-        "utf8",
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../finder-services/Compress with Beyond Media Suite.workflow/Contents/Resources/document.wflow",
+        import.meta.url,
       ),
-      readFile(
-        new URL(
-          "../finder-services/Compress with Beyond Media Suite.workflow/Contents/Resources/document.wflow",
-          import.meta.url,
-        ),
-        "utf8",
-      ),
-    ]);
+      "utf8",
+    ),
+  ]);
   assert.match(helper, /NSSlider\(value: 25, minValue: 5, maxValue: 95/);
   assert.match(helper, /sourceBytes \* Int64\(ratio\) \/ 100/);
   assert.match(helper, /case "mp4", "mov":/);
@@ -950,7 +966,10 @@ test("Native Finder Quick Actions expose conversion and ratio-based compression"
   assert.doesNotMatch(convertWorkflow, /Contents\/MacOS\/xPic/);
   assert.doesNotMatch(compressWorkflow, /Contents\/MacOS\/xPic/);
   assert.match(convertWorkflow, /<key>inputMethod<\/key><integer>1<\/integer>/);
-  assert.match(compressWorkflow, /<key>inputMethod<\/key><integer>1<\/integer>/);
+  assert.match(
+    compressWorkflow,
+    /<key>inputMethod<\/key><integer>1<\/integer>/,
+  );
 });
 
 test("Playback speed spans 1/16x through 16x across native, video, and animation outputs", async () => {
@@ -972,7 +991,10 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(patch, /16×/);
   assert.ok((patch.match(/speed: 1/g) || []).length >= 6);
   assert.ok((patch.match(/SpeedSlider/g) || []).length >= 7);
-  assert.ok((patch.match(/speed: normalizedPlaybackSpeed\(config\.speed\)/g) || []).length >= 5);
+  assert.ok(
+    (patch.match(/speed: normalizedPlaybackSpeed\(config\.speed\)/g) || [])
+      .length >= 5,
+  );
   assert.match(patch, /setpts=PTS\/\$\{playbackSpeed\.toFixed\(6\)\}/);
   assert.match(patch, /atempo=\$\{factor\.toFixed\(6\)\}/);
   assert.match(patch, /effectiveDuration = media\.duration \/ playbackSpeed/);
@@ -981,8 +1003,60 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.32/);
-  assert.match(build, /2\.1\.3\.32/);
+  assert.match(build, /2\.1\.3-fork\.34/);
+  assert.match(build, /2\.1\.3\.34/);
+});
+
+test("To Animation matches source frame timing by default and allows an FPS override", async () => {
+  const [patch, build] = await Promise.all([
+    readFile(
+      new URL("../patches/xpic-2.1.3-match-source-fps.patch", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(patch, /matchFps: true/);
+  assert.match(patch, /checked: config\.matchFps !== false/);
+  assert.match(patch, /config\.matchFps === false/);
+  assert.match(patch, /matchFps: config\.matchFps !== false/);
+  assert.match(patch, /const preserveSourceTiming = matchFps !== false/);
+  assert.match(patch, /!preparedInput && !preserveSourceTiming/);
+  assert.match(patch, /fps: fpsMatch \? Number\(fpsMatch\[1\]\) : null/);
+  assert.match(patch, /Preserves source frame timing and variable frame rates/);
+  assert.match(build, /xpic-2\.1\.3-match-source-fps\.patch/);
+  assert.match(build, /matchSourceFpsPatchPath/);
+  assert.match(build, /ensureUpstreamApp/);
+  assert.match(build, /upstreamSha256/);
+  assert.match(build, /xPic-\$\{upstreamVersion\}-arm64-mac\.zip/);
+});
+
+test("Relevant batch creators default to a transparent 2:1 canvas and expose source FPS matching", async () => {
+  const [patch, build] = await Promise.all([
+    readFile(
+      new URL("../patches/xpic-2.1.3-batch-aspect-crop.patch", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.ok((patch.match(/cropEnabled: true/g) || []).length >= 7);
+  assert.ok((patch.match(/cropAspect: "2:1"/g) || []).length >= 7);
+  assert.ok((patch.match(/cropMode: "contain"/g) || []).length >= 7);
+  for (const preset of ["2:1", "16:9", "3:2", "4:3", "1:1", "4:5", "9:16"]) {
+    assert.match(patch, new RegExp(`label: "${preset}"`));
+  }
+  assert.match(patch, /label: "Custom", value: "custom"/);
+  assert.match(patch, /const AspectCropControls/);
+  assert.ok((patch.match(/jsx\(AspectCropControls/g) || []).length >= 7);
+  assert.match(patch, /color=0x00000000/);
+  assert.match(patch, /crop=w='max\(2,trunc\(min\(iw,ih\*/);
+  assert.match(patch, /background: \{ r: 0, g: 0, b: 0, alpha: 0 \}/);
+  assert.match(patch, /flow\.transparentPadding/);
+  assert.match(patch, /fps: config\.matchFps === false \? config\.fps : 0/);
+  assert.ok((patch.match(/jsx\(MatchFpsControls/g) || []).length >= 4);
+  assert.match(patch, /preserveSourceTiming \? "vfr"/);
+  assert.match(build, /xpic-2\.1\.3-batch-aspect-crop\.patch/);
+  assert.match(build, /batchAspectCropPatchPath/);
+  assert.match(build, /default-2-to-1-batch-aspect-letterbox-cover/);
 });
 
 test("New screen recordings run through a safe 25-percent MP4 Shortcut workflow", async () => {

@@ -1,0 +1,180 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1724,6 +1724,10 @@
+     const match = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(stderr);
+     if (!match) throw new Error("Could not determine source duration.");
+     const dimensions = /Video:.*?(\d{2,5})x(\d{2,5})/.exec(stderr);
++    const videoLine = String(stderr || "")
++      .split(/\r?\n/)
++      .find((line) => line.includes("Video:"));
++    const fpsMatch = /([\d.]+)\s+fps\b/.exec(videoLine || "");
+     const audioStream = findUsableAudioStream(stderr);
+     return {
+       duration:
+@@ -1732,6 +1736,7 @@
+       audioStream,
+       width: dimensions ? Number(dimensions[1]) : null,
+       height: dimensions ? Number(dimensions[2]) : null,
++      fps: fpsMatch ? Number(fpsMatch[1]) : null,
+     };
+   };
+   let youtubeNodeRuntime;
+@@ -2867,6 +2872,7 @@
+         allowGifColorReduction = false,
+         includeAudio = true,
+         speed = 1,
++        matchFps = true,
+         jobId,
+       } = opt;
+       const cwd = binDir();
+@@ -2880,6 +2886,7 @@
+         Math.round(Number(longestEdge ?? scale) || 0),
+       );
+       const playbackSpeed = Math.max(1 / 16, Math.min(16, Number(speed) || 1));
++      const preserveSourceTiming = matchFps !== false;
+       const speedVideoFilters =
+         Math.abs(playbackSpeed - 1) < 1e-6
+           ? []
+@@ -2904,8 +2911,10 @@
+       const longestEdgeFilter = (edge) =>
+         `scale=${edge}:${edge}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos`;
+       const animationFilters = [...speedVideoFilters];
+-      if (!preparedInput) {
++      if (!preparedInput && !preserveSourceTiming) {
+         animationFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
++      }
++      if (!preparedInput) {
+         if (requestedLongestEdge) {
+           animationFilters.push(longestEdgeFilter(requestedLongestEdge));
+         }
+@@ -3055,7 +3064,7 @@
+           for (let attempt = 0; attempt < 7; attempt += 1) {
+             const tempPath = vtemp(`.${toFormat}`);
+             const passlog = vtemp(".pass");
+-            const requestedFps = preparedInput
++            const requestedFps = preparedInput || preserveSourceTiming
+               ? 0
+               : Math.max(0, Number(fps) || 0);
+             const requestedScale = scaleLongest || requestedLongestEdge;
+@@ -3178,7 +3187,10 @@
+       const encodeVideo = async (profile) => {
+         const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
+         const tempPath = vtemp(`.${toFormat}`);
+-        const requestedFps = preparedInput ? 0 : Math.max(0, Number(fps) || 0);
++        const requestedFps =
++          preparedInput || preserveSourceTiming
++            ? 0
++            : Math.max(0, Number(fps) || 0);
+         const requestedScale = preparedInput ? 0 : requestedLongestEdge;
+         const filters = [...speedVideoFilters];
+         if (requestedFps) filters.push(`fps=${requestedFps}`);
+@@ -3251,7 +3263,12 @@
+           Math.round(Number(fps) || Number(media.fps) || 10),
+         );
+         if (toFormat === "webp") {
+-          const outputFps = Math.max(1, Number(fps) || 10);
++          const outputFps = Math.max(
++            1,
++            preserveSourceTiming
++              ? Number(media.fps) || Number(fps) || 10
++              : Number(fps) || 10,
++          );
+           const estimatedFrames = Math.max(
+             1,
+             Math.ceil((media.duration / playbackSpeed) * outputFps),
+@@ -3275,9 +3292,9 @@
+         const runCandidate = async (tuning) => {
+           const candidate = vtemp(`.${toFormat}`);
+           const targetFilters = [...speedVideoFilters];
+-          if (toFormat === "gif") {
++          if (toFormat === "gif" && !preserveSourceTiming) {
+             targetFilters.push(`fps=${currentFps}`);
+-          } else if (!preparedInput) {
++          } else if (!preparedInput && !preserveSourceTiming) {
+             targetFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
+           }
+           if (currentScale !== sourceLongest || !preparedInput) {
+@@ -3403,11 +3420,19 @@
+                 minScale,
+                 Math.floor(currentScale * balanced),
+               );
+-              let nextFps = Math.max(1, Math.floor(currentFps * balanced));
++              let nextFps = preserveSourceTiming
++                ? currentFps
++                : Math.max(1, Math.floor(currentFps * balanced));
+               if (nextScale === currentScale && currentScale > minScale) {
+                 nextScale -= 1;
+               }
+-              if (nextFps === currentFps && currentFps > 1) nextFps -= 1;
++              if (
++                !preserveSourceTiming &&
++                nextFps === currentFps &&
++                currentFps > 1
++              ) {
++                nextFps -= 1;
++              }
+               if (nextScale === currentScale && nextFps === currentFps) break;
+               currentScale = nextScale;
+               currentFps = nextFps;
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -22863,6 +22863,7 @@
+   name: "v2image",
+   initialConfig: {
+     fps: 10,
++    matchFps: true,
+     scale: 320,
+     loseless: true,
+     quality: 1,
+@@ -23646,6 +23647,8 @@
+   "flow.compressRate": "压缩率",
+   "flow.animQuality": "动图质量",
+   "flow.fps": "帧率(帧/秒)",
++  "flow.matchFps": "匹配源帧率",
++  "flow.matchFpsDesc": "保留源媒体的帧时间和可变帧率。",
+   "flow.speed": "播放速度",
+   "flow.scale": "宽度(px)",
+   "flow.loop": "循环(0=无限)",
+@@ -24171,6 +24174,8 @@
+   "flow.compressRate": "Compression",
+   "flow.animQuality": "Quality",
+   "flow.fps": "FPS",
++  "flow.matchFps": "Match source FPS",
++  "flow.matchFpsDesc": "Preserves source frame timing and variable frame rates.",
+   "flow.speed": "Playback speed",
+   "flow.scale": "Width (px)",
+   "flow.loop": "Loops (0=∞)",
+@@ -40515,12 +40520,20 @@
+           max: 2,
+           onChange: (v2) => update({ quality: v2 }),
+         }),
+-        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-          label: t2("flow.fps"),
+-          value: config.fps,
+-          min: 1,
+-          onChange: (v2) => update({ fps: v2 }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++          label: t2("flow.matchFps"),
++          desc: t2("flow.matchFpsDesc"),
++          checked: config.matchFps !== false,
++          onChange: (matchFps) => update({ matchFps }),
+         }),
++        config.matchFps === false
++          ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++              label: t2("flow.fps"),
++              value: config.fps,
++              min: 1,
++              onChange: (v2) => update({ fps: v2 }),
++            })
++          : null,
+         /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
+           value: config.speed,
+           onChange: (speed) => update({ speed }),
+@@ -40562,6 +40575,7 @@
+       toFormat,
+       outPath,
+       fps: config.fps,
++      matchFps: config.matchFps !== false,
+       longestEdge: longestEdgeFor(config),
+       ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
+       loop: config.loop,

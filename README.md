@@ -48,6 +48,14 @@ video-to-animation, and every video output format exposed by xPic:
 - every creation tab has a **Longest edge (px)** control; `0` keeps the
   original dimensions, while any other value resizes landscape, portrait, or
   square output proportionally;
+- image and video batch creators expose a shared **Output canvas crop** control,
+  enabled by default at `2:1`. **Letterbox** preserves the complete frame and
+  uses transparent padding in alpha-capable formats, while **Cover** fills the
+  canvas with a centered aspect-preserving crop; common presets and custom
+  width/height ratios are included;
+- Video Convert, Video Compress, Video → To Animation, and YouTube Clip match
+  the source frame timing by default, including variable-frame-rate media. The
+  toggle can be disabled to enter a fixed FPS instead;
 - still and animated images use a quality-first binary search, then reduce
   dimensions proportionally only when quality alone cannot meet the ceiling;
 - MP4, MKV, MOV, FLV, and TS use measured two-pass H.264; WebM uses measured
@@ -151,8 +159,11 @@ npm test
 npm run build:fork -- ./official-xPic-2.1.3.app "./dist/Beyond Media Suite.app"
 ```
 
-The first argument must be an unmodified xPic 2.1.3 application bundle. The
-build is ad-hoc signed for local macOS use.
+With no arguments, the build downloads and checksum-verifies the pinned official
+xPic 2.1.3 Apple Silicon archive into the ignored local cache, extracts it only
+for the duration of the build, and writes `dist/Beyond Media Suite.app`. To use
+an existing upstream bundle instead, the first argument must be an unmodified
+xPic 2.1.3 application bundle. The build is ad-hoc signed for local macOS use.
 
 ## Download
 
