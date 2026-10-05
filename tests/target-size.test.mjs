@@ -624,8 +624,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.37/);
-  assert.match(build, /2\.1\.3\.37/);
+  assert.match(build, /2\.1\.3-fork\.38/);
+  assert.match(build, /2\.1\.3\.38/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -1003,8 +1003,8 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.37/);
-  assert.match(build, /2\.1\.3\.37/);
+  assert.match(build, /2\.1\.3-fork\.38/);
+  assert.match(build, /2\.1\.3\.38/);
 });
 
 test("To Animation matches source frame timing by default and allows an FPS override", async () => {
@@ -1131,6 +1131,35 @@ test("Professional text controls render an aspect-accurate live canvas in the wo
   assert.match(patch, /flow\.outputTextPreview/);
   assert.match(build, /xpic-2\.1\.3-full-canvas-text-preview\.patch/);
   assert.match(build, /full-canvas-live-text-preview/);
+});
+
+test("Professional text can be moved, scaled, and rotated directly on the canvas", async () => {
+  const [patch, build] = await Promise.all([
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-direct-text-transform.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(patch, /const OutputTextTransformBox/);
+  assert.match(patch, /const outputTextMeasuredBounds/);
+  assert.match(patch, /context\.measureText/);
+  assert.match(patch, /data-output-text-canvas/);
+  assert.match(patch, /beginTransform\("move"/);
+  assert.match(patch, /beginTransform\("scale"/);
+  assert.match(patch, /beginTransform\("rotate"/);
+  assert.match(patch, /setPointerCapture/);
+  assert.match(patch, /outputTextFontSize/);
+  assert.match(patch, /outputTextRotation/);
+  assert.match(patch, /clampNumber\(effect\.fontSize, 0\.25, 200/);
+  assert.match(patch, /-    const fittedSize/);
+  assert.doesNotMatch(patch, /\+.*fittedSize/);
+  assert.match(patch, /<g transform="rotate\(/);
+  assert.match(build, /xpic-2\.1\.3-direct-text-transform\.patch/);
+  assert.match(build, /direct-canvas-text-move-scale-rotate/);
 });
 
 test("New screen recordings run through a safe 25-percent MP4 Shortcut workflow", async () => {

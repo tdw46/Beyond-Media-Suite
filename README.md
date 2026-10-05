@@ -69,8 +69,12 @@ video-to-animation, and every video output format exposed by xPic:
   stream—not a scaled thumbnail—and builds its SVG at the actual output pixel
   dimensions. Every preview follows Letterbox/Cover framing and updates
   immediately for multiline text, system font, weight, gradient, size, line
-  spacing, alignment, X/Y position, shadow, and outline using the same SVG
-  sizing math as export;
+  spacing, alignment, X/Y position, rotation, shadow, and outline using the
+  same SVG sizing math as export. Text is directly editable on the canvas:
+  drag the selection to move it, drag any corner to scale from 0.25%–200% of
+  canvas height, or drag the top handle to rotate (hold Shift for 15° snaps).
+  Numeric size, position, and rotation fields stay synchronized with the
+  on-canvas transform;
 - animated-image and video creators add an opt-in **Smooth pan & zoom** camera
   treatment with nine anchor presets or custom coordinates, independent start
   and end zoom from 1×–4×, and Linear, Smooth Bézier, Ease In, Ease Out, or

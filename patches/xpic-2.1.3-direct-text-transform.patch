@@ -1,0 +1,550 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1728,11 +1728,10 @@
+       .slice(0, 8)
+       .map((row) => row.trimEnd());
+     if (!effect?.enabled || !rows.some((row) => row.trim())) return "";
+-    const maxCharacters = Math.max(1, ...rows.map((row) => row.length));
+-    const requestedSize =
+-      (safeHeight * clampNumber(effect.fontSize, 1, 40, 8.5)) / 100;
+-    const fittedSize = (safeWidth * 0.9) / Math.max(1, maxCharacters * 0.56);
+-    const fontSize = Math.max(1, Math.min(requestedSize, fittedSize));
++    const fontSize = Math.max(
++      0.5,
++      (safeHeight * clampNumber(effect.fontSize, 0.25, 200, 8.5)) / 100,
++    );
+     const lineHeight = fontSize * clampNumber(effect.lineHeight, 0.8, 2, 1.12);
+     const alignment = ["left", "center", "right"].includes(effect.alignment)
+       ? effect.alignment
+@@ -1743,6 +1742,7 @@
+     const centerY =
+       (safeHeight * clampNumber(effect.positionY, -25, 125, 84)) / 100;
+     const firstY = centerY - ((rows.length - 1) * lineHeight) / 2;
++    const rotation = clampNumber(effect.rotation, -180, 180, 0);
+     const colorA = normalizeEffectColor(effect.colorA, "#FF8A1F");
+     const colorB = normalizeEffectColor(effect.colorB, "#D61CFF");
+     const vector = effectGradientVector(effect.gradientAngle);
+@@ -1770,7 +1770,7 @@
+           `<tspan x="${x.toFixed(3)}" y="${(firstY + index * lineHeight).toFixed(3)}">${escapeEffectSvg(row || " ")}</tspan>`,
+       )
+       .join("");
+-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${safeWidth}" height="${safeHeight}" viewBox="0 0 ${safeWidth} ${safeHeight}"><defs><linearGradient id="textGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${shadow}</defs><text ${textStyle}>${tspans}</text></svg>`;
++    return `<svg xmlns="http://www.w3.org/2000/svg" width="${safeWidth}" height="${safeHeight}" viewBox="0 0 ${safeWidth} ${safeHeight}"><defs><linearGradient id="textGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${shadow}</defs><g transform="rotate(${rotation.toFixed(3)} ${x.toFixed(3)} ${centerY.toFixed(3)})"><text ${textStyle}>${tspans}</text></g></svg>`;
+   };
+   const sharpEffectDimensions = (metadata, recipe) => {
+     let width = Math.max(1, Number(metadata?.width) || 1);
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -23640,11 +23640,13 @@
+   "flow.remove": "移除",
+   "flow.outputTextPreviewSource": "使用批次中的第一个媒体；所有文字调整都会立即更新。",
+   "flow.outputTextPreviewEmpty": "添加媒体后可在完整输出画布上预览；文字调整会立即更新。",
++  "flow.outputTextCanvasHint": "拖动文字来移动 · 拖动角点来缩放 · 拖动顶部手柄来旋转",
+   "flow.outputText": "叠加文字",
+   "flow.outputTextPlaceholder": "输入标题；可使用多行",
+   "flow.outputTextFont": "系统字体",
+   "flow.outputTextWeight": "字重",
+   "flow.outputTextSize": "字号（画布高度 %）",
++  "flow.outputTextRotation": "文字旋转角度",
+   "flow.outputTextLineHeight": "行高",
+   "flow.outputTextAlignment": "对齐",
+   "flow.outputTextLeft": "左对齐",
+@@ -24217,11 +24219,14 @@
+     "Uses the first item in the batch; every typography adjustment updates immediately.",
+   "flow.outputTextPreviewEmpty":
+     "Add media to preview the complete output canvas; typography updates immediately.",
++  "flow.outputTextCanvasHint":
++    "Drag the text to move · drag a corner to scale · drag the top handle to rotate",
+   "flow.outputText": "Overlay text",
+   "flow.outputTextPlaceholder": "Enter a headline; multiple lines are supported",
+   "flow.outputTextFont": "System font",
+   "flow.outputTextWeight": "Font weight",
+   "flow.outputTextSize": "Font size (% of canvas height)",
++  "flow.outputTextRotation": "Text rotation (degrees)",
+   "flow.outputTextLineHeight": "Line height",
+   "flow.outputTextAlignment": "Alignment",
+   "flow.outputTextLeft": "Left",
+@@ -40263,6 +40268,7 @@
+   fontFamily: config.outputTextFontFamily || "Helvetica Neue",
+   fontWeight: Number(config.outputTextFontWeight) || 800,
+   fontSize: Number(config.outputTextFontSize) || 8.5,
++  rotation: Number(config.outputTextRotation) || 0,
+   lineHeight: Number(config.outputTextLineHeight) || 1.12,
+   positionX: Number(config.outputTextPositionX ?? 50),
+   positionY: Number(config.outputTextPositionY ?? 84),
+@@ -40370,17 +40376,50 @@
+   const ratio = Math.max(0.1, Math.min(10, width / height));
+   return { ratio, width, height, crop };
+ };
+-const outputTextPreviewSvg = (effect, width, height, previewText) => {
++let outputTextMeasureContext;
++const outputTextMeasuredBounds = (effect, rows, fontSize, lineHeight) => {
++  const fallbackWidth = Math.max(
++    fontSize * 0.75,
++    ...rows.map((row) => Math.max(1, row.length) * fontSize * 0.56),
++  );
++  const fallbackHeight = Math.max(
++    fontSize,
++    (rows.length - 1) * lineHeight + fontSize,
++  );
++  if (typeof document === "undefined") {
++    return { width: fallbackWidth, height: fallbackHeight };
++  }
++  outputTextMeasureContext ||= document.createElement("canvas").getContext("2d");
++  const context = outputTextMeasureContext;
++  if (!context) return { width: fallbackWidth, height: fallbackHeight };
++  const family = String(effect.fontFamily || "Helvetica Neue");
++  const weight = Math.max(100, Math.min(900, Number(effect.fontWeight) || 800));
++  context.font = `${weight} ${fontSize}px ${JSON.stringify(family)}`;
++  const rowMetrics = rows.map((row) => context.measureText(row || " "));
++  const glyphMetrics = context.measureText("Mg");
++  const glyphHeight = Math.max(
++    fontSize,
++    Number(glyphMetrics.actualBoundingBoxAscent || 0) +
++      Number(glyphMetrics.actualBoundingBoxDescent || 0),
++  );
++  return {
++    width: Math.max(fontSize * 0.5, ...rowMetrics.map((item) => item.width)),
++    height: Math.max(
++      glyphHeight,
++      (rows.length - 1) * lineHeight + glyphHeight,
++    ),
++  };
++};
++const outputTextPreviewMetrics = (effect, width, height, previewText) => {
+   const rows = String(previewText || "")
+     .replaceAll("\r", "")
+     .split("\n")
+     .slice(0, 8);
+-  const maxCharacters = Math.max(1, ...rows.map((row) => row.length));
+-  const requestedSize =
+-    (height * Math.max(1, Math.min(40, Number(effect.fontSize) || 8.5))) /
+-    100;
+-  const fittedSize = (width * 0.9) / Math.max(1, maxCharacters * 0.56);
+-  const fontSize = Math.max(1, Math.min(requestedSize, fittedSize));
++  const fontSize = Math.max(
++    0.5,
++    (height * Math.max(0.25, Math.min(200, Number(effect.fontSize) || 8.5))) /
++      100,
++  );
+   const lineHeight =
+     fontSize * Math.max(0.8, Math.min(2, Number(effect.lineHeight) || 1.12));
+   const alignment = ["left", "center", "right"].includes(effect.alignment)
+@@ -40394,6 +40433,48 @@
+     (height * Math.max(-25, Math.min(125, Number(effect.positionY) || 0))) /
+     100;
+   const firstY = centerY - ((rows.length - 1) * lineHeight) / 2;
++  const measuredBounds = outputTextMeasuredBounds(
++    effect,
++    rows,
++    fontSize,
++    lineHeight,
++  );
++  const textWidth = measuredBounds.width;
++  const textHeight = measuredBounds.height;
++  const centerX =
++    alignment === "left"
++      ? x + textWidth / 2
++      : alignment === "right"
++        ? x - textWidth / 2
++        : x;
++  const rotation = Math.max(-180, Math.min(180, Number(effect.rotation) || 0));
++  return {
++    rows,
++    fontSize,
++    lineHeight,
++    alignment,
++    anchor,
++    x,
++    centerX,
++    centerY,
++    firstY,
++    textWidth,
++    textHeight,
++    rotation,
++  };
++};
++const outputTextPreviewSvg = (effect, width, height, previewText) => {
++  const metrics = outputTextPreviewMetrics(effect, width, height, previewText);
++  const {
++    rows,
++    fontSize,
++    lineHeight,
++    anchor,
++    x,
++    centerY,
++    firstY,
++    rotation,
++  } = metrics;
+   const vector = outputTextPreviewGradientVector(effect.gradientAngle);
+   const shadowOpacity =
+     Math.max(0, Math.min(100, Number(effect.shadowOpacity) || 0)) / 100;
+@@ -40420,7 +40501,7 @@
+         `<tspan x="${x.toFixed(3)}" y="${(firstY + index * lineHeight).toFixed(3)}">${escapeOutputTextPreviewSvg(row || " ")}</tspan>`,
+     )
+     .join("");
+-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="previewGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${effect.colorA}"/><stop offset="1" stop-color="${effect.colorB}"/></linearGradient>${shadow}</defs><text ${textAttributes}>${tspans}</text></svg>`;
++  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="previewGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${effect.colorA}"/><stop offset="1" stop-color="${effect.colorB}"/></linearGradient>${shadow}</defs><g transform="rotate(${rotation.toFixed(3)} ${x.toFixed(3)} ${centerY.toFixed(3)})"><text ${textAttributes}>${tspans}</text></g></svg>`;
+ };
+ const outputTextYouTubeId = (value) => {
+   const raw = String(value || "").trim();
+@@ -40438,6 +40519,209 @@
+     value,
+   );
+ };
++const outputTextClamp = (value, min, max) =>
++  Math.max(min, Math.min(max, Number(value) || 0));
++const outputTextNormalizeRotation = (value) => {
++  let normalized = Number(value) || 0;
++  while (normalized > 180) normalized -= 360;
++  while (normalized < -180) normalized += 360;
++  return normalized;
++};
++const OutputTextTransformBox = reactExports.memo(
++  ({ effect, metrics, canvas, onUpdate, t: t2 }) => {
++    const interactionRef = reactExports.useRef(null);
++    if (!onUpdate) return null;
++    const beginTransform = (mode, event) => {
++      if (event.button !== void 0 && event.button !== 0) return;
++      const surface = event.currentTarget.closest("[data-output-text-canvas]");
++      if (!surface) return;
++      const rect = surface.getBoundingClientRect();
++      const centerX = rect.left + (metrics.centerX / canvas.width) * rect.width;
++      const centerY = rect.top + (metrics.centerY / canvas.height) * rect.height;
++      interactionRef.current = {
++        mode,
++        pointerId: event.pointerId,
++        startClientX: event.clientX,
++        startClientY: event.clientY,
++        centerX,
++        centerY,
++        rect,
++        startPositionX: Number(effect.positionX) || 0,
++        startPositionY: Number(effect.positionY) || 0,
++        startFontSize: Number(effect.fontSize) || 8.5,
++        startRotation: Number(effect.rotation) || 0,
++        startDistance: Math.max(
++          1,
++          Math.hypot(event.clientX - centerX, event.clientY - centerY),
++        ),
++        startAngle: Math.atan2(event.clientY - centerY, event.clientX - centerX),
++      };
++      event.currentTarget.setPointerCapture?.(event.pointerId);
++      event.preventDefault();
++      event.stopPropagation();
++    };
++    const continueTransform = (event) => {
++      const active = interactionRef.current;
++      if (!active || active.pointerId !== event.pointerId) return;
++      if (active.mode === "move") {
++        const deltaX =
++          ((event.clientX - active.startClientX) / active.rect.width) * 100;
++        const deltaY =
++          ((event.clientY - active.startClientY) / active.rect.height) * 100;
++        onUpdate({
++          outputTextPositionX: outputTextClamp(
++            active.startPositionX + deltaX,
++            -25,
++            125,
++          ),
++          outputTextPositionY: outputTextClamp(
++            active.startPositionY + deltaY,
++            -25,
++            125,
++          ),
++        });
++      } else if (active.mode === "scale") {
++        const distance = Math.max(
++          1,
++          Math.hypot(
++            event.clientX - active.centerX,
++            event.clientY - active.centerY,
++          ),
++        );
++        onUpdate({
++          outputTextFontSize: outputTextClamp(
++            active.startFontSize * (distance / active.startDistance),
++            0.25,
++            200,
++          ),
++        });
++      } else if (active.mode === "rotate") {
++        const angle = Math.atan2(
++          event.clientY - active.centerY,
++          event.clientX - active.centerX,
++        );
++        let rotation = outputTextNormalizeRotation(
++          active.startRotation + ((angle - active.startAngle) * 180) / Math.PI,
++        );
++        if (event.shiftKey) rotation = Math.round(rotation / 15) * 15;
++        onUpdate({ outputTextRotation: rotation });
++      }
++      event.preventDefault();
++      event.stopPropagation();
++    };
++    const endTransform = (event) => {
++      if (interactionRef.current?.pointerId !== event.pointerId) return;
++      interactionRef.current = null;
++      event.currentTarget.releasePointerCapture?.(event.pointerId);
++      event.preventDefault();
++      event.stopPropagation();
++    };
++    const handleStyle = (cursor, left, top) => ({
++      position: "absolute",
++      left,
++      top,
++      width: 13,
++      height: 13,
++      borderRadius: 3,
++      border: "2px solid #fff",
++      background: "var(--primary)",
++      boxShadow: "0 1px 7px rgba(0,0,0,.7)",
++      transform: "translate(-50%, -50%)",
++      cursor,
++      touchAction: "none",
++    });
++    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++      role: "group",
++      "aria-label": t2("flow.outputTextCanvasHint"),
++      title: t2("flow.outputTextCanvasHint"),
++      onPointerDown: (event) => beginTransform("move", event),
++      onPointerMove: continueTransform,
++      onPointerUp: endTransform,
++      onPointerCancel: endTransform,
++      style: {
++        position: "absolute",
++        left: `${(metrics.centerX / canvas.width) * 100}%`,
++        top: `${(metrics.centerY / canvas.height) * 100}%`,
++        width: `${Math.max(1.5, (metrics.textWidth / canvas.width) * 100)}%`,
++        height: `${Math.max(2, (metrics.textHeight / canvas.height) * 100)}%`,
++        transform: `translate(-50%, -50%) rotate(${metrics.rotation}deg)`,
++        transformOrigin: "center",
++        border: "1.5px solid rgba(255,255,255,.95)",
++        outline: "1px solid rgba(0,122,255,.9)",
++        outlineOffset: 2,
++        cursor: "move",
++        touchAction: "none",
++        zIndex: 6,
++      },
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++          style: {
++            position: "absolute",
++            left: "50%",
++            top: -28,
++            width: 1,
++            height: 25,
++            background: "rgba(255,255,255,.9)",
++            pointerEvents: "none",
++          },
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++          type: "button",
++          "aria-label": t2("flow.outputTextRotation"),
++          title: t2("flow.outputTextRotation"),
++          onPointerDown: (event) => beginTransform("rotate", event),
++          style: {
++            ...handleStyle("grab", "50%", -32),
++            width: 15,
++            height: 15,
++            borderRadius: 999,
++          },
++        }),
++        ...[
++          ["nwse-resize", "0%", "0%"],
++          ["nesw-resize", "100%", "0%"],
++          ["nesw-resize", "0%", "100%"],
++          ["nwse-resize", "100%", "100%"],
++        ].map(([cursor, left, top]) =>
++          /* @__PURE__ */ jsxRuntimeExports.jsx(
++            "button",
++            {
++              type: "button",
++              "aria-label": t2("flow.outputTextSize"),
++              title: t2("flow.outputTextSize"),
++              onPointerDown: (event) => beginTransform("scale", event),
++              style: handleStyle(cursor, left, top),
++            },
++            `${left}-${top}`,
++          ),
++        ),
++        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++          style: {
++            position: "absolute",
++            left: "50%",
++            bottom: -31,
++            transform: "translateX(-50%)",
++            padding: "3px 7px",
++            borderRadius: 999,
++            color: "#fff",
++            background: "rgba(12,12,16,.82)",
++            border: "1px solid rgba(255,255,255,.16)",
++            fontSize: 10,
++            fontWeight: 700,
++            whiteSpace: "nowrap",
++            pointerEvents: "none",
++          },
++          children: [
++            (Number(effect.fontSize) || 8.5).toFixed(2),
++            "% · ",
++            Math.round(Number(effect.rotation) || 0),
++            "°",
++          ],
++        }),
++      ],
++    });
++  },
++);
+ const OutputTextCanvasPreview = reactExports.memo(
+   ({
+     config,
+@@ -40448,6 +40732,7 @@
+     workspace = false,
+     files = [],
+     onRemove,
++    onUpdate,
+   }) => {
+     const canvas = outputTextPreviewCanvas(config, previewItem);
+     const youtubeId = outputTextYouTubeId(config.url);
+@@ -40467,6 +40752,12 @@
+       canvas.height,
+       previewText,
+     );
++    const textMetrics = outputTextPreviewMetrics(
++      effect,
++      canvas.width,
++      canvas.height,
++      previewText,
++    );
+     const previewWidth = Math.min(
+       100,
+       Math.max(44, canvas.ratio * 85),
+@@ -40561,6 +40852,7 @@
+                 })
+               : null,
+             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++              "data-output-text-canvas": "true",
+               style: {
+                 position: "relative",
+                 width: workspace
+@@ -40639,6 +40931,18 @@
+                   pointerEvents: "none",
+                 },
+               }),
++              workspace
++                ? /* @__PURE__ */ jsxRuntimeExports.jsx(
++                    OutputTextTransformBox,
++                    {
++                      effect,
++                      metrics: textMetrics,
++                      canvas,
++                      onUpdate,
++                      t: t2,
++                    },
++                  )
++                : null,
+               ],
+             }),
+             workspace && fileCount > 1
+@@ -40664,6 +40968,18 @@
+         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+           style: { display: "grid", gap: 9 },
+           children: [
++            workspace
++              ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                  className: "x-cfg-note",
++                  style: {
++                    margin: 0,
++                    textAlign: "center",
++                    color: "var(--primary)",
++                    fontWeight: 650,
++                  },
++                  children: t2("flow.outputTextCanvasHint"),
++                })
++              : null,
+             /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+               className: "x-cfg-note",
+               style: { margin: 0, textAlign: workspace ? "center" : void 0 },
+@@ -40831,11 +41147,20 @@
+                     /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+                       label: t2("flow.outputTextSize"),
+                       value: effect.fontSize,
+-                      min: 1,
+-                      max: 40,
++                      min: 0.25,
++                      max: 200,
+                       step: 0.25,
+                       onChange: (outputTextFontSize) =>
+                         update({ outputTextFontSize }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                      label: t2("flow.outputTextRotation"),
++                      value: effect.rotation,
++                      min: -180,
++                      max: 180,
++                      step: 1,
++                      onChange: (outputTextRotation) =>
++                        update({ outputTextRotation }),
+                     }),
+                     /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+                       label: t2("flow.outputTextLineHeight"),
+@@ -45324,6 +45649,12 @@
+     youtubePreviewCanvas.height,
+     youtubePreviewText,
+   );
++  const youtubePreviewTextMetrics = outputTextPreviewMetrics(
++    youtubePreviewEffect,
++    youtubePreviewCanvas.width,
++    youtubePreviewCanvas.height,
++    youtubePreviewText,
++  );
+   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+     style: {
+       width: "100%",
+@@ -45380,6 +45711,7 @@
+                 children: [
+                   previewVideoId
+                     ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                        "data-output-text-canvas": "true",
+                         style: {
+                           position: "relative",
+                           width: "100%",
+@@ -45409,6 +45741,18 @@
+                                   zIndex: 3,
+                                 },
+                               })
++                            : null,
++                          youtubePreviewEffect.enabled
++                            ? /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                OutputTextTransformBox,
++                                {
++                                  effect: youtubePreviewEffect,
++                                  metrics: youtubePreviewTextMetrics,
++                                  canvas: youtubePreviewCanvas,
++                                  onUpdate: update,
++                                  t: t2,
++                                },
++                              )
+                             : null,
+                         ],
+                       })
+@@ -46418,6 +46762,10 @@
+ const StandardStagingContents = reactExports.memo(
+   ({ mod: mod2, files, t: t2, handlers: handlers2 }) => {
+     const config = useSelector((state) => state[mod2.configKey]?.config);
++    const updateCanvasText = reactExports.useCallback(
++      (patch2) => store.dispatch(mod2.updateConfig(patch2)),
++      [mod2],
++    );
+     if (config?.outputTextEnabled) {
+       return /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextCanvasPreview, {
+         config,
+@@ -46429,6 +46777,7 @@
+         workspace: true,
+         files,
+         onRemove: handlers2.removeFile,
++        onUpdate: updateCanvasText,
+       });
+     }
+     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+
