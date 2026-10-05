@@ -1,0 +1,310 @@
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -23640,7 +23640,8 @@
+   "flow.remove": "移除",
+   "flow.outputTextPreviewSource": "使用批次中的第一个媒体；所有文字调整都会立即更新。",
+   "flow.outputTextPreviewEmpty": "添加媒体后可在完整输出画布上预览；文字调整会立即更新。",
+-  "flow.outputTextCanvasHint": "拖动文字来移动 · 拖动角点来缩放 · 拖动顶部手柄来旋转",
++  "flow.outputTextCanvasHint":
++    "拖动文字来移动并智能对齐 · 拖动角点来缩放 · 按住 Option 从中心缩放 · 拖动顶部手柄来旋转",
+   "flow.outputText": "叠加文字",
+   "flow.outputTextPlaceholder": "输入标题；可使用多行",
+   "flow.outputTextFont": "系统字体",
+@@ -24220,7 +24221,7 @@
+   "flow.outputTextPreviewEmpty":
+     "Add media to preview the complete output canvas; typography updates immediately.",
+   "flow.outputTextCanvasHint":
+-    "Drag the text to move · drag a corner to scale · drag the top handle to rotate",
++    "Drag to move with smart guides · drag a corner to scale · hold Option/Alt to scale from center · drag the top handle to rotate",
+   "flow.outputText": "Overlay text",
+   "flow.outputTextPlaceholder": "Enter a headline; multiple lines are supported",
+   "flow.outputTextFont": "System font",
+@@ -40526,26 +40527,66 @@
+   while (normalized > 180) normalized -= 360;
+   while (normalized < -180) normalized += 360;
+   return normalized;
++};
++const outputTextSnapAxis = (value, candidates, threshold) => {
++  let closest = null;
++  for (const candidate of candidates) {
++    const distance = Math.abs(value - candidate.value);
++    if (distance <= threshold && (!closest || distance < closest.distance)) {
++      closest = { ...candidate, distance };
++    }
++  }
++  return closest
++    ? { value: closest.value, guide: closest.guide }
++    : { value, guide: null };
+ };
+ const OutputTextTransformBox = reactExports.memo(
+   ({ effect, metrics, canvas, onUpdate, t: t2 }) => {
+     const interactionRef = reactExports.useRef(null);
++    const [guides, setGuides] = reactExports.useState({ x: null, y: null });
+     if (!onUpdate) return null;
+-    const beginTransform = (mode, event) => {
++    const beginTransform = (mode, event, handle = null) => {
+       if (event.button !== void 0 && event.button !== 0) return;
+       const surface = event.currentTarget.closest("[data-output-text-canvas]");
+       if (!surface) return;
+       const rect = surface.getBoundingClientRect();
+       const centerX = rect.left + (metrics.centerX / canvas.width) * rect.width;
+       const centerY = rect.top + (metrics.centerY / canvas.height) * rect.height;
++      const radians = (metrics.rotation * Math.PI) / 180;
++      const localHandleX =
++        (handle?.x || 1) *
++        ((metrics.textWidth / canvas.width) * rect.width) /
++        2;
++      const localHandleY =
++        (handle?.y || 1) *
++        ((metrics.textHeight / canvas.height) * rect.height) /
++        2;
++      const rotatedHandleX =
++        localHandleX * Math.cos(radians) - localHandleY * Math.sin(radians);
++      const rotatedHandleY =
++        localHandleX * Math.sin(radians) + localHandleY * Math.cos(radians);
++      const oppositeX = centerX - rotatedHandleX;
++      const oppositeY = centerY - rotatedHandleY;
+       interactionRef.current = {
+         mode,
+         pointerId: event.pointerId,
++        captureTarget: event.currentTarget,
+         startClientX: event.clientX,
+         startClientY: event.clientY,
+         centerX,
+         centerY,
++        oppositeX,
++        oppositeY,
+         rect,
++        handle,
++        startCenterCanvasX: metrics.centerX,
++        startCenterCanvasY: metrics.centerY,
++        rotatedHalfWidth:
++          Math.abs(Math.cos(radians)) * (metrics.textWidth / 2) +
++          Math.abs(Math.sin(radians)) * (metrics.textHeight / 2),
++        rotatedHalfHeight:
++          Math.abs(Math.sin(radians)) * (metrics.textWidth / 2) +
++          Math.abs(Math.cos(radians)) * (metrics.textHeight / 2),
+         startPositionX: Number(effect.positionX) || 0,
+         startPositionY: Number(effect.positionY) || 0,
+         startFontSize: Number(effect.fontSize) || 8.5,
+@@ -40554,8 +40595,13 @@
+           1,
+           Math.hypot(event.clientX - centerX, event.clientY - centerY),
+         ),
++        startOppositeDistance: Math.max(
++          1,
++          Math.hypot(event.clientX - oppositeX, event.clientY - oppositeY),
++        ),
+         startAngle: Math.atan2(event.clientY - centerY, event.clientX - centerX),
+       };
++      setGuides({ x: null, y: null });
+       event.currentTarget.setPointerCapture?.(event.pointerId);
+       event.preventDefault();
+       event.stopPropagation();
+@@ -40564,37 +40610,97 @@
+       const active = interactionRef.current;
+       if (!active || active.pointerId !== event.pointerId) return;
+       if (active.mode === "move") {
+-        const deltaX =
+-          ((event.clientX - active.startClientX) / active.rect.width) * 100;
+-        const deltaY =
+-          ((event.clientY - active.startClientY) / active.rect.height) * 100;
++        const deltaCanvasX =
++          ((event.clientX - active.startClientX) / active.rect.width) *
++          canvas.width;
++        const deltaCanvasY =
++          ((event.clientY - active.startClientY) / active.rect.height) *
++          canvas.height;
++        const proposedCenterX = active.startCenterCanvasX + deltaCanvasX;
++        const proposedCenterY = active.startCenterCanvasY + deltaCanvasY;
++        const bypassSnap = event.metaKey || event.ctrlKey;
++        const snappedX = bypassSnap
++          ? { value: proposedCenterX, guide: null }
++          : outputTextSnapAxis(
++              proposedCenterX,
++              [
++                { value: active.rotatedHalfWidth, guide: 0 },
++                { value: canvas.width / 2, guide: canvas.width / 2 },
++                {
++                  value: canvas.width - active.rotatedHalfWidth,
++                  guide: canvas.width,
++                },
++              ],
++              (10 / active.rect.width) * canvas.width,
++            );
++        const snappedY = bypassSnap
++          ? { value: proposedCenterY, guide: null }
++          : outputTextSnapAxis(
++              proposedCenterY,
++              [
++                { value: active.rotatedHalfHeight, guide: 0 },
++                { value: canvas.height / 2, guide: canvas.height / 2 },
++                {
++                  value: canvas.height - active.rotatedHalfHeight,
++                  guide: canvas.height,
++                },
++              ],
++              (10 / active.rect.height) * canvas.height,
++            );
++        setGuides({ x: snappedX.guide, y: snappedY.guide });
++        const snappedDeltaX = snappedX.value - active.startCenterCanvasX;
++        const snappedDeltaY = snappedY.value - active.startCenterCanvasY;
+         onUpdate({
+           outputTextPositionX: outputTextClamp(
+-            active.startPositionX + deltaX,
++            active.startPositionX + (snappedDeltaX / canvas.width) * 100,
+             -25,
+             125,
+           ),
+           outputTextPositionY: outputTextClamp(
+-            active.startPositionY + deltaY,
++            active.startPositionY + (snappedDeltaY / canvas.height) * 100,
+             -25,
+             125,
+           ),
+         });
+       } else if (active.mode === "scale") {
++        const centered = event.altKey;
++        const originX = centered ? active.centerX : active.oppositeX;
++        const originY = centered ? active.centerY : active.oppositeY;
+         const distance = Math.max(
+           1,
+-          Math.hypot(
+-            event.clientX - active.centerX,
+-            event.clientY - active.centerY,
+-          ),
++          Math.hypot(event.clientX - originX, event.clientY - originY),
+         );
+-        onUpdate({
+-          outputTextFontSize: outputTextClamp(
+-            active.startFontSize * (distance / active.startDistance),
+-            0.25,
+-            200,
+-          ),
+-        });
++        const initialDistance = centered
++          ? active.startDistance
++          : active.startOppositeDistance;
++        const requestedScale = distance / initialDistance;
++        const fontSize = outputTextClamp(
++          active.startFontSize * requestedScale,
++          0.25,
++          200,
++        );
++        const appliedScale = fontSize / active.startFontSize;
++        const update = { outputTextFontSize: fontSize };
++        if (!centered) {
++          const scaledCenterX =
++            active.oppositeX + (active.centerX - active.oppositeX) * appliedScale;
++          const scaledCenterY =
++            active.oppositeY + (active.centerY - active.oppositeY) * appliedScale;
++          update.outputTextPositionX = outputTextClamp(
++            active.startPositionX +
++              ((scaledCenterX - active.centerX) / active.rect.width) * 100,
++            -25,
++            125,
++          );
++          update.outputTextPositionY = outputTextClamp(
++            active.startPositionY +
++              ((scaledCenterY - active.centerY) / active.rect.height) * 100,
++            -25,
++            125,
++          );
++        }
++        setGuides({ x: null, y: null });
++        onUpdate(update);
+       } else if (active.mode === "rotate") {
+         const angle = Math.atan2(
+           event.clientY - active.centerY,
+@@ -40610,9 +40716,11 @@
+       event.stopPropagation();
+     };
+     const endTransform = (event) => {
+-      if (interactionRef.current?.pointerId !== event.pointerId) return;
++      const active = interactionRef.current;
++      if (active?.pointerId !== event.pointerId) return;
+       interactionRef.current = null;
+-      event.currentTarget.releasePointerCapture?.(event.pointerId);
++      setGuides({ x: null, y: null });
++      active.captureTarget.releasePointerCapture?.(event.pointerId);
+       event.preventDefault();
+       event.stopPropagation();
+     };
+@@ -40630,7 +40738,41 @@
+       cursor,
+       touchAction: "none",
+     });
+-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++    return /* @__PURE__ */ jsxRuntimeExports.jsxs(reactExports.Fragment, {
++      children: [
++        guides.x === null
++          ? null
++          : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++              "aria-hidden": true,
++              style: {
++                position: "absolute",
++                left: `${(guides.x / canvas.width) * 100}%`,
++                top: 0,
++                bottom: 0,
++                width: 1,
++                background: "#ff2dbd",
++                boxShadow: "0 0 0 1px rgba(255,45,189,.18)",
++                pointerEvents: "none",
++                zIndex: 5,
++              },
++            }),
++        guides.y === null
++          ? null
++          : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++              "aria-hidden": true,
++              style: {
++                position: "absolute",
++                left: 0,
++                right: 0,
++                top: `${(guides.y / canvas.height) * 100}%`,
++                height: 1,
++                background: "#ff2dbd",
++                boxShadow: "0 0 0 1px rgba(255,45,189,.18)",
++                pointerEvents: "none",
++                zIndex: 5,
++              },
++            }),
++        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+       role: "group",
+       "aria-label": t2("flow.outputTextCanvasHint"),
+       title: t2("flow.outputTextCanvasHint"),
+@@ -40678,18 +40820,19 @@
+           },
+         }),
+         ...[
+-          ["nwse-resize", "0%", "0%"],
+-          ["nesw-resize", "100%", "0%"],
+-          ["nesw-resize", "0%", "100%"],
+-          ["nwse-resize", "100%", "100%"],
+-        ].map(([cursor, left, top]) =>
++          ["nwse-resize", "0%", "0%", -1, -1],
++          ["nesw-resize", "100%", "0%", 1, -1],
++          ["nesw-resize", "0%", "100%", -1, 1],
++          ["nwse-resize", "100%", "100%", 1, 1],
++        ].map(([cursor, left, top, x, y]) =>
+           /* @__PURE__ */ jsxRuntimeExports.jsx(
+             "button",
+             {
+               type: "button",
+               "aria-label": t2("flow.outputTextSize"),
+               title: t2("flow.outputTextSize"),
+-              onPointerDown: (event) => beginTransform("scale", event),
++              onPointerDown: (event) =>
++                beginTransform("scale", event, { x, y }),
+               style: handleStyle(cursor, left, top),
+             },
+             `${left}-${top}`,
+@@ -40719,6 +40862,8 @@
+           ],
+         }),
+       ],
++        }),
++      ],
+     });
+   },
+ );

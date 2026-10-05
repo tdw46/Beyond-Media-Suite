@@ -73,6 +73,9 @@ video-to-animation, and every video output format exposed by xPic:
   same SVG sizing math as export. Text is directly editable on the canvas:
   drag the selection to move it, drag any corner to scale from 0.25%–200% of
   canvas height, or drag the top handle to rotate (hold Shift for 15° snaps).
+  Movement smart-snaps the text center and rotated bounds to the canvas center
+  lines and edges with visible guides. Corner scaling pins the opposite corner;
+  hold Option/Alt to scale symmetrically around the element center.
   Numeric size, position, and rotation fields stay synchronized with the
   on-canvas transform;
 - animated-image and video creators add an opt-in **Smooth pan & zoom** camera

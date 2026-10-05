@@ -624,8 +624,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.38/);
-  assert.match(build, /2\.1\.3\.38/);
+  assert.match(build, /2\.1\.3-fork\.39/);
+  assert.match(build, /2\.1\.3\.39/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -1003,8 +1003,8 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.38/);
-  assert.match(build, /2\.1\.3\.38/);
+  assert.match(build, /2\.1\.3-fork\.39/);
+  assert.match(build, /2\.1\.3\.39/);
 });
 
 test("To Animation matches source frame timing by default and allows an FPS override", async () => {
@@ -1134,10 +1134,17 @@ test("Professional text controls render an aspect-accurate live canvas in the wo
 });
 
 test("Professional text can be moved, scaled, and rotated directly on the canvas", async () => {
-  const [patch, build] = await Promise.all([
+  const [patch, guidesPatch, build] = await Promise.all([
     readFile(
       new URL(
         "../patches/xpic-2.1.3-direct-text-transform.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-smart-text-guides.patch",
         import.meta.url,
       ),
       "utf8",
@@ -1160,6 +1167,16 @@ test("Professional text can be moved, scaled, and rotated directly on the canvas
   assert.match(patch, /<g transform="rotate\(/);
   assert.match(build, /xpic-2\.1\.3-direct-text-transform\.patch/);
   assert.match(build, /direct-canvas-text-move-scale-rotate/);
+  assert.match(guidesPatch, /const outputTextSnapAxis/);
+  assert.match(guidesPatch, /canvas\.width \/ 2/);
+  assert.match(guidesPatch, /canvas\.height \/ 2/);
+  assert.match(guidesPatch, /event\.altKey/);
+  assert.match(guidesPatch, /active\.oppositeX/);
+  assert.match(guidesPatch, /captureTarget/);
+  assert.match(guidesPatch, /smart guides/);
+  assert.match(guidesPatch, /background: "#ff2dbd"/);
+  assert.match(build, /xpic-2\.1\.3-smart-text-guides\.patch/);
+  assert.match(build, /smart-text-center-edge-guides-alt-center-scale/);
 });
 
 test("New screen recordings run through a safe 25-percent MP4 Shortcut workflow", async () => {
