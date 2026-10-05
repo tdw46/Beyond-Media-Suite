@@ -624,8 +624,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.39/);
-  assert.match(build, /2\.1\.3\.39/);
+  assert.match(build, /2\.1\.3-fork\.40/);
+  assert.match(build, /2\.1\.3\.40/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -1003,8 +1003,8 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.39/);
-  assert.match(build, /2\.1\.3\.39/);
+  assert.match(build, /2\.1\.3-fork\.40/);
+  assert.match(build, /2\.1\.3\.40/);
 });
 
 test("To Animation matches source frame timing by default and allows an FPS override", async () => {
@@ -1089,6 +1089,30 @@ test("Every creation surface exposes professional gradient text and animated pan
   assert.match(build, /xpic-2\.1\.3-professional-text-motion-effects\.patch/);
   assert.match(build, /universal-professional-gradient-text-overlays/);
   assert.match(build, /keyframed-pan-zoom-interpolation/);
+});
+
+test("Pan and zoom is opt-in per launch and uses smooth subpixel motion", async () => {
+  const [patch, build] = await Promise.all([
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-opt-in-smooth-motion.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(patch, /motionEnabled: false/);
+  assert.match(patch, /samplingScale/);
+  assert.match(patch, /<= 1920 \? 2 : 1/);
+  assert.match(patch, /exact=1/);
+  assert.match(patch, /lanczos\+accurate_rnd\+full_chroma_int/);
+  assert.match(
+    patch,
+    /scale=\$\{dimensions\.width\}:\$\{dimensions\.height\}/,
+  );
+  assert.match(build, /xpic-2\.1\.3-opt-in-smooth-motion\.patch/);
+  assert.match(build, /opt-in-subpixel-smooth-pan-zoom/);
 });
 
 test("Professional text controls render an aspect-accurate live canvas in the workspace", async () => {

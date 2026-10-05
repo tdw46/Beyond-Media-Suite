@@ -81,8 +81,11 @@ video-to-animation, and every video output format exposed by xPic:
 - animated-image and video creators add an opt-in **Smooth pan & zoom** camera
   treatment with nine anchor presets or custom coordinates, independent start
   and end zoom from 1×–4×, and Linear, Smooth Bézier, Ease In, Ease Out, or
-  custom Bézier interpolation. Still outputs retain the same typography
-  controls without exposing meaningless temporal motion;
+  custom Bézier interpolation. Motion is disabled whenever a new app session
+  starts and must be explicitly enabled. Enabled motion uses exact crop
+  coordinates and adaptive 2× subpixel sampling through 1080p to eliminate
+  visible stepping without changing output dimensions. Still outputs retain
+  the same typography controls without exposing meaningless temporal motion;
 - Video Convert, Video Compress, Video → To Animation, and YouTube Clip match
   the source frame timing by default, including variable-frame-rate media. The
   toggle can be disabled to enter a fixed FPS instead;
