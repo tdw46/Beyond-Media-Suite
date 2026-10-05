@@ -127,6 +127,11 @@ const editorSectionsTimelinePatchPath = path.join(
   "patches",
   "xpic-2.1.3-editor-sections-timeline.patch",
 );
+const canvasPreviewFitPatchPath = path.join(
+  repoRoot,
+  "patches",
+  "xpic-2.1.3-canvas-preview-fit.patch",
+);
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xpic-fork-build-"));
 const extracted = path.join(tempRoot, "app");
 const packedAsar = path.join(tempRoot, "app.asar");
@@ -282,6 +287,22 @@ try {
     await fs.writeFile(file, source.replace(marker, code));
   }
   await Promise.all([formatBundle(mainBundle), formatBundle(rendererBundle)]);
+  run("patch", ["-p1", "-d", extracted, "-i", canvasPreviewFitPatchPath]);
+  const previewFitMarker = "/* BMS_CANVAS_PREVIEW_FIT */";
+  const previewFitSource = await fs.readFile(rendererBundle, "utf8");
+  if (!previewFitSource.includes(previewFitMarker))
+    throw new Error("Missing preview fit insertion point");
+  await fs.writeFile(
+    rendererBundle,
+    previewFitSource.replace(
+      previewFitMarker,
+      await fs.readFile(
+        path.join(repoRoot, "editor", "preview-fit.js"),
+        "utf8",
+      ),
+    ),
+  );
+  await formatBundle(rendererBundle);
 
   const rendererHtml = path.join(extracted, "out", "renderer", "index.html");
   const rendererName = path.basename(rendererBundle);
@@ -307,7 +328,7 @@ try {
   );
 
   packagedJson.productName = "Beyond Media Suite";
-  packagedJson.version = "2.1.3-fork.41";
+  packagedJson.version = "2.1.3-fork.42";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -423,7 +444,7 @@ try {
     "com.tdw46.beyond-media-suite",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.41", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.42", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

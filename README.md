@@ -48,6 +48,10 @@ need; format, target size, quality, source FPS, and destination live under Expor
 Animated image and video creation flows now have a timeline below the full-size
 canvas. Select a clip, scrub to an exact frame, drag its blue In/Out handles, or
 enter millisecond bounds. Hold Shift while trimming for 1 ms per pixel precision.
+The preview automatically fits both workspace width and height, including when
+the window or settings rail is resized. This is display-only scaling: sources,
+decoded frames, text coordinates, and configured export pixel dimensions do not
+change. Cropping happens only through the explicit canvas/crop controls.
 The timeline has looping Play/Pause, preview-only mute, and a per-clip speed slider
 from 1/16× to 16×. Sources remain untouched.
 

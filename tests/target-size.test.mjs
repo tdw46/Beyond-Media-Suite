@@ -624,8 +624,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.41/);
-  assert.match(build, /2\.1\.3\.41/);
+  assert.match(build, /2\.1\.3-fork\.42/);
+  assert.match(build, /2\.1\.3\.42/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -1003,8 +1003,8 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.41/);
-  assert.match(build, /2\.1\.3\.41/);
+  assert.match(build, /2\.1\.3-fork\.42/);
+  assert.match(build, /2\.1\.3\.42/);
 });
 
 test("To Animation matches source frame timing by default and allows an FPS override", async () => {

@@ -1,0 +1,349 @@
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -40933,6 +40933,7 @@
+     });
+   },
+ );
++/* BMS_CANVAS_PREVIEW_FIT */
+ const OutputTextCanvasPreview = reactExports.memo(
+   ({
+     config,
+@@ -40972,7 +40973,10 @@
+       canvas.height,
+       previewText,
+     );
+-    const previewWidth = Math.min(100, Math.max(44, canvas.ratio * 85));
++    const [previewViewportRef, previewDisplay] = useCanvasPreviewFit(
++      canvas.width,
++      canvas.height,
++    );
+     const fileCount = Math.max(files.length, previewItem ? 1 : 0);
+     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+       style: {
+@@ -40982,6 +40986,8 @@
+         padding: workspace ? "18px 22px 20px" : 10,
+         height: workspace ? "100%" : void 0,
+         minHeight: workspace ? 0 : void 0,
++        minWidth: 0,
++        boxSizing: "border-box",
+         border: workspace ? "none" : "1px solid var(--border)",
+         borderRadius: workspace ? 0 : 12,
+         background: workspace ? "transparent" : "var(--bg-elevated)",
+@@ -41034,13 +41040,16 @@
+           ],
+         }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++          ref: previewViewportRef,
++          "data-canvas-preview-viewport": "true",
+           style: {
+             position: "relative",
+             minHeight: workspace ? 0 : 120,
+-            maxHeight: workspace ? "none" : 380,
++            minWidth: 0,
++            height: workspace ? "100%" : 320,
+             display: "grid",
+             placeItems: "center",
+-            padding: workspace ? 24 : 8,
++            padding: 0,
+             borderRadius: workspace ? 16 : 9,
+             overflow: "hidden",
+             background: "#111116",
+@@ -41066,13 +41075,13 @@
+             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+               "data-output-text-canvas": "true",
+               style: {
+-                position: "relative",
+-                width: workspace
+-                  ? canvas.ratio >= 1
+-                    ? "min(92%, 1200px)"
+-                    : "min(58%, 720px)"
+-                  : `${previewWidth}%`,
+-                aspectRatio: String(canvas.ratio),
++                position: "absolute",
++                left: "50%",
++                top: "50%",
++                transform: "translate(-50%, -50%)",
++                width: previewDisplay.width,
++                height: previewDisplay.height,
++                visibility: previewDisplay.scale > 0 ? "visible" : "hidden",
+                 overflow: "hidden",
+                 borderRadius: workspace ? 10 : 6,
+                 boxShadow: workspace
+@@ -41331,7 +41340,7 @@
+ .x-settings-section.is-open .x-settings-section-chevron{transform:rotate(0)}
+ .x-settings-section-content{padding:2px 13px 14px}
+ .x-settings-section-content>.x-cfg-field:first-child{margin-top:4px}
+-.x-editor-workspace{height:100%;min-height:0;display:grid;grid-template-rows:minmax(260px,1fr) auto;background:var(--color-bg,#151515)}
++.x-editor-workspace{height:100%;min-height:0;min-width:0;display:grid;grid-template-rows:minmax(0,1fr) auto;background:var(--color-bg,#151515)}
+ .x-editor-canvas-region{min-height:0;overflow:hidden}
+ .x-editor-canvas-region>.x-flow-pane{height:100%}
+ .x-media-timeline{flex:0 0 auto;border-top:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,#19191c,#141416);padding:11px 14px 13px;box-shadow:0 -10px 28px rgba(0,0,0,.22);position:relative;z-index:5}
+@@ -41374,7 +41383,7 @@
+ body:not(.dark) .x-media-timeline-head strong{color:var(--text,#f4f4f5)}
+ .x-settings-section-title{color:var(--text,#f2f2f2)}
+ @media(max-width:1200px){.x-media-timeline-editor{grid-template-columns:1fr}.x-media-timeline-fields{justify-content:space-between}.x-media-timeline-head>div:first-child>span{display:none}.x-media-timeline-speed{width:130px}}
+-@media(max-height:760px){.x-editor-workspace{grid-template-rows:minmax(190px,1fr) auto}.x-media-timeline{padding-top:8px}.x-media-timeline-editor{margin-top:6px}.x-media-timeline-lane{height:48px}}
++@media(max-height:760px){.x-media-timeline{padding-top:8px}.x-media-timeline-editor{margin-top:6px}.x-media-timeline-lane{height:48px}}
+ `;
+ const OutputTextEffectsControls = reactExports.memo(
+   ({ config, update, t: t2 }) => {
+@@ -44025,6 +44034,11 @@
+   const overlayCount = files.length - tileCount;
+   const layouts = collageLayoutOptions(tileCount, t2);
+   const geometry = collageGeometry(files, config);
++  const [collageViewportRef, collageDisplay] = useCanvasPreviewFit(
++    geometry.width,
++    geometry.height,
++    20,
++  );
+   const overlaySignature = JSON.stringify({
+     width: geometry.width,
+     height: geometry.height,
+@@ -44123,7 +44137,11 @@
+   }, [playing, files]);
+   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+     className: "x-flow-pane",
+-    style: { overflow: "auto" },
++    style: {
++      overflow: "hidden",
++      display: "grid",
++      gridTemplateRows: "auto minmax(0, 1fr)",
++    },
+     children: [
+       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+         className: "x-flow-bar",
+@@ -44192,116 +44210,132 @@
+       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+         style: {
+           display: "grid",
+-          gridTemplateColumns: "minmax(320px, 1fr)",
+-          padding: 20,
+-          alignItems: "start",
++          gridTemplateColumns: "minmax(0, 1fr)",
++          padding: 12,
++          minHeight: 0,
++          minWidth: 0,
+         },
+         children: [
+           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-            style: { width: "100%", maxWidth: 960, margin: "0 auto" },
++            style: {
++              width: "100%",
++              minHeight: 0,
++              display: "grid",
++              gridTemplateRows: "minmax(0, 1fr) auto",
++              gap: 10,
++            },
+             children: [
+-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                style: {
+-                  position: "relative",
+-                  containerType: "size",
+-                  width: "100%",
+-                  aspectRatio: `${geometry.width} / ${geometry.height}`,
+-                  maxHeight: "calc(100vh - 250px)",
+-                  overflow: "hidden",
+-                  borderRadius: 14,
+-                  border: "1px solid var(--border)",
+-                  backgroundColor: "var(--bg-elevated)",
+-                  backgroundImage:
+-                    config.backgroundMode === "gradient"
+-                      ? `url("${
+-                          overlayPreview.background ||
+-                          collageSvgDataUrl(
+-                            collageBackgroundSvg(
+-                              config,
+-                              geometry.width,
+-                              geometry.height,
+-                            ),
+-                          )
+-                        }")`
+-                      : "linear-gradient(45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(-45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(128,128,128,.12) 75%),linear-gradient(-45deg,transparent 75%,rgba(128,128,128,.12) 75%)",
+-                  backgroundSize:
+-                    config.backgroundMode === "gradient"
+-                      ? "cover"
+-                      : "22px 22px",
+-                  backgroundPosition:
+-                    config.backgroundMode === "gradient"
+-                      ? "center"
+-                      : "0 0,0 11px,11px -11px,-11px 0",
+-                  boxShadow: "0 18px 50px rgba(0,0,0,.18)",
+-                },
+-                children: [
+-                  files.map((item, index) => {
+-                    const rect = geometry.placements[index];
+-                    const cropWidth = Math.max(
+-                      0.1,
+-                      1 - rect.crop.left - rect.crop.right,
+-                    );
+-                    const cropHeight = Math.max(
+-                      0.1,
+-                      1 - rect.crop.top - rect.crop.bottom,
+-                    );
+-                    const wrapperStyle = {
+-                      position: "absolute",
+-                      left: `${(rect.mediaX / geometry.width) * 100}%`,
+-                      top: `${(rect.mediaY / geometry.height) * 100}%`,
+-                      width: `${(rect.mediaWidth / geometry.width) * 100}%`,
+-                      height: `${(rect.mediaHeight / geometry.height) * 100}%`,
+-                      overflow: "hidden",
+-                      zIndex: Number(item.layer) || index + 1,
+-                    };
+-                    const mediaStyle = {
+-                      position: "absolute",
+-                      left: `${(-rect.crop.left / cropWidth) * 100}%`,
+-                      top: `${(-rect.crop.top / cropHeight) * 100}%`,
+-                      width: `${100 / cropWidth}%`,
+-                      height: `${100 / cropHeight}%`,
+-                      objectFit: "fill",
+-                      maxWidth: "none",
+-                      maxHeight: "none",
+-                    };
+-                    const media = jsxRuntimeExports.jsx(EditorMediaPreview, {
+-                      item,
+-                      style: mediaStyle,
+-                    });
+-                    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+-                      "div",
+-                      { style: wrapperStyle, children: media },
+-                      item.id,
+-                    );
+-                  }),
+-                  String(config.textOverlay || "").trim()
+-                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
+-                        src:
+-                          overlayPreview.text ||
+-                          collageSvgDataUrl(
+-                            collageTextSvg(
+-                              config,
+-                              geometry.width,
+-                              geometry.height,
++              jsxRuntimeExports.jsx("div", {
++                ref: collageViewportRef,
++                "data-canvas-preview-viewport": "true",
++                style: { position: "relative", minHeight: 0, minWidth: 0 },
++                children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                  "data-collage-preview-canvas": "true",
++                  style: {
++                    position: "absolute",
++                    left: "50%",
++                    top: "50%",
++                    transform: "translate(-50%, -50%)",
++                    containerType: "size",
++                    width: collageDisplay.width,
++                    height: collageDisplay.height,
++                    visibility: collageDisplay.scale > 0 ? "visible" : "hidden",
++                    overflow: "hidden",
++                    borderRadius: 14,
++                    border: "1px solid var(--border)",
++                    backgroundColor: "var(--bg-elevated)",
++                    backgroundImage:
++                      config.backgroundMode === "gradient"
++                        ? `url("${
++                            overlayPreview.background ||
++                            collageSvgDataUrl(
++                              collageBackgroundSvg(
++                                config,
++                                geometry.width,
++                                geometry.height,
++                              ),
++                            )
++                          }")`
++                        : "linear-gradient(45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(-45deg,rgba(128,128,128,.12) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(128,128,128,.12) 75%),linear-gradient(-45deg,transparent 75%,rgba(128,128,128,.12) 75%)",
++                    backgroundSize:
++                      config.backgroundMode === "gradient"
++                        ? "cover"
++                        : "22px 22px",
++                    backgroundPosition:
++                      config.backgroundMode === "gradient"
++                        ? "center"
++                        : "0 0,0 11px,11px -11px,-11px 0",
++                    boxShadow: "0 18px 50px rgba(0,0,0,.18)",
++                  },
++                  children: [
++                    files.map((item, index) => {
++                      const rect = geometry.placements[index];
++                      const cropWidth = Math.max(
++                        0.1,
++                        1 - rect.crop.left - rect.crop.right,
++                      );
++                      const cropHeight = Math.max(
++                        0.1,
++                        1 - rect.crop.top - rect.crop.bottom,
++                      );
++                      const wrapperStyle = {
++                        position: "absolute",
++                        left: `${(rect.mediaX / geometry.width) * 100}%`,
++                        top: `${(rect.mediaY / geometry.height) * 100}%`,
++                        width: `${(rect.mediaWidth / geometry.width) * 100}%`,
++                        height: `${(rect.mediaHeight / geometry.height) * 100}%`,
++                        overflow: "hidden",
++                        zIndex: Number(item.layer) || index + 1,
++                      };
++                      const mediaStyle = {
++                        position: "absolute",
++                        left: `${(-rect.crop.left / cropWidth) * 100}%`,
++                        top: `${(-rect.crop.top / cropHeight) * 100}%`,
++                        width: `${100 / cropWidth}%`,
++                        height: `${100 / cropHeight}%`,
++                        objectFit: "fill",
++                        maxWidth: "none",
++                        maxHeight: "none",
++                      };
++                      const media = jsxRuntimeExports.jsx(EditorMediaPreview, {
++                        item,
++                        style: mediaStyle,
++                      });
++                      return /* @__PURE__ */ jsxRuntimeExports.jsx(
++                        "div",
++                        { style: wrapperStyle, children: media },
++                        item.id,
++                      );
++                    }),
++                    String(config.textOverlay || "").trim()
++                      ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                          src:
++                            overlayPreview.text ||
++                            collageSvgDataUrl(
++                              collageTextSvg(
++                                config,
++                                geometry.width,
++                                geometry.height,
++                              ),
+                             ),
+-                          ),
+-                        alt: "",
+-                        draggable: false,
+-                        style: {
+-                          position: "absolute",
+-                          inset: 0,
+-                          width: "100%",
+-                          height: "100%",
+-                          zIndex: 9999,
+-                          pointerEvents: "none",
+-                        },
+-                      })
+-                    : null,
+-                ],
++                          alt: "",
++                          draggable: false,
++                          style: {
++                            position: "absolute",
++                            inset: 0,
++                            width: "100%",
++                            height: "100%",
++                            zIndex: 9999,
++                            pointerEvents: "none",
++                          },
++                        })
++                      : null,
++                  ],
++                }),
+               }),
+               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+                 className: "x-cfg-note",
+-                style: { marginTop: 10, textAlign: "center" },
++                style: { margin: 0, textAlign: "center" },
+                 children: [
+                   geometry.width,
+                   "×",
