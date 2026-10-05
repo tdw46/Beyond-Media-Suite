@@ -1,0 +1,1732 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1841,6 +1841,7 @@
+     }
+     return null;
+   };
++  /* BMS_TIMELINE_MAIN */
+   const probeMediaInfo = async (ffmpeg, inputPath, jobId) => {
+     const { stderr } = await runMediaProcess(
+       ffmpeg,
+@@ -2084,6 +2085,7 @@
+       return app2.getPath("temp");
+     },
+     getDownloadsPath: () => app2.getPath("downloads"),
++    editorSequenceIntermediate: (_, opt) => editorSequenceIntermediate(opt),
+     youtubeInspect: async (_, opt) => {
+       const url = validateYouTubeUrl(opt?.url);
+       const executable = await ensureYtDlp();
+@@ -2621,10 +2623,14 @@
+       });
+       return stdout;
+     },
+-    cancelMediaJob: (_, jobId) => cancelMediaJob(jobId),
++    cancelMediaJob: (_, jobId) => {
++      editorCancelledJobs.add(jobId);
++      return cancelMediaJob(jobId);
++    },
+     finishMediaJob: (_, jobId) => {
+       const id2 = normalizeJobId(jobId);
+       if (id2 && mediaJobs.get(id2)?.size) return false;
++      editorCancelledJobs.delete(jobId);
+       if (id2) mediaJobs.delete(id2);
+       cleanupMediaTemps(jobId);
+       return true;
+@@ -3082,7 +3088,8 @@
+       });
+       return conversion.finally(() => safeUnlink(aspectTempPath));
+     },
+-    vConvert: (_, opt) => {
++    vConvert: async (_, opt) => {
++      const editorSource = await editorPrepareSource(opt.inputPath, opt.jobId);
+       const {
+         quality,
+         inputPath,
+@@ -3098,6 +3105,8 @@
+         allowGifColorReduction = false,
+         includeAudio = true,
+         speed = 1,
++        trimStartMs = 0,
++        trimEndMs = 0,
+         matchFps = true,
+         cropEnabled = false,
+         cropAspectWidth = 2,
+@@ -3106,7 +3115,7 @@
+         outputTextEffect = null,
+         motionEffect = null,
+         jobId,
+-      } = opt;
++      } = { ...opt, inputPath: editorSource.path };
+       const cwd = binDir();
+       const ffmpeg = path.join(cwd, `ffmpeg${isWin2 ? ".exe" : ""}`);
+       const inputDecodeArgs =
+@@ -3140,6 +3149,18 @@
+       const audioTempoArgs = audioTempoFilters.length
+         ? ["-filter:a", audioTempoFilters.join(",")]
+         : [];
++      const trimStartSeconds = Math.max(0, Number(trimStartMs) || 0) / 1e3;
++      const trimEndSeconds = Math.max(0, Number(trimEndMs) || 0) / 1e3;
++      const trimDurationSeconds =
++        trimEndSeconds > trimStartSeconds
++          ? trimEndSeconds - trimStartSeconds
++          : 0;
++      const inputTrimArgs = [
++        ...(trimStartSeconds > 0 ? ["-ss", trimStartSeconds.toFixed(3)] : []),
++        ...(trimDurationSeconds > 0
++          ? ["-t", trimDurationSeconds.toFixed(3)]
++          : []),
++      ];
+       const longestEdgeFilter = (edge) =>
+         `scale=${edge}:${edge}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos`;
+       const cropRatio = Math.max(
+@@ -3249,7 +3270,9 @@
+         if (!hasMotion) return [];
+         const duration = Math.max(
+           0.001,
+-          Number(media?.duration) / playbackSpeed || 1,
++          (trimDurationSeconds ||
++            Math.max(0.001, Number(media?.duration) - trimStartSeconds)) /
++            playbackSpeed || 1,
+         );
+         const progress = motionProgressExpression(duration);
+         const startZoom = clampNumber(motionEffect?.startZoom, 1, 4, 1.15);
+@@ -3471,7 +3494,10 @@
+           Math.floor(Number(targetFileSizeKb) * 1e3),
+         );
+         const media = await probeMediaInfo(ffmpeg, inputPath, jobId);
+-        const effectiveDuration = media.duration / playbackSpeed;
++        const selectedDuration =
++          trimDurationSeconds ||
++          Math.max(0.001, media.duration - trimStartSeconds);
++        const effectiveDuration = selectedDuration / playbackSpeed;
+         const reserve = Math.max(4096, Math.floor(targetBytes * 0.02));
+         const audioBitrate = includeAudio && media.hasAudio ? 64 : 0;
+         const audioBytes = (audioBitrate * 1e3 * effectiveDuration) / 8;
+@@ -3515,6 +3541,7 @@
+               "-hide_banner",
+               "-y",
+               ...inputDecodeArgs,
++              ...inputTrimArgs,
+               "-i",
+               inputPath,
+               "-map",
+@@ -3646,6 +3673,7 @@
+           "-hide_banner",
+           "-y",
+           ...inputDecodeArgs,
++          ...inputTrimArgs,
+           "-i",
+           inputPath,
+           "-map",
+@@ -3715,7 +3743,12 @@
+           );
+           const estimatedFrames = Math.max(
+             1,
+-            Math.ceil((media.duration / playbackSpeed) * outputFps),
++            Math.ceil(
++              ((trimDurationSeconds ||
++                Math.max(0.001, media.duration - trimStartSeconds)) /
++                playbackSpeed) *
++                outputFps,
++            ),
+           );
+           const aspect = cropEnabled
+             ? cropRatio
+@@ -3760,6 +3793,7 @@
+             args = [
+               "-hide_banner",
+               "-y",
++              ...inputTrimArgs,
+               "-i",
+               inputPath,
+               ...(targetFilter ? ["-vf", targetFilter] : []),
+@@ -3782,6 +3816,7 @@
+             args = [
+               "-hide_banner",
+               "-y",
++              ...inputTrimArgs,
+               "-i",
+               inputPath,
+               "-vf",
+@@ -3794,6 +3829,7 @@
+             args = [
+               "-hide_banner",
+               "-y",
++              ...inputTrimArgs,
+               "-i",
+               inputPath,
+               ...(targetFilter ? ["-vf", targetFilter] : []),
+@@ -3939,6 +3975,7 @@
+                 [
+                   "-hide_banner",
+                   "-y",
++                  ...inputTrimArgs,
+                   "-i",
+                   inputPath,
+                   ...(outputFilter ? ["-vf", outputFilter] : []),
+@@ -3982,6 +4019,7 @@
+                 [
+                   "-hide_banner",
+                   "-y",
++                  ...inputTrimArgs,
+                   "-i",
+                   inputPath,
+                   "-vf",
+@@ -4010,6 +4048,7 @@
+                 [
+                   "-hide_banner",
+                   "-y",
++                  ...inputTrimArgs,
+                   "-i",
+                   inputPath,
+                   ...(outputFilter ? ["-vf", outputFilter] : []),
+@@ -4053,6 +4092,7 @@
+               [
+                 "-hide_banner",
+                 "-y",
++                ...inputTrimArgs,
+                 "-i",
+                 inputPath,
+                 ...(fallbackFilter ? ["-vf", fallbackFilter] : []),
+@@ -4077,6 +4117,7 @@
+           .catch((e) => reject(e));
+       });
+       return conversion.finally(() => {
++        editorSource.cleanup();
+         for (const overlayPath of generatedTextOverlays.values()) {
+           safeUnlink(overlayPath);
+         }
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -29080,6 +29080,10 @@
+ );
+ const normalizedPlaybackSpeed = (value) =>
+   Math.max(1 / 16, Math.min(16, Number(value) || 1));
++const timelineTrimRequest = (config) => ({
++  trimStartMs: Math.max(0, Number(config?.timelineStartMs) || 0),
++  trimEndMs: Math.max(0, Number(config?.timelineEndMs) || 0),
++});
+ const playbackSpeedExponent = (value) =>
+   Math.max(-4, Math.min(4, Math.log2(normalizedPlaybackSpeed(value))));
+ const playbackSpeedLabel = (value) => {
+@@ -30135,7 +30139,13 @@
+   onPick,
+ }) {
+   const config = useSelector((s) => s.crop.config);
+-  const item = files[0];
++  const [selectedId, setSelectedId] = reactExports.useState(null);
++  reactExports.useEffect(() => {
++    const listener = (event) => setSelectedId(event.detail.itemId);
++    window.addEventListener("bms-timeline-preview", listener);
++    return () => window.removeEventListener("bms-timeline-preview", listener);
++  }, []);
++  const item = files.find((file) => file.id === selectedId) || files[0];
+   const mode = config.mode || "ratio";
+   const ratioPreset = config.ratioPreset || "16:9";
+   const imgRef = reactExports.useRef(null);
+@@ -30262,13 +30272,34 @@
+                   aspect,
+                   minWidth: 20,
+                   minHeight: 20,
+-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
+-                    ref: imgRef,
+-                    src: item.url,
+-                    className: "x-crop-img",
+-                    onLoad: initCrop,
+-                    draggable: false,
+-                    alt: "",
++                  children: jsxRuntimeExports.jsxs("div", {
++                    style: { position: "relative", display: "inline-flex" },
++                    children: [
++                      jsxRuntimeExports.jsx("img", {
++                        ref: imgRef,
++                        src: item.url,
++                        className: "x-crop-img",
++                        onLoad: initCrop,
++                        draggable: false,
++                        style: editorIsAnimated(item)
++                          ? { visibility: "hidden" }
++                          : undefined,
++                        alt: "",
++                      }),
++                      editorIsAnimated(item)
++                        ? jsxRuntimeExports.jsx(EditorMediaPreview, {
++                            item,
++                            style: {
++                              position: "absolute",
++                              inset: 0,
++                              width: "100%",
++                              height: "100%",
++                              objectFit: "contain",
++                              pointerEvents: "none",
++                            },
++                          })
++                        : null,
++                    ],
+                   }),
+                 })
+               : /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
+@@ -40913,6 +40944,7 @@
+     files = [],
+     onRemove,
+     onUpdate,
++    timelinePreview = false,
+   }) => {
+     const canvas = outputTextPreviewCanvas(config, previewItem);
+     const youtubeId = outputTextYouTubeId(config.url);
+@@ -40973,8 +41005,9 @@
+                 workspace
+                   ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+                       className: "x-config-sub",
+-                      children:
+-                        fileCount > 1
++                      children: timelinePreview
++                        ? `${previewItem?.name || "Selected media"} · ${fileCount} clip${fileCount === 1 ? "" : "s"}`
++                        : fileCount > 1
+                           ? t2("flow.outputTextBatchPreview", { n: fileCount })
+                           : t2("flow.outputTextSinglePreview"),
+                     })
+@@ -41003,7 +41036,7 @@
+         /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+           style: {
+             position: "relative",
+-            minHeight: workspace ? 340 : 120,
++            minHeight: workspace ? 0 : 120,
+             maxHeight: workspace ? "none" : 380,
+             display: "grid",
+             placeItems: "center",
+@@ -41053,32 +41086,9 @@
+               },
+               children: [
+                 source
+-                  ? isVideo && fullResolutionSource
+-                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
+-                        src: fullResolutionSource,
+-                        poster: posterSource || void 0,
+-                        preload: "auto",
+-                        autoPlay: true,
+-                        muted: true,
+-                        loop: true,
+-                        playsInline: true,
+-                        style: {
+-                          position: "absolute",
+-                          inset: 0,
+-                          width: "100%",
+-                          height: "100%",
+-                          objectFit:
+-                            canvas.crop.enabled && canvas.crop.mode === "cover"
+-                              ? "cover"
+-                              : "contain",
+-                        },
+-                      })
+-                    : /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
+-                        src: source,
+-                        alt: "",
+-                        draggable: false,
+-                        loading: "eager",
+-                        decoding: "auto",
++                  ? timelinePreview
++                    ? jsxRuntimeExports.jsx(EditorMediaPreview, {
++                        item: previewItem,
+                         style: {
+                           position: "absolute",
+                           inset: 0,
+@@ -41090,6 +41100,45 @@
+                               : "contain",
+                         },
+                       })
++                    : isVideo && fullResolutionSource
++                      ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
++                          src: fullResolutionSource,
++                          poster: posterSource || void 0,
++                          preload: "auto",
++                          autoPlay: true,
++                          muted: true,
++                          loop: true,
++                          playsInline: true,
++                          style: {
++                            position: "absolute",
++                            inset: 0,
++                            width: "100%",
++                            height: "100%",
++                            objectFit:
++                              canvas.crop.enabled &&
++                              canvas.crop.mode === "cover"
++                                ? "cover"
++                                : "contain",
++                          },
++                        })
++                      : /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                          src: source,
++                          alt: "",
++                          draggable: false,
++                          loading: "eager",
++                          decoding: "auto",
++                          style: {
++                            position: "absolute",
++                            inset: 0,
++                            width: "100%",
++                            height: "100%",
++                            objectFit:
++                              canvas.crop.enabled &&
++                              canvas.crop.mode === "cover"
++                                ? "cover"
++                                : "contain",
++                          },
++                        })
+                   : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+                       style: {
+                         position: "absolute",
+@@ -41098,19 +41147,21 @@
+                           "radial-gradient(circle at 18% 20%,rgba(255,138,31,.24),transparent 42%),radial-gradient(circle at 82% 78%,rgba(214,28,255,.26),transparent 44%),linear-gradient(145deg,#111117,#21172B)",
+                       },
+                     }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
+-                  src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+-                  alt: previewText,
+-                  draggable: false,
+-                  style: {
+-                    position: "absolute",
+-                    inset: 0,
+-                    width: "100%",
+-                    height: "100%",
+-                    pointerEvents: "none",
+-                  },
+-                }),
+-                workspace
++                config.outputTextEnabled
++                  ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                      src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
++                      alt: previewText,
++                      draggable: false,
++                      style: {
++                        position: "absolute",
++                        inset: 0,
++                        width: "100%",
++                        height: "100%",
++                        pointerEvents: "none",
++                      },
++                    })
++                  : null,
++                workspace && config.outputTextEnabled
+                   ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                       OutputTextTransformBox,
+                       {
+@@ -41124,7 +41175,7 @@
+                   : null,
+               ],
+             }),
+-            workspace && fileCount > 1
++            workspace && fileCount > 1 && !timelinePreview
+               ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+                   style: {
+                     position: "absolute",
+@@ -41147,7 +41198,7 @@
+         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+           style: { display: "grid", gap: 9 },
+           children: [
+-            workspace
++            workspace && config.outputTextEnabled
+               ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+                   className: "x-cfg-note",
+                   style: {
+@@ -41162,14 +41213,15 @@
+             /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+               className: "x-cfg-note",
+               style: { margin: 0, textAlign: workspace ? "center" : void 0 },
+-              children:
+-                workspace && fileCount > 1
++              children: timelinePreview
++                ? "Select a timeline clip to preview it. Text settings apply to every output."
++                : workspace && fileCount > 1
+                   ? t2("flow.outputTextBatchHint", { n: fileCount })
+                   : source
+                     ? t2("flow.outputTextPreviewSource")
+                     : t2("flow.outputTextPreviewEmpty"),
+             }),
+-            workspace && fileCount > 1
++            workspace && fileCount > 1 && !timelinePreview
+               ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+                   style: {
+                     display: "flex",
+@@ -41227,8 +41279,106 @@
+     });
+   },
+ );
++const SettingsSection = reactExports.memo(
++  ({ title, summary = "", children, defaultOpen = false, accent = false }) => {
++    const [open, setOpen] = reactExports.useState(defaultOpen);
++    return jsxRuntimeExports.jsxs("section", {
++      className: `x-settings-section${accent ? " is-accent" : ""}${open ? " is-open" : ""}`,
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
++          type: "button",
++          "aria-expanded": open,
++          onClick: () => setOpen((value) => !value),
++          className: "x-settings-section-summary",
++          children: [
++            /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++              className: "x-settings-section-title",
++              children: title,
++            }),
++            summary
++              ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                  className: "x-settings-section-state",
++                  children: summary,
++                })
++              : null,
++            /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++              className: "x-settings-section-chevron",
++              children: "⌄",
++            }),
++          ],
++        }),
++        open
++          ? jsxRuntimeExports.jsx("div", {
++              className: "x-settings-section-content",
++              children,
++            })
++          : null,
++      ],
++    });
++  },
++);
++const EDITOR_SHELL_CSS = `
++.x-config-body{padding:14px 14px 24px!important;gap:10px!important}
++.x-settings-section{border:1px solid rgba(255,255,255,.09);border-radius:12px;background:rgba(255,255,255,.025);overflow:hidden}
++.x-settings-section+.x-settings-section{margin-top:10px}
++.x-settings-section.is-accent{border-color:rgba(39,141,255,.22)}
++.x-settings-section-summary{display:flex;align-items:center;gap:9px;padding:12px 13px;cursor:pointer;list-style:none;user-select:none;transition:background .16s ease;width:100%;border:0;background:transparent;text-align:left;font:inherit}
++.x-settings-section-summary::-webkit-details-marker{display:none}
++.x-settings-section-summary:hover{background:rgba(255,255,255,.045)}
++.x-settings-section-title{font-size:13px;font-weight:700;color:var(--color-text,#f2f2f2);letter-spacing:.01em}
++.x-settings-section-state{margin-left:auto;font-size:11px;color:var(--color-text-3,#8f8f95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
++.x-settings-section-chevron{font-size:16px;color:var(--color-text-3,#8f8f95);transform:rotate(-90deg);transition:transform .16s ease}
++.x-settings-section.is-open .x-settings-section-chevron{transform:rotate(0)}
++.x-settings-section-content{padding:2px 13px 14px}
++.x-settings-section-content>.x-cfg-field:first-child{margin-top:4px}
++.x-editor-workspace{height:100%;min-height:0;display:grid;grid-template-rows:minmax(260px,1fr) auto;background:var(--color-bg,#151515)}
++.x-editor-canvas-region{min-height:0;overflow:hidden}
++.x-editor-canvas-region>.x-flow-pane{height:100%}
++.x-media-timeline{flex:0 0 auto;border-top:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,#19191c,#141416);padding:11px 14px 13px;box-shadow:0 -10px 28px rgba(0,0,0,.22);position:relative;z-index:5}
++.x-media-timeline-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:9px}
++.x-media-timeline-head>div:first-child{display:flex;align-items:baseline;gap:9px;min-width:0}
++.x-media-timeline-head strong{font-size:13px;color:#f4f4f5}
++.x-media-timeline-head span{font-size:11px;color:#898991}
++.x-media-timeline-actions{display:flex;gap:6px}
++.x-media-timeline-actions button{height:27px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:#252529;color:#d8d8dc;padding:0 10px;font-size:11px;cursor:pointer}
++.x-media-timeline-actions button:hover:not(:disabled){background:#303036;border-color:rgba(255,255,255,.2)}
++.x-media-timeline-actions button:disabled{opacity:.38;cursor:default}
++.x-media-timeline-actions button.is-primary{background:#1685ee;border-color:#1685ee;color:white}
++.x-media-timeline-lane{height:56px;display:flex;align-items:stretch;gap:4px;padding:5px;border-radius:9px;background:#0d0d0f;border:1px solid rgba(255,255,255,.08);overflow-x:auto}
++.x-media-timeline-clip{position:relative;min-width:132px;max-width:230px;flex:1 0 132px;display:grid;grid-template-columns:22px minmax(0,1fr);grid-template-rows:1fr auto;column-gap:6px;padding:7px 9px;border:1px solid rgba(103,165,255,.26);border-radius:6px;background:linear-gradient(135deg,rgba(21,105,205,.72),rgba(69,62,169,.55));color:#f5f8ff;text-align:left;cursor:grab;overflow:hidden}
++.x-media-timeline-clip:active{cursor:grabbing}
++.x-media-timeline-clip.is-selected{border-color:#61b0ff;box-shadow:0 0 0 1px #2d95ff inset,0 0 13px rgba(45,149,255,.25)}
++.x-media-timeline-clip-index{grid-row:1/3;width:20px;height:20px;display:grid;place-items:center;border-radius:5px;background:rgba(0,0,0,.3);font-size:10px!important;color:#dceeff!important}
++.x-media-timeline-clip-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px!important;color:white!important;font-weight:600}
++.x-media-timeline-clip-duration{font-variant-numeric:tabular-nums;font-size:9px!important;color:rgba(255,255,255,.67)!important}
++.x-media-timeline-editor{display:grid;grid-template-columns:minmax(220px,1fr) auto;align-items:end;gap:14px;margin-top:9px}
++.x-media-timeline-scrub{display:grid;grid-template-columns:72px minmax(130px,1fr);align-items:center;gap:8px;font-size:10px;color:#aeb0b7;font-variant-numeric:tabular-nums}
++.x-media-timeline-scrub input,.x-media-timeline-speed input{accent-color:#248cf4;width:100%}
++.x-media-timeline-fields{display:flex;align-items:end;gap:8px}
++.x-media-timeline-fields label{display:grid;gap:4px;font-size:9px;color:#8f9199;text-transform:uppercase;letter-spacing:.04em}
++.x-media-timeline-fields input[type=number]{width:82px;height:27px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:#232327;color:#ececf0;padding:0 7px;font-size:11px;font-variant-numeric:tabular-nums}
++.x-media-timeline-speed{width:180px;text-transform:none!important;letter-spacing:0!important}
++.x-timeline-ruler{display:flex;justify-content:space-between;font-size:9px;color:var(--text-tertiary,#777b85);font-variant-numeric:tabular-nums;padding:0 2px 5px}
++.x-timeline-range{position:relative;height:26px;border-radius:5px;background:rgba(0,0,0,.22);margin:0 8px 8px;touch-action:none;cursor:crosshair}
++.x-timeline-range-fill{position:absolute;top:0;bottom:0;pointer-events:none;background:linear-gradient(135deg,rgba(40,129,244,.36),rgba(116,80,233,.24));border-top:1px solid #549af0;border-bottom:1px solid #549af0}
++.x-timeline-trim-handle{position:absolute;top:-1px;bottom:-1px;width:13px;transform:translateX(-50%);background:#368df0;border:1px solid #7fc0ff;border-radius:3px;color:white;font-size:13px;line-height:23px;cursor:ew-resize;touch-action:none;z-index:3}
++.x-timeline-playhead{position:absolute;top:-5px;bottom:-4px;width:1px;background:#ff597a;pointer-events:none;z-index:4}
++.x-timeline-playhead:before{content:"";position:absolute;top:0;left:-4px;width:9px;height:6px;background:#ff597a;clip-path:polygon(0 0,100% 0,50% 100%)}
++.x-timeline-output-mode{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:10px;color:var(--text-secondary,#999ba5)}
++.x-timeline-output-mode button,.x-media-timeline-fields>button{border:1px solid var(--border,#34343b);border-radius:5px;background:var(--bg-elevated,#26262c);padding:4px 8px;font-size:10px;color:var(--text,#e0e2ed);cursor:pointer;white-space:nowrap}
++.x-timeline-output-mode button.is-selected{color:#5eadff;border-color:#268cfa;background:rgba(38,140,250,.12)}
++.x-timeline-output-mode>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
++.x-timeline-preview-error{position:absolute;bottom:8px;left:8px;padding:5px 8px;border-radius:5px;background:rgba(0,0,0,.75);color:#e3a362;font-size:11px}
++.x-media-timeline-clip,.x-media-timeline-actions button{outline-offset:2px}
++body:not(.dark) .x-media-timeline{background:var(--bg-elevated,#f3f3f6)}
++body:not(.dark) .x-media-timeline-head strong{color:var(--text,#f4f4f5)}
++.x-settings-section-title{color:var(--text,#f2f2f2)}
++@media(max-width:1200px){.x-media-timeline-editor{grid-template-columns:1fr}.x-media-timeline-fields{justify-content:space-between}.x-media-timeline-head>div:first-child>span{display:none}.x-media-timeline-speed{width:130px}}
++@media(max-height:760px){.x-editor-workspace{grid-template-rows:minmax(190px,1fr) auto}.x-media-timeline{padding-top:8px}.x-media-timeline-editor{margin-top:6px}.x-media-timeline-lane{height:48px}}
++`;
+ const OutputTextEffectsControls = reactExports.memo(
+   ({ config, update, t: t2 }) => {
++    if (config.__sectionRender) return null;
+     const effect = outputTextEffectFor(config);
+     const updateGradientPreset = (value) => {
+       const preset = OUTPUT_TEXT_GRADIENT_PRESETS.find(
+@@ -41465,6 +41615,7 @@
+   { label: "Custom", value: "custom" },
+ ];
+ const MotionEffectsControls = reactExports.memo(({ config, update, t: t2 }) => {
++  if (config.__sectionRender) return null;
+   const motion = motionEffectFor(config);
+   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
+     children: [
+@@ -41751,7 +41902,7 @@
+   mediaType: "image",
+   domain: PICTURE_DOMAIN,
+   accept: compressAccept,
+-  validation: { maxFiles: 3, minFiles: 1, requireActivation: true },
++  validation: { maxFiles: 500, minFiles: 1, requireActivation: true },
+   configKey: "compress",
+   updateConfig: updateCompressConfig,
+   showSaving: true,
+@@ -41806,7 +41957,7 @@
+     n2
+       ? t2("flow.sub.compress", { n: n2, q: config.quality })
+       : t2("flow.sub.idle"),
+-  async processFile(item, config, globalConfig, outputDir) {
++  async processFile(item, config, globalConfig, outputDir, jobId) {
+     const fmt = item.meta.format;
+     let recipe;
+     if ((fmt === "webp" || fmt === "gif") && item.meta.loop >= 0) {
+@@ -41849,13 +42000,21 @@
+     );
+     const outName = `${pureName}.${fmt}`;
+     const isAnimated = (fmt === "webp" || fmt === "gif") && item.meta.loop >= 0;
+-    if (isAnimated && config.motionEnabled) {
++    if (isAnimated && (config.motionEnabled || hasTimelineEdits(config))) {
+       const targetKb = sourceTargetSizeFor(config);
+       await window.x("vConvert", {
+-        quality: config.quality,
++        quality:
++          Number(config.quality) > 2
++            ? Number(config.quality) >= 85
++              ? 2
++              : 1
++            : config.quality,
++        jobId,
+         inputPath: item.path,
+         outPath,
+         toFormat: fmt,
++        ...timelineTrimRequest(config),
++        speed: normalizedPlaybackSpeed(config.speed),
+         fps: Number(item.meta.fps) || 10,
+         matchFps: true,
+         loop: item.meta.loop,
+@@ -41921,7 +42080,7 @@
+   mediaType: "image",
+   domain: PICTURE_DOMAIN,
+   accept: convertReadAccept,
+-  validation: { maxFiles: 3, minFiles: 1, requireActivation: true },
++  validation: { maxFiles: 500, minFiles: 1, requireActivation: true },
+   configKey: "convert",
+   updateConfig: updateConvertConfig,
+   showSaving: true,
+@@ -42043,7 +42202,7 @@
+           q: config.quality,
+         })
+       : t2("flow.sub.idle"),
+-  async processFile(item, config, globalConfig, outputDir) {
++  async processFile(item, config, globalConfig, outputDir, jobId) {
+     const toFormat = config.toFormat;
+     const fmt = item.meta.format;
+     const formatOptions = getConvertImgParams(config);
+@@ -42092,13 +42251,21 @@
+     const isAnimated =
+       (fmt === "gif" || fmt === "webp" || item.meta.loop >= 0) &&
+       ["gif", "webp", "apng"].includes(toFormat);
+-    if (isAnimated && config.motionEnabled) {
++    if (isAnimated && (config.motionEnabled || hasTimelineEdits(config))) {
+       const targetKb = targetSizeFor(config, toFormat);
+       await window.x("vConvert", {
+-        quality: config.quality,
++        quality:
++          Number(config.quality) > 2
++            ? Number(config.quality) >= 85
++              ? 2
++              : 1
++            : config.quality,
++        jobId,
+         inputPath: item.path,
+         outPath,
+         toFormat,
++        ...timelineTrimRequest(config),
++        speed: normalizedPlaybackSpeed(config.speed),
+         fps: Number(item.meta.fps) || 10,
+         matchFps: true,
+         loop: item.meta.loop,
+@@ -42158,7 +42325,7 @@
+   mediaType: "video",
+   domain: VIDEO_DOMAIN,
+   accept: vReadAccept,
+-  validation: { maxFiles: 2, minFiles: 1, requireActivation: true },
++  validation: { maxFiles: 500, minFiles: 1, requireActivation: true },
+   configKey: "vconvert",
+   updateConfig: updateVConvertConfig,
+   showSaving: true,
+@@ -42238,6 +42405,7 @@
+       inputPath: item.path,
+       toFormat: config.toFormat,
+       outPath,
++      ...timelineTrimRequest(config),
+       targetFileSizeKb: targetSizeFor(config, config.toFormat),
+       longestEdge: longestEdgeFor(config),
+       speed: normalizedPlaybackSpeed(config.speed),
+@@ -42264,7 +42432,7 @@
+   mediaType: "video",
+   domain: VIDEO_DOMAIN,
+   accept: vReadAccept,
+-  validation: { maxFiles: 2, minFiles: 1, requireActivation: true },
++  validation: { maxFiles: 500, minFiles: 1, requireActivation: true },
+   configKey: "vcompress",
+   updateConfig: updateVCompressConfig,
+   showSaving: true,
+@@ -42335,6 +42503,7 @@
+       inputPath: item.path,
+       outPath,
+       toFormat: fmt,
++      ...timelineTrimRequest(config),
+       ...(targetKb > 0 ? { targetFileSizeKb: targetKb } : {}),
+       longestEdge: longestEdgeFor(config),
+       speed: normalizedPlaybackSpeed(config.speed),
+@@ -42356,7 +42525,7 @@
+   mediaType: "video",
+   domain: VIDEO_DOMAIN,
+   accept: vReadAccept,
+-  validation: { maxFiles: 2, minFiles: 1, requireActivation: true },
++  validation: { maxFiles: 500, minFiles: 1, requireActivation: true },
+   configKey: "v2image",
+   updateConfig: updateV2ImageConfig,
+   showSaving: false,
+@@ -42459,6 +42628,7 @@
+       inputPath: item.path,
+       toFormat,
+       outPath,
++      ...timelineTrimRequest(config),
+       fps: config.fps,
+       matchFps: config.matchFps !== false,
+       ...aspectCropRequest(config),
+@@ -43159,8 +43329,9 @@
+           }),
+         ],
+       }),
+-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-        style: { display: "grid", gap: 9, marginBottom: 9 },
++      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++        title: "Text",
++        summary: String(config.textOverlay || "").trim() ? "On" : "Off",
+         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+           style: {
+             border: "1px solid var(--border)",
+@@ -43666,8 +43837,10 @@
+           ),
+         ),
+       }),
+-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-        style: { display: "grid", gap: 9 },
++      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++        title: "Background",
++        summary:
++          config.backgroundMode === "gradient" ? "Gradient" : "Transparent",
+         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+           style: {
+             border: "1px solid var(--border)",
+@@ -43841,6 +44014,11 @@
+   });
+   const overlayUrls = reactExports.useRef({ background: null, text: null });
+   const videoRefs = reactExports.useRef(new Map());
++  reactExports.useEffect(() => {
++    const listener = (event) => setPlaying(Boolean(event.detail.playing));
++    window.addEventListener("bms-timeline-preview", listener);
++    return () => window.removeEventListener("bms-timeline-preview", listener);
++  }, []);
+   const tileCount = files.filter(
+     (item) => item.layoutRole !== "overlay",
+   ).length;
+@@ -43964,7 +44142,12 @@
+           /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
+             type: "button",
+             className: "x-flow-chip",
+-            onClick: () => setPlaying((value) => !value),
++            onClick: () =>
++              window.dispatchEvent(
++                new CustomEvent("bms-timeline-control", {
++                  detail: { toggle: true },
++                }),
++              ),
+             style: { marginLeft: "auto" },
+             children: [
+               playing
+@@ -44081,30 +44264,10 @@
+                       maxWidth: "none",
+                       maxHeight: "none",
+                     };
+-                    const media =
+-                      item.mediaKind === "video"
+-                        ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
+-                            ref: (node) => {
+-                              if (node) videoRefs.current.set(item.id, node);
+-                              else videoRefs.current.delete(item.id);
+-                            },
+-                            src: item.url,
+-                            poster: item.poster,
+-                            preload: "auto",
+-                            muted: true,
+-                            loop: true,
+-                            playsInline: true,
+-                            style: mediaStyle,
+-                          })
+-                        : /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
+-                            src:
+-                              item.mediaKind === "animated-image" && !playing
+-                                ? item.poster
+-                                : item.url,
+-                            draggable: false,
+-                            style: mediaStyle,
+-                            alt: "",
+-                          });
++                    const media = jsxRuntimeExports.jsx(EditorMediaPreview, {
++                      item,
++                      style: mediaStyle,
++                    });
+                     return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                       "div",
+                       { style: wrapperStyle, children: media },
+@@ -44469,6 +44632,7 @@
+           inputPath: intermediatePath,
+           toFormat: spec.format,
+           outPath: outputPath,
++          ...timelineTrimRequest(config),
+           fps,
+           preparedInput: true,
+           speed: normalizedPlaybackSpeed(config.speed),
+@@ -44760,7 +44924,12 @@
+     const targetKb = targetSizeFor(config, ext);
+     let info;
+     try {
+-      if (ext === "webm" || targetKb > 0 || config.motionEnabled) {
++      if (
++        ext === "webm" ||
++        targetKb > 0 ||
++        config.motionEnabled ||
++        hasTimelineEdits(config)
++      ) {
+         setProgress2(20);
+         await window.x("mergeFramesIntermediate", {
+           files: files.map((item) => item.path),
+@@ -44775,6 +44944,7 @@
+           inputPath: bridgePath,
+           toFormat: ext,
+           outPath: outputPath,
++          ...timelineTrimRequest(config),
+           fps: config.zl || 10,
+           longestEdge: longestEdgeFor(config),
+           preparedInput: true,
+@@ -45004,7 +45174,7 @@
+     }),
+   panelSub: (config, n2, t2) =>
+     n2 ? t2("flow.sub.generic", { n: n2 }) : t2("flow.sub.idle"),
+-  async processFile(item, config, globalConfig, outputDir) {
++  async processFile(item, config, globalConfig, outputDir, jobId) {
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+     const pureName = optimizedStem(item.name.slice(0, -1 * ext.length));
+     let outPath = window.pj(outputDir, `${pureName}${ext}`);
+@@ -45163,7 +45333,7 @@
+       }
+     }
+     if (finalResize) recipe = { ...recipe, resize: finalResize };
+-    if (isAnimated && config.motionEnabled) {
++    if (isAnimated && (config.motionEnabled || hasTimelineEdits(config))) {
+       const cache = await window.x("getCachePath");
+       const intermediatePath = window.pj(
+         cache,
+@@ -45181,6 +45351,10 @@
+           inputPath: intermediatePath,
+           outPath,
+           toFormat: item.meta.format,
++          jobId,
++          quality: 1,
++          ...timelineTrimRequest(config),
++          speed: normalizedPlaybackSpeed(config.speed),
+           fps: Number(item.meta.fps) || 10,
+           matchFps: true,
+           loop: item.meta.loop,
+@@ -46195,6 +46369,11 @@
+                                   },
+                                 ),
+                               ],
++                            }),
++                            jsxRuntimeExports.jsx(SpeedSlider, {
++                              value: config.speed,
++                              onChange: (speed) => update({ speed }),
++                              t: t2,
+                             }),
+                             /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
+                               className: "x-cfg-note",
+@@ -46296,119 +46475,167 @@
+                       ? t2("youtube.loading")
+                       : t2("youtube.load"),
+                 }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(MatchFpsControls, {
+-                  config,
+-                  update,
+-                  t: t2,
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-                  label: t2("youtube.width"),
+-                  value: config.width,
+-                  min: 2,
+-                  onChange: (width) => update({ width }),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-                  label: t2("youtube.height"),
+-                  value: config.height,
+-                  min: 2,
+-                  onChange: (height) => update({ height }),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
+-                  label: t2("youtube.fit"),
+-                  value: config.fitMode,
+-                  options: [
+-                    { label: t2("youtube.fill"), value: "fill" },
+-                    { label: t2("youtube.contain"), value: "fit" },
+-                  ],
+-                  onChange: (fitMode) => update({ fitMode }),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
+-                  config,
+-                  update,
+-                  t: t2,
++                /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++                  title: "Text",
++                  summary: config.outputTextEnabled ? "On" : "Off",
++                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(
++                    OutputTextEffectsControls,
++                    { config, update, t: t2 },
++                  ),
+                 }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(
+-                  OutputTextEffectsControls,
+-                  { config, update, t: t2 },
+-                ),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
+-                  config,
+-                  update,
+-                  t: t2,
++                /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++                  title: "Motion",
++                  summary: config.motionEnabled ? "On" : "Off",
++                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(
++                    MotionEffectsControls,
++                    { config, update, t: t2 },
++                  ),
+                 }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
+-                  label: t2("flow.outFormat"),
+-                  value: config.toFormat,
+-                  options: YOUTUBE_OUTPUT_OPTIONS,
+-                  onChange: (toFormat) => update({ toFormat }),
+-                }),
+-                vWriteOptions.some((option) => option.value === config.toFormat)
+-                  ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
+-                      label: t2("youtube.includeAudio"),
+-                      desc: t2("youtube.includeAudioHint"),
+-                      checked: config.includeAudio !== false,
+-                      onChange: (includeAudio) => update({ includeAudio }),
+-                    })
+-                  : null,
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-                  label: t2("flow.targetSize"),
+-                  value: targetSizeFor(config, config.toFormat),
+-                  min: 0,
+-                  onChange: (value) =>
+-                    update(updateTargetSizeFor(config, config.toFormat, value)),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
+-                  className: "x-cfg-note",
+-                  children: t2("flow.targetSizeHint"),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
+-                  value: config.speed,
+-                  onChange: (speed) => update({ speed }),
+-                  t: t2,
+-                }),
+-                config.toFormat === "gif"
+-                  ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+-                      GifColorReductionSwitch,
+-                      {
+-                        config,
+-                        update,
+-                        t: t2,
+-                      },
+-                    )
+-                  : null,
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+-                  label: t2("flow.animQuality"),
+-                  value: config.quality,
+-                  min: 0,
+-                  max: 2,
+-                  onChange: (quality) => update({ quality }),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-                  label: t2("flow.loop"),
+-                  value: config.loop,
+-                  min: 0,
+-                  onChange: (loop) => update({ loop }),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
+-                  label: t2("youtube.outputName"),
+-                  value: config.outputName,
+-                  onChange: (outputName) => update({ outputName }),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                  className: "x-cfg-label x-cfg-label-block",
+-                  children: t2("youtube.outputFolder"),
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
+-                  className: "x-cfg-note",
+-                  style: { overflowWrap: "anywhere" },
+-                  children: outputDir,
+-                }),
+-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+-                  type: "button",
+-                  className: "x-cfg-action",
+-                  disabled: busy,
+-                  onClick: chooseOutput,
+-                  children: t2("flow.choose"),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++                  title: "Export",
++                  summary: "Format, size & destination",
++                  accent: true,
++                  children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                    jsxRuntimeExports.Fragment,
++                    {
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(
++                          MatchFpsControls,
++                          {
++                            config,
++                            update,
++                            t: t2,
++                          },
++                        ),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: t2("youtube.width"),
++                          value: config.width,
++                          min: 2,
++                          onChange: (width) => update({ width }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: t2("youtube.height"),
++                          value: config.height,
++                          min: 2,
++                          onChange: (height) => update({ height }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
++                          label: t2("youtube.fit"),
++                          value: config.fitMode,
++                          options: [
++                            { label: t2("youtube.fill"), value: "fill" },
++                            { label: t2("youtube.contain"), value: "fit" },
++                          ],
++                          onChange: (fitMode) => update({ fitMode }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(
++                          AspectCropControls,
++                          {
++                            config,
++                            update,
++                            t: t2,
++                          },
++                        ),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(
++                          OutputTextEffectsControls,
++                          {
++                            config: { ...config, __sectionRender: true },
++                            update,
++                            t: t2,
++                          },
++                        ),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(
++                          MotionEffectsControls,
++                          {
++                            config: { ...config, __sectionRender: true },
++                            update,
++                            t: t2,
++                          },
++                        ),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                          label: t2("flow.outFormat"),
++                          value: config.toFormat,
++                          options: YOUTUBE_OUTPUT_OPTIONS,
++                          onChange: (toFormat) => update({ toFormat }),
++                        }),
++                        vWriteOptions.some(
++                          (option) => option.value === config.toFormat,
++                        )
++                          ? /* @__PURE__ */ jsxRuntimeExports.jsx(
++                              LabeledSwitch,
++                              {
++                                label: t2("youtube.includeAudio"),
++                                desc: t2("youtube.includeAudioHint"),
++                                checked: config.includeAudio !== false,
++                                onChange: (includeAudio) =>
++                                  update({ includeAudio }),
++                              },
++                            )
++                          : null,
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: t2("flow.targetSize"),
++                          value: targetSizeFor(config, config.toFormat),
++                          min: 0,
++                          onChange: (value) =>
++                            update(
++                              updateTargetSizeFor(
++                                config,
++                                config.toFormat,
++                                value,
++                              ),
++                            ),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                          className: "x-cfg-note",
++                          children: t2("flow.targetSizeHint"),
++                        }),
++                        config.toFormat === "gif"
++                          ? /* @__PURE__ */ jsxRuntimeExports.jsx(
++                              GifColorReductionSwitch,
++                              {
++                                config,
++                                update,
++                                t: t2,
++                              },
++                            )
++                          : null,
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
++                          label: t2("flow.animQuality"),
++                          value: config.quality,
++                          min: 0,
++                          max: 2,
++                          onChange: (quality) => update({ quality }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: t2("flow.loop"),
++                          value: config.loop,
++                          min: 0,
++                          onChange: (loop) => update({ loop }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledText, {
++                          label: t2("youtube.outputName"),
++                          value: config.outputName,
++                          onChange: (outputName) => update({ outputName }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                          className: "x-cfg-label x-cfg-label-block",
++                          children: t2("youtube.outputFolder"),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                          className: "x-cfg-note",
++                          style: { overflowWrap: "anywhere" },
++                          children: outputDir,
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                          type: "button",
++                          className: "x-cfg-action",
++                          disabled: busy,
++                          onClick: chooseOutput,
++                          children: t2("flow.choose"),
++                        }),
++                      ],
++                    },
++                  ),
+                 }),
+               ],
+             }),
+@@ -46620,6 +46847,24 @@
+                 dir: await window.x("getFileDir", path),
+               };
+             } else {
++              if ([".gif", ".webp", ".apng"].includes(ext)) {
++                const meta = await window.x("sharpMetadata", { path });
++                return {
++                  id: uuid(),
++                  name: file.name,
++                  path,
++                  relaPath: file.relaPath,
++                  url: `xpic://${PICTURE_DOMAIN}/${encodeURIComponent(path)}`,
++                  size: file.size,
++                  dir: _dir,
++                  ext,
++                  mediaKind: "image",
++                  meta: {
++                    ...removeUnSerializable(meta),
++                    height: meta.pageHeight || meta.height,
++                  },
++                };
++              }
+               const meta = await window.x("vGetFileInfo", path);
+               const poster = await window.x("vGetPoster", path);
+               return {
+@@ -46759,9 +47004,17 @@
+         const f2 = list[i];
+         store.dispatch(updateSessionFile({ id: f2.id, status: "active" }));
+         try {
++          const itemConfig = {
++            ...config,
++            timelineStartMs: Math.max(0, Number(f2.timelineStartMs) || 0),
++            timelineEndMs: Math.max(0, Number(f2.timelineEndMs) || 0),
++            ...(Number(f2.timelineSpeed) > 0
++              ? { speed: Number(f2.timelineSpeed) }
++              : {}),
++          };
+           const r2 = await mod2.processFile(
+             f2,
+-            config,
++            itemConfig,
+             globalConfig,
+             outputDir,
+             `flow-${runId}`,
+@@ -46852,6 +47105,45 @@
+     const runId = store.getState().session.runId;
+     const jobId = `flow-${runId}`;
+     const alive = () => store.getState().session.runId === runId;
++    if (
++      config.timelineMode === "sequence" &&
++      TIMELINE_SEQUENCE_KEYS.has(mod2.key) &&
++      [
++        ...vWriteOptions.map((option) => option.value),
++        "gif",
++        "webp",
++        "apng",
++      ].includes(
++        config.toFormat || String(files[0]?.ext || "").replace(/^\./, ""),
++      )
++    ) {
++      files.forEach((item) =>
++        store.dispatch(updateSessionFile({ id: item.id, status: "active" })),
++      );
++      try {
++        const result = await renderEditorSequence({
++          mod: mod2,
++          files,
++          config,
++          globalConfig,
++          outputDir,
++          jobId,
++          setProgress: (value) => {
++            if (alive()) store.dispatch(setSessionProgress(value));
++          },
++        });
++        if (!alive()) return;
++        files.forEach((item) =>
++          store.dispatch(updateSessionFile({ id: item.id, status: "done" })),
++        );
++        store.dispatch(finishProcessing(result));
++      } catch (error) {
++        if (!alive()) return;
++        toast.error(error?.message || String(error));
++        store.dispatch(setSessionFiles(files));
++      }
++      return;
++    }
+     if (mod2.processBatch) {
+       files.forEach((f2) =>
+         store.dispatch(updateSessionFile({ id: f2.id, status: "active" })),
+@@ -46999,16 +47291,16 @@
+       (patch2) => store.dispatch(mod2.updateConfig(patch2)),
+       [mod2],
+     );
+-    if (config?.outputTextEnabled) {
+-      return /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextCanvasPreview, {
++    if (
++      config?.outputTextEnabled ||
++      mod2.mediaType === "video" ||
++      files.some(editorIsAnimated) ||
++      mod2.key === "merge"
++    ) {
++      return jsxRuntimeExports.jsx(TimelineCanvas, {
+         config,
+-        effect: outputTextEffectFor(config),
+-        previewItem: files[0],
+-        previewText:
+-          String(config.outputText || "").trim() || "Beyond Media Suite",
++        files,
+         t: t2,
+-        workspace: true,
+-        files,
+         onRemove: handlers2.removeFile,
+         onUpdate: updateCanvasText,
+       });
+@@ -47110,6 +47402,7 @@
+       ],
+     }),
+ );
++/* BMS_TIMELINE_RENDERER */
+ const StatusIcon = ({ status }) => {
+   if (status === "done")
+     return /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
+@@ -47329,101 +47622,92 @@
+           className: "x-flow-scroll",
+           children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+             className: "x-flow-result",
+-            children:
+-              mod2.singleOutput && result.output
+-                ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                    className: "x-flow-row",
+-                    children: [
+-                      /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
+-                        className: "x-flow-row-thumb",
+-                        src: result.output.url,
+-                        draggable: false,
+-                        alt: "",
+-                        onError: (e) => {
+-                          e.target.style.visibility = "hidden";
+-                        },
+-                      }),
+-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                        className: "x-flow-row-info",
+-                        children: [
+-                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                            className: "x-flow-row-name",
+-                            title: result.output.name,
+-                            children: result.output.name,
+-                          }),
+-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                            className: "x-flow-row-sub",
+-                            children: [
+-                              result.output.dim
+-                                ? `${result.output.dim} · `
+-                                : "",
+-                              filesize(result.output.size),
+-                            ],
+-                          }),
+-                        ],
+-                      }),
+-                    ],
+-                  })
+-                : files.map((f2) => {
+-                    const pct =
+-                      f2.size && f2.outSize != null
+-                        ? Math.round((1 - f2.outSize / f2.size) * 100)
+-                        : null;
+-                    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+-                      "div",
+-                      {
+-                        className: "x-flow-row",
+-                        children: [
+-                          /* @__PURE__ */ jsxRuntimeExports.jsx(Thumb, {
+-                            f: f2,
+-                            className: "x-flow-row-thumb",
+-                          }),
+-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                            className: "x-flow-row-info",
+-                            children: [
+-                              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                                className: "x-flow-row-name",
+-                                title: f2.outName || f2.name,
+-                                children: f2.outName || f2.name,
+-                              }),
+-                              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                                className: "x-flow-row-sub",
+-                                children: [
+-                                  filesize(f2.size),
+-                                  f2.outSize != null
+-                                    ? ` → ${filesize(f2.outSize)}`
+-                                    : "",
+-                                ],
+-                              }),
+-                            ],
+-                          }),
+-                          f2.status === "err"
+-                            ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
+-                                className: "x-flow-pill x-flow-pill-err",
+-                                children: t2("flow.failed"),
+-                              })
+-                            : showSaving && pct != null
+-                              ? pct >= 0
+-                                ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+-                                    "span",
+-                                    {
+-                                      className: "x-flow-pill",
+-                                      children: ["−", pct, "%"],
+-                                    },
+-                                  )
+-                                : /* @__PURE__ */ jsxRuntimeExports.jsxs(
+-                                    "span",
+-                                    {
+-                                      className: "x-flow-pill x-flow-pill-up",
+-                                      children: ["+", -pct, "%"],
+-                                    },
+-                                  )
+-                              : null,
+-                        ],
++            children: result.output
++              ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                  className: "x-flow-row",
++                  children: [
++                    /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                      className: "x-flow-row-thumb",
++                      src: result.output.url,
++                      draggable: false,
++                      alt: "",
++                      onError: (e) => {
++                        e.target.style.visibility = "hidden";
+                       },
+-                      f2.id,
+-                    );
+-                  }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                      className: "x-flow-row-info",
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                          className: "x-flow-row-name",
++                          title: result.output.name,
++                          children: result.output.name,
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                          className: "x-flow-row-sub",
++                          children: [
++                            result.output.dim ? `${result.output.dim} · ` : "",
++                            filesize(result.output.size),
++                          ],
++                        }),
++                      ],
++                    }),
++                  ],
++                })
++              : files.map((f2) => {
++                  const pct =
++                    f2.size && f2.outSize != null
++                      ? Math.round((1 - f2.outSize / f2.size) * 100)
++                      : null;
++                  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                    "div",
++                    {
++                      className: "x-flow-row",
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(Thumb, {
++                          f: f2,
++                          className: "x-flow-row-thumb",
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                          className: "x-flow-row-info",
++                          children: [
++                            /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                              className: "x-flow-row-name",
++                              title: f2.outName || f2.name,
++                              children: f2.outName || f2.name,
++                            }),
++                            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                              className: "x-flow-row-sub",
++                              children: [
++                                filesize(f2.size),
++                                f2.outSize != null
++                                  ? ` → ${filesize(f2.outSize)}`
++                                  : "",
++                              ],
++                            }),
++                          ],
++                        }),
++                        f2.status === "err"
++                          ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                              className: "x-flow-pill x-flow-pill-err",
++                              children: t2("flow.failed"),
++                            })
++                          : showSaving && pct != null
++                            ? pct >= 0
++                              ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
++                                  className: "x-flow-pill",
++                                  children: ["−", pct, "%"],
++                                })
++                              : /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
++                                  className: "x-flow-pill x-flow-pill-up",
++                                  children: ["+", -pct, "%"],
++                                })
++                            : null,
++                      ],
++                    },
++                    f2.id,
++                  );
++                }),
+           }),
+         }),
+       ],
+@@ -47439,20 +47723,34 @@
+   const session = useSelector((s) => s.session);
+   const { stage, files, progress: progress2, result } = session;
+   if (stage === "staging") {
+-    if (mod2.StagingView)
+-      return /* @__PURE__ */ jsxRuntimeExports.jsx(mod2.StagingView, {
+-        mod: mod2,
+-        files,
+-        t: t2,
+-        handlers: handlers2,
+-        onPick,
+-      });
+-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Staging, {
+-      mod: mod2,
+-      files,
+-      t: t2,
+-      handlers: handlers2,
+-      onPick,
++    const stagingView = mod2.StagingView
++      ? /* @__PURE__ */ jsxRuntimeExports.jsx(mod2.StagingView, {
++          mod: mod2,
++          files,
++          t: t2,
++          handlers: handlers2,
++          onPick,
++        })
++      : /* @__PURE__ */ jsxRuntimeExports.jsx(Staging, {
++          mod: mod2,
++          files,
++          t: t2,
++          handlers: handlers2,
++          onPick,
++        });
++    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++      className: "x-editor-workspace",
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++          className: "x-editor-canvas-region",
++          children: stagingView,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(TimelineEditor, {
++          mod: mod2,
++          files,
++          onPick,
++        }),
++      ],
+     });
+   }
+   if (stage === "processing")
+@@ -47527,6 +47825,9 @@
+     [mod2],
+   );
+   const fileCount = session.files.length;
++  const editorGroups = config
++    ? editorSettingsGroups(mod2, config, update, t2, session)
++    : { canvas: [], exports: [] };
+   const sub = mod2.panelSub
+     ? mod2.panelSub(config, fileCount, t2)
+     : fileCount
+@@ -47561,96 +47862,131 @@
+       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+         className: "x-config-body",
+         children: [
+-          config ? mod2.renderParams({ config, update, t: t2, session }) : null,
+-          config
+-            ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+-                jsxRuntimeExports.Fragment,
+-                {
+-                  children: [
+-                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+-                      label: t2("flow.longestEdge"),
+-                      value: longestEdgeFor(config),
+-                      min: 0,
+-                      onChange: (v2) =>
+-                        update({
+-                          longestEdge: Math.max(0, Number(v2) || 0),
+-                        }),
+-                    }),
+-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
+-                      className: "x-cfg-note",
+-                      children: t2("flow.longestEdgeHint"),
+-                    }),
+-                  ],
+-                },
+-              )
+-            : null,
+-          config && mod2.processFile
+-            ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
+-                label: t2("flow.overwriteSource"),
+-                desc: t2("flow.overwriteSourceHint"),
+-                checked: !!config.overwriteSourceMedia,
+-                onChange: (v2) => {
+-                  if (
+-                    v2 &&
+-                    session.files.length > 0 &&
+-                    !session.files.every((item) =>
+-                      canOverwriteSourceItem(mod2, config, item),
+-                    )
+-                  ) {
+-                    toast.error(t2("flow.overwriteSourceUnavailable"));
+-                    return;
+-                  }
+-                  update({ overwriteSourceMedia: v2 });
+-                },
++          config &&
++          Object.prototype.hasOwnProperty.call(config, "outputTextEnabled")
++            ? /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++                title: "Text",
++                summary: config.outputTextEnabled ? "On" : "Off",
++                children: /* @__PURE__ */ jsxRuntimeExports.jsx(
++                  OutputTextEffectsControls,
++                  { config, update, t: t2 },
++                ),
+               })
+             : null,
+-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-            className: "x-config-divider",
+-          }),
+-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-            className: "x-cfg-field",
+-            children: [
+-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                className: "x-cfg-label x-cfg-label-block",
+-                children: t2("flow.outDir"),
+-              }),
+-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                className: "x-cfg-dir-btns",
+-                children: [
+-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
+-                    type: "button",
+-                    className: "x-cfg-dir-btn",
+-                    onClick: handlers2.chooseOutputDir,
++          config &&
++          Object.prototype.hasOwnProperty.call(config, "motionEnabled")
++            ? /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++                title: "Motion",
++                summary: config.motionEnabled ? "On" : "Off",
++                children: /* @__PURE__ */ jsxRuntimeExports.jsx(
++                  MotionEffectsControls,
++                  { config, update, t: t2 },
++                ),
++              })
++            : null,
++          config && editorGroups.canvas.length > 0
++            ? /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++                title: "Canvas",
++                summary: "Crop, fit & layout",
++                children: editorGroups.canvas,
++              })
++            : null,
++          config
++            ? /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsSection, {
++                title: "Export",
++                summary: "Format, size & destination",
++                accent: true,
++                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                  jsxRuntimeExports.Fragment,
++                  {
+                     children: [
+-                      /* @__PURE__ */ jsxRuntimeExports.jsx(FolderOpen, {
+-                        size: 13,
++                      editorGroups.exports,
++                      /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                        label: t2("flow.longestEdge"),
++                        value: longestEdgeFor(config),
++                        min: 0,
++                        onChange: (v2) =>
++                          update({ longestEdge: Math.max(0, Number(v2) || 0) }),
+                       }),
+-                      " ",
+-                      t2("flow.choose"),
+-                    ],
+-                  }),
+-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
+-                    type: "button",
+-                    className: "x-cfg-dir-btn",
+-                    onClick: handlers2.resetOutputDir,
+-                    children: [
+-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Undo2, {
+-                        size: 13,
++                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                        className: "x-cfg-note",
++                        children: t2("flow.longestEdgeHint"),
+                       }),
+-                      " ",
+-                      t2("flow.default"),
++                      mod2.processFile
++                        ? /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++                            label: t2("flow.overwriteSource"),
++                            desc: t2("flow.overwriteSourceHint"),
++                            checked: !!config.overwriteSourceMedia,
++                            onChange: (v2) => {
++                              if (
++                                v2 &&
++                                session.files.length > 0 &&
++                                !session.files.every((item) =>
++                                  canOverwriteSourceItem(mod2, config, item),
++                                )
++                              ) {
++                                toast.error(
++                                  t2("flow.overwriteSourceUnavailable"),
++                                );
++                                return;
++                              }
++                              update({ overwriteSourceMedia: v2 });
++                            },
++                          })
++                        : null,
++                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                        className: "x-config-divider",
++                      }),
++                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                        className: "x-cfg-field",
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                            className: "x-cfg-label x-cfg-label-block",
++                            children: t2("flow.outDir"),
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                            className: "x-cfg-dir-btns",
++                            children: [
++                              /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
++                                type: "button",
++                                className: "x-cfg-dir-btn",
++                                onClick: handlers2.chooseOutputDir,
++                                children: [
++                                  /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                    FolderOpen,
++                                    { size: 13 },
++                                  ),
++                                  " ",
++                                  t2("flow.choose"),
++                                ],
++                              }),
++                              /* @__PURE__ */ jsxRuntimeExports.jsxs("button", {
++                                type: "button",
++                                className: "x-cfg-dir-btn",
++                                onClick: handlers2.resetOutputDir,
++                                children: [
++                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Undo2, {
++                                    size: 13,
++                                  }),
++                                  " ",
++                                  t2("flow.default"),
++                                ],
++                              }),
++                            ],
++                          }),
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                            className: "x-cfg-dir-path",
++                            children: session.outputDir
++                              ? session.outputDir
++                              : t2("flow.outDirDefault"),
++                          }),
++                        ],
++                      }),
+                     ],
+-                  }),
+-                ],
+-              }),
+-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                className: "x-cfg-dir-path",
+-                children: session.outputDir
+-                  ? session.outputDir
+-                  : t2("flow.outDirDefault"),
+-              }),
+-            ],
+-          }),
++                  },
++                ),
++              })
++            : null,
+         ],
+       }),
+       /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+@@ -48093,6 +48429,9 @@
+       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+         className: "x-app",
+         children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsx("style", {
++            children: EDITOR_SHELL_CSS,
++          }),
+           /* @__PURE__ */ jsxRuntimeExports.jsx(Sidebar, {
+             current: currentTab,
+             onSelect: onNavSelect,

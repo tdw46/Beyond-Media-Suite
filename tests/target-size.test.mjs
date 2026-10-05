@@ -624,8 +624,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.40/);
-  assert.match(build, /2\.1\.3\.40/);
+  assert.match(build, /2\.1\.3-fork\.41/);
+  assert.match(build, /2\.1\.3\.41/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -1003,8 +1003,8 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.40/);
-  assert.match(build, /2\.1\.3\.40/);
+  assert.match(build, /2\.1\.3-fork\.41/);
+  assert.match(build, /2\.1\.3\.41/);
 });
 
 test("To Animation matches source frame timing by default and allows an FPS override", async () => {
@@ -1114,6 +1114,7 @@ test("Pan and zoom is opt-in per launch and uses smooth subpixel motion", async 
   assert.match(build, /xpic-2\.1\.3-opt-in-smooth-motion\.patch/);
   assert.match(build, /opt-in-subpixel-smooth-pan-zoom/);
 });
+
 
 test("Professional text controls render an aspect-accurate live canvas in the workspace", async () => {
   const [patch, build] = await Promise.all([

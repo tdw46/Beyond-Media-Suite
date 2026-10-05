@@ -39,6 +39,31 @@ Light & dark themes, multiple accent colors, English & Chinese interface. Update
 
 ## Beyond Media Suite additions
 
+### Canvas and timeline editing
+
+The settings rail groups typography under a collapsed **Text** section, with
+separate **Motion**, **Canvas**, and **Export** sections. Expand only what you
+need; format, target size, quality, source FPS, and destination live under Export.
+
+Animated image and video creation flows now have a timeline below the full-size
+canvas. Select a clip, scrub to an exact frame, drag its blue In/Out handles, or
+enter millisecond bounds. Hold Shift while trimming for 1 ms per pixel precision.
+The timeline has looping Play/Pause, preview-only mute, and a per-clip speed slider
+from 1/16× to 16×. Sources remain untouched.
+
+**Split** creates two independently editable source ranges. Drag clips to reorder,
+or use the reorder arrows / Option+Left and Option+Right shortcuts. Use **+ Media**
+or drop more files to extend the batch, and use **Undo** for edits.
+Choose **Separate files** for the usual batch outputs or **One sequence** to join
+clips in timeline order into a single video/animation. Sequence export retains
+aspect ratios with transparent padding where supported, audio, text treatment,
+and the configured output-size ceiling.
+
+Merge Frames previews its assembled frame sequence. Collage previews all layers
+together and trims/speeds the complete composition; splitting source clips belongs
+in Convert or To Animation rather than changing a collage into consecutive tiles.
+YouTube Clip keeps its existing source timeline, with speed beside the trim controls.
+
 This fork adds a **Target output size (KB)** control to image conversion,
 video-to-animation, and every video output format exposed by xPic:
 
