@@ -97,6 +97,11 @@ const batchAspectCropPatchPath = path.join(
   "patches",
   "xpic-2.1.3-batch-aspect-crop.patch",
 );
+const professionalTextMotionEffectsPatchPath = path.join(
+  repoRoot,
+  "patches",
+  "xpic-2.1.3-professional-text-motion-effects.patch",
+);
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xpic-fork-build-"));
 const extracted = path.join(tempRoot, "app");
 const packedAsar = path.join(tempRoot, "app.asar");
@@ -225,6 +230,13 @@ try {
   run("patch", ["-p1", "-d", extracted, "-i", playbackSpeedPatchPath]);
   run("patch", ["-p1", "-d", extracted, "-i", matchSourceFpsPatchPath]);
   run("patch", ["-p1", "-d", extracted, "-i", batchAspectCropPatchPath]);
+  run("patch", [
+    "-p1",
+    "-d",
+    extracted,
+    "-i",
+    professionalTextMotionEffectsPatchPath,
+  ]);
 
   const rendererHtml = path.join(extracted, "out", "renderer", "index.html");
   const rendererName = path.basename(rendererBundle);
@@ -250,7 +262,7 @@ try {
   );
 
   packagedJson.productName = "Beyond Media Suite";
-  packagedJson.version = "2.1.3-fork.34";
+  packagedJson.version = "2.1.3-fork.35";
   await fs.writeFile(
     packagedJsonPath,
     `${JSON.stringify(packagedJson, null, 2)}\n`,
@@ -335,7 +347,7 @@ try {
         baseVersion: "2.1.3",
         ytDlpVersion,
         feature:
-          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow, unified-collage-layer-controls, text-gradient-presets, exact-collage-preview-export-svg, collage-background-text-patterns, per-media-edge-crop, auto-padded-no-crop-layout, unrestricted-canvas-space-layer-offsets, non-displacing-media-overlay-layers, one-percent-collage-layer-scaling, stable-two-pass-frame-timing, accurate-media-cancellation-errors, youtube-millisecond-clips-local-frame-buffer-exact-dimensions-target-size, native-youtube-preview-audio-selected-range-loop, native-finder-convert-compress-quick-actions-ratio-targets, logarithmic-playback-speed-video-animation-audio, match-source-animation-frame-timing, default-2-to-1-batch-aspect-letterbox-cover, shortcut-screen-recording-25-percent-mp4-delete-source-finder-clipboard",
+          "all-creation-target-output-size, universal-longest-edge, faster-vp9-alpha, source-adjacent-opt-output, safe-source-overwrite, webm-compress-alpha, mixed-media-collage, aspect-packed-collage-layers, high-resolution-collage-preview, exact-collage-dimensions-minimum-crop, full-source-collage-transforms, interactive-collage-layer-stack, persistent-collage-media-controls, hard-cap-gif-target-search, resume-completed-editing, exact-gif-buffer-write, opt-in-gif-color-reduction, collage-gradient-background-text-overlay-system-fonts-drop-shadow, unified-collage-layer-controls, text-gradient-presets, exact-collage-preview-export-svg, collage-background-text-patterns, per-media-edge-crop, auto-padded-no-crop-layout, unrestricted-canvas-space-layer-offsets, non-displacing-media-overlay-layers, one-percent-collage-layer-scaling, stable-two-pass-frame-timing, accurate-media-cancellation-errors, youtube-millisecond-clips-local-frame-buffer-exact-dimensions-target-size, native-youtube-preview-audio-selected-range-loop, native-finder-convert-compress-quick-actions-ratio-targets, logarithmic-playback-speed-video-animation-audio, match-source-animation-frame-timing, default-2-to-1-batch-aspect-letterbox-cover, universal-professional-gradient-text-overlays, keyframed-pan-zoom-interpolation, shortcut-screen-recording-25-percent-mp4-delete-source-finder-clipboard",
         rendererAsset: cacheBustedName,
       },
       null,
@@ -366,7 +378,7 @@ try {
     "com.tdw46.beyond-media-suite",
     plist,
   ]);
-  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.34", plist]);
+  run("plutil", ["-replace", "CFBundleVersion", "-string", "2.1.3.35", plist]);
 
   run("xattr", ["-dr", "com.apple.quarantine", outputApp]);
   run("codesign", ["--force", "--deep", "--sign", "-", outputApp]);

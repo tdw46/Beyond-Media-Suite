@@ -624,8 +624,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.34/);
-  assert.match(build, /2\.1\.3\.34/);
+  assert.match(build, /2\.1\.3-fork\.35/);
+  assert.match(build, /2\.1\.3\.35/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -1003,8 +1003,8 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.34/);
-  assert.match(build, /2\.1\.3\.34/);
+  assert.match(build, /2\.1\.3-fork\.35/);
+  assert.match(build, /2\.1\.3\.35/);
 });
 
 test("To Animation matches source frame timing by default and allows an FPS override", async () => {
@@ -1057,6 +1057,38 @@ test("Relevant batch creators default to a transparent 2:1 canvas and expose sou
   assert.match(build, /xpic-2\.1\.3-batch-aspect-crop\.patch/);
   assert.match(build, /batchAspectCropPatchPath/);
   assert.match(build, /default-2-to-1-batch-aspect-letterbox-cover/);
+});
+
+test("Every creation surface exposes professional gradient text and animated pan-zoom", async () => {
+  const [patch, build] = await Promise.all([
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-professional-text-motion-effects.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(patch, /const OUTPUT_TEXT_EFFECT_DEFAULTS/);
+  assert.match(patch, /colorA:.*#FF8A1F/);
+  assert.match(patch, /colorB:.*#D61CFF/);
+  assert.match(patch, /fontFamily:.*Helvetica Neue/);
+  assert.match(patch, /fontWeight:.*800/);
+  assert.match(patch, /const OutputTextEffectsControls/);
+  assert.ok((patch.match(/OutputTextEffectsControls/g) || []).length >= 9);
+  assert.match(patch, /const MotionEffectsControls/);
+  assert.ok((patch.match(/MotionEffectsControls/g) || []).length >= 10);
+  assert.match(patch, /"top-left"/);
+  assert.match(patch, /"bottom-right"/);
+  assert.match(patch, /interpolation:.*linear/);
+  assert.match(patch, /bezier-custom/);
+  assert.match(patch, /buildOutputTextSvg/);
+  assert.match(patch, /motionProgressExpression/);
+  assert.match(patch, /movie='/);
+  assert.match(build, /xpic-2\.1\.3-professional-text-motion-effects\.patch/);
+  assert.match(build, /universal-professional-gradient-text-overlays/);
+  assert.match(build, /keyframed-pan-zoom-interpolation/);
 });
 
 test("New screen recordings run through a safe 25-percent MP4 Shortcut workflow", async () => {

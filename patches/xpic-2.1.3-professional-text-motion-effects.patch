@@ -1,0 +1,1899 @@
+--- a/out/main/index.js
++++ b/out/main/index.js
+@@ -1693,7 +1693,133 @@
+       }
+     } catch (e) {
+       console.log("Failed to remove temporary file:", filePath, e);
++    }
++  };
++  const clampNumber = (value, min, max, fallback) =>
++    Math.max(min, Math.min(max, Number.isFinite(Number(value)) ? Number(value) : fallback));
++  const normalizeEffectColor = (value, fallback) =>
++    /^#[0-9A-F]{6}$/i.test(String(value || ""))
++      ? String(value).toUpperCase()
++      : fallback;
++  const escapeEffectSvg = (value) =>
++    String(value || "")
++      .replaceAll("&", "&amp;")
++      .replaceAll("<", "&lt;")
++      .replaceAll(">", "&gt;")
++      .replaceAll('"', "&quot;")
++      .replaceAll("'", "&apos;");
++  const effectGradientVector = (angle) => {
++    const radians = (clampNumber(angle, 0, 360, 90) * Math.PI) / 180;
++    const dx = Math.sin(radians);
++    const dy = -Math.cos(radians);
++    return {
++      x1: `${(50 - dx * 50).toFixed(3)}%`,
++      y1: `${(50 - dy * 50).toFixed(3)}%`,
++      x2: `${(50 + dx * 50).toFixed(3)}%`,
++      y2: `${(50 + dy * 50).toFixed(3)}%`,
++    };
++  };
++  const buildOutputTextSvg = (effect, width, height) => {
++    const safeWidth = Math.max(1, Math.round(Number(width) || 1));
++    const safeHeight = Math.max(1, Math.round(Number(height) || 1));
++    const rows = String(effect?.text || "")
++      .replaceAll("\r", "")
++      .split("\n")
++      .slice(0, 8)
++      .map((row) => row.trimEnd());
++    if (!effect?.enabled || !rows.some((row) => row.trim())) return "";
++    const maxCharacters = Math.max(1, ...rows.map((row) => row.length));
++    const requestedSize =
++      (safeHeight * clampNumber(effect.fontSize, 1, 40, 8.5)) / 100;
++    const fittedSize = (safeWidth * 0.9) / Math.max(1, maxCharacters * 0.56);
++    const fontSize = Math.max(1, Math.min(requestedSize, fittedSize));
++    const lineHeight = fontSize * clampNumber(effect.lineHeight, 0.8, 2, 1.12);
++    const alignment = ["left", "center", "right"].includes(effect.alignment)
++      ? effect.alignment
++      : "center";
++    const anchor = { left: "start", center: "middle", right: "end" }[alignment];
++    const x =
++      (safeWidth * clampNumber(effect.positionX, -25, 125, 50)) / 100;
++    const centerY =
++      (safeHeight * clampNumber(effect.positionY, -25, 125, 84)) / 100;
++    const firstY = centerY - ((rows.length - 1) * lineHeight) / 2;
++    const colorA = normalizeEffectColor(effect.colorA, "#FF8A1F");
++    const colorB = normalizeEffectColor(effect.colorB, "#D61CFF");
++    const vector = effectGradientVector(effect.gradientAngle);
++    const fontFamily = escapeEffectSvg(effect.fontFamily || "Helvetica Neue");
++    const fontWeight = Math.round(clampNumber(effect.fontWeight, 100, 900, 800));
++    const shadowColor = normalizeEffectColor(effect.shadowColor, "#000000");
++    const shadowOpacity = clampNumber(effect.shadowOpacity, 0, 100, 60) / 100;
++    const shadowBlur =
++      (safeHeight * clampNumber(effect.shadowBlur, 0, 10, 1.2)) / 100;
++    const shadowX =
++      (safeWidth * clampNumber(effect.shadowX, -10, 10, 0.35)) / 100;
++    const shadowY =
++      (safeHeight * clampNumber(effect.shadowY, -10, 10, 0.6)) / 100;
++    const shadow = effect.shadow !== false
++      ? `<filter id="textShadow" x="-100%" y="-100%" width="300%" height="300%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="${shadowBlur.toFixed(3)}" result="blur"/><feOffset in="blur" dx="${shadowX.toFixed(3)}" dy="${shadowY.toFixed(3)}" result="offset"/><feFlood flood-color="${shadowColor}" flood-opacity="${shadowOpacity.toFixed(3)}" result="color"/><feComposite in="color" in2="offset" operator="in" result="shadowColor"/><feMerge><feMergeNode in="shadowColor"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`
++      : "";
++    const outlineColor = normalizeEffectColor(effect.outlineColor, "#000000");
++    const outlineWidth = effect.outline
++      ? Math.max(0.25, (safeHeight * clampNumber(effect.outlineWidth, 0.02, 2, 0.18)) / 100)
++      : 0;
++    const textStyle = `text-anchor="${anchor}" dominant-baseline="central" font-family="${fontFamily}" font-size="${fontSize.toFixed(3)}" font-weight="${fontWeight}" fill="url(#textGradient)"${outlineWidth ? ` stroke="${outlineColor}" stroke-width="${outlineWidth.toFixed(3)}" paint-order="stroke fill" stroke-linejoin="round"` : ""}${effect.shadow !== false ? ' filter="url(#textShadow)"' : ""}`;
++    const tspans = rows
++      .map(
++        (row, index) =>
++          `<tspan x="${x.toFixed(3)}" y="${(firstY + index * lineHeight).toFixed(3)}">${escapeEffectSvg(row || " ")}</tspan>`,
++      )
++      .join("");
++    return `<svg xmlns="http://www.w3.org/2000/svg" width="${safeWidth}" height="${safeHeight}" viewBox="0 0 ${safeWidth} ${safeHeight}"><defs><linearGradient id="textGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${shadow}</defs><text ${textStyle}>${tspans}</text></svg>`;
++  };
++  const sharpEffectDimensions = (metadata, recipe) => {
++    let width = Math.max(1, Number(metadata?.width) || 1);
++    let height = Math.max(
++      1,
++      Number(metadata?.pageHeight) || Number(metadata?.height) || 1,
++    );
++    if (recipe.rotate && [5, 6, 7, 8].includes(Number(metadata?.orientation))) {
++      [width, height] = [height, width];
++    }
++    if (recipe.extract) {
++      width = Math.max(1, Number(recipe.extract.width) || width);
++      height = Math.max(1, Number(recipe.extract.height) || height);
++    }
++    if (recipe.resize) {
++      const requestedWidth = Math.max(1, Number(recipe.resize.width) || width);
++      const requestedHeight = Math.max(1, Number(recipe.resize.height) || height);
++      const fit = recipe.resize.options?.fit || "cover";
++      if (fit === "inside" || fit === "outside") {
++        const ratio =
++          fit === "outside"
++            ? Math.max(requestedWidth / width, requestedHeight / height)
++            : Math.min(requestedWidth / width, requestedHeight / height);
++        const boundedRatio = recipe.resize.options?.withoutEnlargement
++          ? Math.min(1, ratio)
++          : ratio;
++        width = Math.max(1, Math.round(width * boundedRatio));
++        height = Math.max(1, Math.round(height * boundedRatio));
++      } else {
++        width = requestedWidth;
++        height = requestedHeight;
++      }
+     }
++    return { width, height };
++  };
++  const addSharpOutputText = async (pipeline, source, recipe) => {
++    const effect = recipe.outputTextEffect;
++    if (!effect?.enabled || !String(effect.text || "").trim()) return pipeline;
++    const metadata = await sharp(source, recipe.inputOptions || {}).metadata();
++    const { width, height } = sharpEffectDimensions(metadata, recipe);
++    const svg = buildOutputTextSvg(effect, width, height);
++    if (!svg) return pipeline;
++    return pipeline.composite([
++      {
++        input: Buffer.from(svg),
++        tile: Number(metadata.pages) > 1,
++        gravity: "northwest",
++      },
++    ]);
+   };
+   const findUsableAudioStream = (stderr) => {
+     for (const line of String(stderr || "").split(/\r?\n/)) {
+@@ -2187,7 +2313,7 @@
+     },
+     // Note: 安全模型迁移用 —— 把渲染层原来直接调的 sharp 管线挪到主进程，
+     //  渲染层改传可序列化的 recipe（见各组件）。最终 nodeIntegration:false 后渲染层不再 import sharp。
+-    sharpToFile: (_, recipe) => {
++    sharpToFile: async (_, recipe) => {
+       const {
+         inputPath,
+         inputBuffer,
+@@ -2195,20 +2321,23 @@
+         rotate,
+         extract,
+         resize,
++        outputTextEffect,
+         toFormat,
+         formatOptions,
+         outPath,
+       } = recipe;
+       sharp.cache(false);
+-      let p = sharp(inputBuffer ?? inputPath, inputOptions || {});
++      const source = inputBuffer ?? inputPath;
++      let p = sharp(source, inputOptions || {});
+       if (rotate) p = p.rotate();
+       if (extract) p = p.extract(extract);
+       if (resize) p = p.resize(resize.width, resize.height, resize.options);
++      if (outputTextEffect) p = await addSharpOutputText(p, source, recipe);
+       if (toFormat) p = p.toFormat(toFormat, formatOptions);
+       return p.toFile(outPath);
+     },
+     // 同上，但输出 Buffer（用于 crop 的二分搜质量等场景）
+-    sharpToBuffer: (_, recipe) => {
++    sharpToBuffer: async (_, recipe) => {
+       const {
+         inputPath,
+         inputBuffer,
+@@ -2216,14 +2345,17 @@
+         rotate,
+         extract,
+         resize,
++        outputTextEffect,
+         toFormat,
+         formatOptions,
+       } = recipe;
+       sharp.cache(false);
+-      let p = sharp(inputBuffer ?? inputPath, inputOptions || {});
++      const source = inputBuffer ?? inputPath;
++      let p = sharp(source, inputOptions || {});
+       if (rotate) p = p.rotate();
+       if (extract) p = p.extract(extract);
+       if (resize) p = p.resize(resize.width, resize.height, resize.options);
++      if (outputTextEffect) p = await addSharpOutputText(p, source, recipe);
+       if (toFormat) p = p.toFormat(toFormat, formatOptions);
+       return p.toBuffer();
+     },
+@@ -2564,7 +2696,11 @@
+       const resizeEdge = Math.max(0, Math.round(Number(longestEdge) || 0));
+       let workingInputPath = inputPath;
+       let aspectTempPath = null;
+-      if (opt.cropEnabled) {
++      if (
++        opt.cropEnabled ||
++        (opt.outputTextEffect?.enabled &&
++          String(opt.outputTextEffect?.text || "").trim())
++      ) {
+         const cropWidth = Math.max(0.01, Number(opt.cropAspectWidth) || 2);
+         const cropHeight = Math.max(0.01, Number(opt.cropAspectHeight) || 1);
+         const cropRatio = cropWidth / cropHeight;
+@@ -2572,22 +2708,39 @@
+         const sourceWidth = Math.max(1, Number(metadata.width) || 1);
+         const sourceHeight = Math.max(1, Number(metadata.height) || 1);
+         const edge = resizeEdge || Math.max(sourceWidth, sourceHeight);
+-        const width = Math.max(1, Math.round(cropRatio >= 1 ? edge : edge * cropRatio));
+-        const height = Math.max(1, Math.round(cropRatio >= 1 ? edge / cropRatio : edge));
++        const width = opt.cropEnabled
++          ? Math.max(1, Math.round(cropRatio >= 1 ? edge : edge * cropRatio))
++          : sourceWidth;
++        const height = opt.cropEnabled
++          ? Math.max(1, Math.round(cropRatio >= 1 ? edge / cropRatio : edge))
++          : sourceHeight;
+         aspectTempPath = path.join(
+           app2.getPath("temp"),
+           `xpic_aspect_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`,
+         );
+-        await sharp(inputPath, { limitInputPixels: false })
+-          .rotate()
+-          .resize(width, height, {
+-            fit: opt.cropMode === "cover" ? "cover" : "contain",
+-            position: "centre",
+-            withoutEnlargement: false,
+-            background: { r: 0, g: 0, b: 0, alpha: 0 },
+-          })
+-          .png()
+-          .toFile(aspectTempPath);
++        const resize = opt.cropEnabled
++          ? {
++              width,
++              height,
++              options: {
++                fit: opt.cropMode === "cover" ? "cover" : "contain",
++                position: "centre",
++                withoutEnlargement: false,
++                background: { r: 0, g: 0, b: 0, alpha: 0 },
++              },
++            }
++          : null;
++        let pipeline = sharp(inputPath, { limitInputPixels: false }).rotate();
++        if (resize) {
++          pipeline = pipeline.resize(resize.width, resize.height, resize.options);
++        }
++        pipeline = await addSharpOutputText(pipeline, inputPath, {
++          inputOptions: { limitInputPixels: false },
++          rotate: true,
++          resize,
++          outputTextEffect: opt.outputTextEffect,
++        });
++        await pipeline.png().toFile(aspectTempPath);
+         workingInputPath = aspectTempPath;
+       }
+       const magickResizeArgs = resizeEdge
+@@ -2909,6 +3062,8 @@
+         cropAspectWidth = 2,
+         cropAspectHeight = 1,
+         cropMode = "contain",
++        outputTextEffect = null,
++        motionEffect = null,
+         jobId,
+       } = opt;
+       const cwd = binDir();
+@@ -2969,6 +3124,145 @@
+           `pad=w='max(2,ceil(max(iw,ih*${ratio})/2)*2)':h='max(2,ceil(max(ih,iw/${ratio})/2)*2)':x='(ow-iw)/2':y='(oh-ih)/2':color=0x00000000`,
+         ];
+       })();
++      const hasOutputText =
++        outputTextEffect?.enabled &&
++        Boolean(String(outputTextEffect?.text || "").trim());
++      const hasMotion = Boolean(motionEffect?.enabled);
++      const generatedTextOverlays = new Map();
++      const effectCanvasDimensions = (media, finalLongest = 0, forceEven = false) => {
++        const sourceWidth = Math.max(2, Math.round(Number(media?.width) || 2));
++        const sourceHeight = Math.max(2, Math.round(Number(media?.height) || 2));
++        let width = sourceWidth;
++        let height = sourceHeight;
++        if (cropEnabled) {
++          if (cropMode === "cover") {
++            width = Math.min(sourceWidth, sourceHeight * cropRatio);
++            height = width / cropRatio;
++          } else {
++            const sourceLongest = Math.max(sourceWidth, sourceHeight);
++            if (cropRatio >= 1) {
++              width = sourceLongest;
++              height = sourceLongest / cropRatio;
++            } else {
++              height = sourceLongest;
++              width = sourceLongest * cropRatio;
++            }
++          }
++        }
++        if (Number(finalLongest) > 0) {
++          const ratio = Number(finalLongest) / Math.max(width, height);
++          width *= ratio;
++          height *= ratio;
++        }
++        width = Math.max(2, Math.round(width));
++        height = Math.max(2, Math.round(height));
++        if (forceEven) {
++          width = Math.max(2, Math.trunc(width / 2) * 2);
++          height = Math.max(2, Math.trunc(height / 2) * 2);
++        }
++        return { width, height };
++      };
++      const motionAnchor = (name, customX, customY) => {
++        const anchors = {
++          "top-left": [0, 0],
++          top: [0.5, 0],
++          "top-right": [1, 0],
++          left: [0, 0.5],
++          center: [0.5, 0.5],
++          right: [1, 0.5],
++          "bottom-left": [0, 1],
++          bottom: [0.5, 1],
++          "bottom-right": [1, 1],
++        };
++        if (name === "custom") {
++          return [
++            clampNumber(customX, 0, 100, 50) / 100,
++            clampNumber(customY, 0, 100, 50) / 100,
++          ];
++        }
++        return anchors[name] || anchors.center;
++      };
++      const motionProgressExpression = (duration) => {
++        const p = `min(max(t/${Math.max(0.001, Number(duration) || 1).toFixed(6)},0),1)`;
++        if (motionEffect?.interpolation === "ease-in") return `((${p})*(${p})*(${p}))`;
++        if (motionEffect?.interpolation === "ease-out") {
++          return `(1-(1-(${p}))*(1-(${p}))*(1-(${p})))`;
++        }
++        if (motionEffect?.interpolation === "bezier-custom") {
++          const c1 = clampNumber(motionEffect?.bezierY1, 0, 1, 0.25).toFixed(6);
++          const c2 = clampNumber(motionEffect?.bezierY2, 0, 1, 0.75).toFixed(6);
++          return `(3*(1-(${p}))*(1-(${p}))*(${p})*${c1}+3*(1-(${p}))*(${p})*(${p})*${c2}+(${p})*(${p})*(${p}))`;
++        }
++        if (motionEffect?.interpolation === "bezier") {
++          return `((${p})*(${p})*(3-2*(${p})))`;
++        }
++        return p;
++      };
++      const motionFiltersFor = (media, dimensions) => {
++        if (!hasMotion) return [];
++        const duration = Math.max(0.001, Number(media?.duration) / playbackSpeed || 1);
++        const progress = motionProgressExpression(duration);
++        const startZoom = clampNumber(motionEffect?.startZoom, 1, 4, 1.15);
++        const endZoom = clampNumber(motionEffect?.endZoom, 1, 4, 1.35);
++        const zoom = `(${startZoom.toFixed(6)}+(${endZoom - startZoom})*(${progress}))`;
++        const [startX, startY] = motionAnchor(
++          motionEffect?.startPosition,
++          motionEffect?.startX,
++          motionEffect?.startY,
++        );
++        const [endX, endY] = motionAnchor(
++          motionEffect?.endPosition,
++          motionEffect?.endX,
++          motionEffect?.endY,
++        );
++        const anchorX = `(${startX.toFixed(6)}+(${endX - startX})*(${progress}))`;
++        const anchorY = `(${startY.toFixed(6)}+(${endY - startY})*(${progress}))`;
++        return [
++          `scale=w='max(${dimensions.width},trunc((${dimensions.width}*${zoom})/2)*2)':h='max(${dimensions.height},trunc((${dimensions.height}*${zoom})/2)*2)':eval=frame:flags=lanczos`,
++          `crop=${dimensions.width}:${dimensions.height}:x='max(0,(iw-ow)*${anchorX})':y='max(0,(ih-oh)*${anchorY})'`,
++          "setsar=1",
++        ];
++      };
++      const ensureTextOverlay = async (dimensions) => {
++        if (!hasOutputText) return null;
++        const key = `${dimensions.width}x${dimensions.height}`;
++        if (generatedTextOverlays.has(key)) return generatedTextOverlays.get(key);
++        const svg = buildOutputTextSvg(
++          outputTextEffect,
++          dimensions.width,
++          dimensions.height,
++        );
++        if (!svg) return null;
++        const overlayPath = path.join(
++          app2.getPath("temp"),
++          `xpic_text_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${key}.png`,
++        );
++        await sharp(Buffer.from(svg)).png().toFile(overlayPath);
++        trackMediaTemp(jobId, overlayPath);
++        generatedTextOverlays.set(key, overlayPath);
++        return overlayPath;
++      };
++      const escapeMoviePath = (filePath) =>
++        String(filePath).replaceAll("\\", "\\\\").replaceAll("'", "\\'").replaceAll(":", "\\:");
++      const buildOutputFilter = async (
++        filters,
++        media,
++        finalLongest = 0,
++        forceEven = false,
++        paletteColors = 0,
++      ) => {
++        const dimensions = effectCanvasDimensions(media, finalLongest, forceEven);
++        const effectFilters = [...filters, ...motionFiltersFor(media, dimensions)];
++        const overlayPath = await ensureTextOverlay(dimensions);
++        const base = effectFilters.length ? effectFilters.join(",") : "null";
++        if (paletteColors > 0) {
++          const palette = `split[s0][s1];[s0]palettegen=max_colors=${paletteColors}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`;
++          if (!overlayPath) return `${base},${palette}`;
++          return `movie='${escapeMoviePath(overlayPath)}',format=rgba[text];[in]${base}[base];[base][text]overlay=0:0:eof_action=repeat:shortest=0:format=auto[effected];[effected]${palette}`;
++        }
++        if (!overlayPath) return effectFilters.length ? base : "";
++        return `movie='${escapeMoviePath(overlayPath)}',format=rgba[text];[in]${base}[base];[base][text]overlay=0:0:eof_action=repeat:shortest=0:format=auto[out]`;
++      };
+       const animationFilters = [...speedVideoFilters];
+       if (!preparedInput && !preserveSourceTiming) {
+         animationFilters.push(`fps=${Math.max(1, Number(fps) || 10)}`);
+@@ -3136,9 +3430,13 @@
+             } else if (profile.pixelFormat.includes("420")) {
+               filters.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+             }
+-            const videoFilter = filters.length
+-              ? ["-vf", filters.join(",")]
+-              : [];
++            const outputFilter = await buildOutputFilter(
++              filters,
++              media,
++              requestedScale,
++              !requestedScale && profile.pixelFormat.includes("420"),
++            );
++            const videoFilter = outputFilter ? ["-vf", outputFilter] : [];
+             const video = [
+               "-hide_banner",
+               "-y",
+@@ -3266,7 +3564,13 @@
+         } else if (profile.pixelFormat.includes("420")) {
+           filters.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+         }
+-        const videoFilter = filters.length ? ["-vf", filters.join(",")] : [];
++        const outputFilter = await buildOutputFilter(
++          filters,
++          media,
++          requestedScale,
++          !requestedScale && profile.pixelFormat.includes("420"),
++        );
++        const videoFilter = outputFilter ? ["-vf", outputFilter] : [];
+         const args = [
+           "-hide_banner",
+           "-y",
+@@ -3373,7 +3677,13 @@
+           if (currentScale !== sourceLongest || !preparedInput) {
+             targetFilters.push(longestEdgeFilter(currentScale));
+           }
+-          const targetFilter = targetFilters.join(",");
++          const targetFilter = await buildOutputFilter(
++            targetFilters,
++            media,
++            currentScale,
++            false,
++            toFormat === "gif" ? tuning : 0,
++          );
+           let args;
+           if (toFormat === "webp") {
+             args = [
+@@ -3404,7 +3714,7 @@
+               "-i",
+               inputPath,
+               "-vf",
+-              `${targetFilter ? `${targetFilter},` : ""}split[s0][s1];[s0]palettegen=max_colors=${tuning}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
++              targetFilter,
+               "-loop",
+               String(loop ?? 0),
+               candidate,
+@@ -3531,9 +3841,9 @@
+           safeUnlink(fallbackPath);
+         }
+       };
+-      return new Promise((resolve, reject) => {
++      const conversion = new Promise((resolve, reject) => {
+         ensureExecPerm(cwd)
+-          .then(() => {
++          .then(async () => {
+             if (
+               Number(targetFileSizeKb) > 0 &&
+               ["webp", "gif", "apng"].includes(toFormat)
+@@ -3542,6 +3852,17 @@
+             }
+             if (toFormat === "webp") {
+               const q = { 2: 100, 1: 80, 0: 50 }[quality];
++              const media =
++                hasOutputText || hasMotion
++                  ? await probeMediaInfo(ffmpeg, inputPath, jobId)
++                  : null;
++              const outputFilter = media
++                ? await buildOutputFilter(
++                    animationFilters,
++                    media,
++                    preparedInput ? 0 : requestedLongestEdge,
++                  )
++                : animationFilters.join(",");
+               return runMediaProcess(
+                 ffmpeg,
+                 [
+@@ -3549,7 +3870,7 @@
+                   "-y",
+                   "-i",
+                   inputPath,
+-                  ...animationFilterArgs,
++                  ...(outputFilter ? ["-vf", outputFilter] : []),
+                   "-c:v",
+                   "libwebp",
+                   "-lossless",
+@@ -3572,6 +3893,19 @@
+               const q = allowGifColorReduction
+                 ? ({ 2: 256, 1: 128, 0: 64 }[quality] ?? 128)
+                 : 256;
++              const media =
++                hasOutputText || hasMotion
++                  ? await probeMediaInfo(ffmpeg, inputPath, jobId)
++                  : null;
++              const outputFilter = media
++                ? await buildOutputFilter(
++                    animationFilters,
++                    media,
++                    preparedInput ? 0 : requestedLongestEdge,
++                    false,
++                    q,
++                  )
++                : `${animationFilters.length ? `${animationFilters.join(",")},` : ""}split[s0][s1];[s0]palettegen=max_colors=${q}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`;
+               return runMediaProcess(
+                 ffmpeg,
+                 [
+@@ -3580,7 +3914,7 @@
+                   "-i",
+                   inputPath,
+                   "-vf",
+-                  `${animationFilters.length ? `${animationFilters.join(",")},` : ""}split[s0][s1];[s0]palettegen=max_colors=${q}[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
++                  outputFilter,
+                   "-loop",
+                   String(loop ?? 0),
+                   outPath,
+@@ -3589,6 +3923,17 @@
+               ).then(() => resolve(true));
+             }
+             if (toFormat === "apng") {
++              const media =
++                hasOutputText || hasMotion
++                  ? await probeMediaInfo(ffmpeg, inputPath, jobId)
++                  : null;
++              const outputFilter = media
++                ? await buildOutputFilter(
++                    animationFilters,
++                    media,
++                    preparedInput ? 0 : requestedLongestEdge,
++                  )
++                : animationFilters.join(",");
+               return runMediaProcess(
+                 ffmpeg,
+                 [
+@@ -3596,7 +3941,7 @@
+                   "-y",
+                   "-i",
+                   inputPath,
+-                  ...animationFilterArgs,
++                  ...(outputFilter ? ["-vf", outputFilter] : []),
+                   "-plays",
+                   String(loop ?? 0),
+                   "-compression_level",
+@@ -3620,6 +3965,18 @@
+             }
+             const crf = { 0: 18, 1: 30, 2: 40 }[quality];
+             const tempPath = vtemp(path.extname(outPath));
++            const media =
++              hasOutputText || hasMotion
++                ? await probeMediaInfo(ffmpeg, inputPath, jobId)
++                : null;
++            const fallbackFilter = media
++              ? await buildOutputFilter(
++                  [...speedVideoFilters, ...aspectCropFilters],
++                  media,
++                  requestedLongestEdge,
++                  true,
++                )
++              : "";
+             return runMediaProcess(
+               ffmpeg,
+               [
+@@ -3627,6 +3984,7 @@
+                 "-y",
+                 "-i",
+                 inputPath,
++                ...(fallbackFilter ? ["-vf", fallbackFilter] : []),
+                 "-c:v",
+                 "libx264",
+                 "-tag:v",
+@@ -3647,6 +4005,11 @@
+           })
+           .catch((e) => reject(e));
+       });
++      return conversion.finally(() => {
++        for (const overlayPath of generatedTextOverlays.values()) {
++          safeUnlink(overlayPath);
++        }
++      });
+     },
+     vGetFileInfo: (_, filePath) => {
+       const cwd = binDir();
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -22801,6 +22801,44 @@
+   resumeEditing: resumeEditing$1,
+   resetSession: resetSession$1,
+ } = sessionSlice.actions;
++const OUTPUT_TEXT_EFFECT_DEFAULTS = {
++  outputTextEnabled: false,
++  outputText: "",
++  outputTextFontFamily: "Helvetica Neue",
++  outputTextFontWeight: 800,
++  outputTextFontSize: 8.5,
++  outputTextLineHeight: 1.12,
++  outputTextPositionX: 50,
++  outputTextPositionY: 84,
++  outputTextAlignment: "center",
++  outputTextGradientPreset: "beyond",
++  outputTextColorA: "#FF8A1F",
++  outputTextColorB: "#D61CFF",
++  outputTextGradientAngle: 90,
++  outputTextShadow: true,
++  outputTextShadowColor: "#000000",
++  outputTextShadowOpacity: 60,
++  outputTextShadowBlur: 1.2,
++  outputTextShadowX: 0.35,
++  outputTextShadowY: 0.6,
++  outputTextOutline: false,
++  outputTextOutlineColor: "#000000",
++  outputTextOutlineWidth: 0.18,
++};
++const OUTPUT_MOTION_EFFECT_DEFAULTS = {
++  motionEnabled: false,
++  motionStartPosition: "top-left",
++  motionEndPosition: "bottom-right",
++  motionStartX: 0,
++  motionStartY: 0,
++  motionEndX: 100,
++  motionEndY: 100,
++  motionStartZoom: 1.15,
++  motionEndZoom: 1.35,
++  motionInterpolation: "linear",
++  motionBezierY1: 0.25,
++  motionBezierY2: 0.75,
++};
+ const convertSlice = createConfigSlice({
+   name: "convert",
+   initialConfig: {
+@@ -22820,6 +22858,8 @@
+     cropMode: "contain",
+     cropCustomWidth: 2,
+     cropCustomHeight: 1,
++    ...OUTPUT_TEXT_EFFECT_DEFAULTS,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const compressSlice = createConfigSlice({
+@@ -22833,6 +22873,8 @@
+     cropMode: "contain",
+     cropCustomWidth: 2,
+     cropCustomHeight: 1,
++    ...OUTPUT_TEXT_EFFECT_DEFAULTS,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const cropSlice = createConfigSlice({
+@@ -22851,6 +22893,8 @@
+     cropY: 0,
+     cropWidth: 0,
+     cropHeight: 0,
++    ...OUTPUT_TEXT_EFFECT_DEFAULTS,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const mergeSlice = createConfigSlice({
+@@ -22872,6 +22916,8 @@
+     cropMode: "contain",
+     cropCustomWidth: 2,
+     cropCustomHeight: 1,
++    ...OUTPUT_TEXT_EFFECT_DEFAULTS,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const v2ImageSlice = createConfigSlice({
+@@ -22892,6 +22938,8 @@
+     cropMode: "contain",
+     cropCustomWidth: 2,
+     cropCustomHeight: 1,
++    ...OUTPUT_TEXT_EFFECT_DEFAULTS,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const vConvertSlice = createConfigSlice({
+@@ -22908,6 +22956,8 @@
+     cropMode: "contain",
+     cropCustomWidth: 2,
+     cropCustomHeight: 1,
++    ...OUTPUT_TEXT_EFFECT_DEFAULTS,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const vCompressSlice = createConfigSlice({
+@@ -22922,6 +22972,8 @@
+     cropMode: "contain",
+     cropCustomWidth: 2,
+     cropCustomHeight: 1,
++    ...OUTPUT_TEXT_EFFECT_DEFAULTS,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const youtubeSlice = createConfigSlice({
+@@ -22950,6 +23002,8 @@
+     cropMode: "contain",
+     cropCustomWidth: 2,
+     cropCustomHeight: 1,
++    ...OUTPUT_TEXT_EFFECT_DEFAULTS,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const collageSlice = createConfigSlice({
+@@ -22982,24 +23036,30 @@
+     backgroundPatternOpacity: 18,
+     backgroundPatternSize: 32,
+     textOverlay: "",
+-    textColorA: "#FFFFFF",
+-    textColorB: "#FFD6F6",
+-    textGradientPreset: "custom",
++    textColorA: "#FF8A1F",
++    textColorB: "#D61CFF",
++    textGradientPreset: "beyond",
++    textGradientAngle: 90,
+     textMatchBackground: false,
+     textPattern: "none",
+     textPatternColor: "#FFFFFF",
+     textPatternOpacity: 30,
+     textPatternSize: 18,
+     textFontFamily: "Helvetica Neue",
++    textFontWeight: 800,
+     textScale: 100,
+     textOffsetX: 0,
+     textOffsetY: 0,
+-    textShadow: false,
++    textShadow: true,
+     textShadowColor: "#000000",
+     textShadowOpacity: 55,
+     textShadowBlur: 12,
+     textShadowX: 4,
+     textShadowY: 6,
++    textOutline: false,
++    textOutlineColor: "#000000",
++    textOutlineWidth: 0.18,
++    ...OUTPUT_MOTION_EFFECT_DEFAULTS,
+   },
+ });
+ const globalSlice = createSlice({
+@@ -23569,6 +23629,38 @@
+   "flow.overwriteSource": "覆盖源媒体",
+   "flow.overwriteSourceHint": "仅在同格式处理成功后替换每个源文件。",
+   "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
++  "flow.outputTextEffects": "专业文字叠加",
++  "flow.outputTextEffectsDesc": "为批次中的每个输出应用相同的高分辨率文字样式。",
++  "flow.outputText": "叠加文字",
++  "flow.outputTextPlaceholder": "输入标题；可使用多行",
++  "flow.outputTextFont": "系统字体",
++  "flow.outputTextWeight": "字重",
++  "flow.outputTextSize": "字号（画布高度 %）",
++  "flow.outputTextLineHeight": "行高",
++  "flow.outputTextAlignment": "对齐",
++  "flow.outputTextLeft": "左对齐",
++  "flow.outputTextCenter": "居中",
++  "flow.outputTextRight": "右对齐",
++  "flow.outputTextPositionX": "水平位置 (%)",
++  "flow.outputTextPositionY": "垂直位置 (%)",
++  "flow.outputTextGradient": "文字渐变",
++  "flow.outputTextColorA": "渐变起始颜色",
++  "flow.outputTextColorB": "渐变结束颜色",
++  "flow.outputTextGradientAngle": "渐变角度",
++  "flow.outputTextShadow": "专业投影",
++  "flow.outputTextOutline": "文字描边",
++  "flow.outputTextOutlineColor": "描边颜色",
++  "flow.outputTextOutlineWidth": "描边宽度",
++  "flow.motionEffect": "平滑平移与缩放",
++  "flow.motionEffectDesc": "用于动图和视频输出；静态图仍使用专业文字效果。",
++  "flow.motionStart": "起始位置",
++  "flow.motionEnd": "结束位置",
++  "flow.motionStartZoom": "起始缩放",
++  "flow.motionEndZoom": "结束缩放",
++  "flow.motionInterpolation": "插值",
++  "flow.motionBezierY1": "贝塞尔控制点 1",
++  "flow.motionBezierY2": "贝塞尔控制点 2",
++  "flow.motionNeedsZoom": "平移需要大于 1× 的缩放，以便画布内有可移动空间。",
+   "flow.collageLayout": "布局",
+   "flow.collageAspect": "画布比例",
+   "flow.collageTargetWidth": "目标宽度(px)",
+@@ -24102,6 +24194,41 @@
+     "Replaces each input only after a successful same-format encode.",
+   "flow.overwriteSourceUnavailable":
+     "Overwrite source requires the output format to match every input.",
++  "flow.outputTextEffects": "Professional text overlay",
++  "flow.outputTextEffectsDesc":
++    "Applies the same high-resolution typography treatment to every output in the batch.",
++  "flow.outputText": "Overlay text",
++  "flow.outputTextPlaceholder": "Enter a headline; multiple lines are supported",
++  "flow.outputTextFont": "System font",
++  "flow.outputTextWeight": "Font weight",
++  "flow.outputTextSize": "Font size (% of canvas height)",
++  "flow.outputTextLineHeight": "Line height",
++  "flow.outputTextAlignment": "Alignment",
++  "flow.outputTextLeft": "Left",
++  "flow.outputTextCenter": "Center",
++  "flow.outputTextRight": "Right",
++  "flow.outputTextPositionX": "Horizontal position (%)",
++  "flow.outputTextPositionY": "Vertical position (%)",
++  "flow.outputTextGradient": "Text gradient",
++  "flow.outputTextColorA": "Gradient start",
++  "flow.outputTextColorB": "Gradient end",
++  "flow.outputTextGradientAngle": "Gradient angle",
++  "flow.outputTextShadow": "Professional drop shadow",
++  "flow.outputTextOutline": "Text outline",
++  "flow.outputTextOutlineColor": "Outline color",
++  "flow.outputTextOutlineWidth": "Outline width",
++  "flow.motionEffect": "Smooth pan & zoom",
++  "flow.motionEffectDesc":
++    "Applied to animated-image and video outputs; still images retain the typography treatment.",
++  "flow.motionStart": "Start position",
++  "flow.motionEnd": "End position",
++  "flow.motionStartZoom": "Start zoom",
++  "flow.motionEndZoom": "End zoom",
++  "flow.motionInterpolation": "Interpolation",
++  "flow.motionBezierY1": "Bézier control 1",
++  "flow.motionBezierY2": "Bézier control 2",
++  "flow.motionNeedsZoom":
++    "Pan needs zoom above 1× so there is room to move inside the canvas.",
+   "flow.collageLayout": "Layout",
+   "flow.collageAspect": "Canvas aspect",
+   "flow.collageTargetWidth": "Target width (px)",
+@@ -40094,6 +40221,496 @@
+       ],
+     }),
+ );
++const OUTPUT_TEXT_GRADIENT_PRESETS = [
++  { label: "Beyond", value: "beyond", colors: ["#FF8A1F", "#D61CFF"] },
++  { label: "Sunset", value: "sunset", colors: ["#FE2C2B", "#FF9B60"] },
++  {
++    label: "Electric Violet",
++    value: "electric-violet",
++    colors: ["#E50FC8", "#542AC6"],
++  },
++  { label: "Ocean", value: "ocean", colors: ["#00C6FF", "#0072FF"] },
++  { label: "Aurora", value: "aurora", colors: ["#00F5A0", "#00D9F5"] },
++  { label: "Golden Hour", value: "gold", colors: ["#F7971E", "#FFD200"] },
++  { label: "Ice", value: "ice", colors: ["#FFFFFF", "#A7C7FF"] },
++  { label: "Monochrome", value: "mono", colors: ["#FFFFFF", "#9B9B9B"] },
++];
++const outputTextEffectFor = (config) => ({
++  enabled:
++    Boolean(config.outputTextEnabled) &&
++    Boolean(String(config.outputText || "").trim()),
++  text: String(config.outputText || ""),
++  fontFamily: config.outputTextFontFamily || "Helvetica Neue",
++  fontWeight: Number(config.outputTextFontWeight) || 800,
++  fontSize: Number(config.outputTextFontSize) || 8.5,
++  lineHeight: Number(config.outputTextLineHeight) || 1.12,
++  positionX: Number(config.outputTextPositionX ?? 50),
++  positionY: Number(config.outputTextPositionY ?? 84),
++  alignment: config.outputTextAlignment || "center",
++  colorA: config.outputTextColorA || "#FF8A1F",
++  colorB: config.outputTextColorB || "#D61CFF",
++  gradientAngle: Number(config.outputTextGradientAngle ?? 90),
++  shadow: config.outputTextShadow !== false,
++  shadowColor: config.outputTextShadowColor || "#000000",
++  shadowOpacity: Number(config.outputTextShadowOpacity ?? 60),
++  shadowBlur: Number(config.outputTextShadowBlur ?? 1.2),
++  shadowX: Number(config.outputTextShadowX ?? 0.35),
++  shadowY: Number(config.outputTextShadowY ?? 0.6),
++  outline: Boolean(config.outputTextOutline),
++  outlineColor: config.outputTextOutlineColor || "#000000",
++  outlineWidth: Number(config.outputTextOutlineWidth ?? 0.18),
++});
++const motionEffectFor = (config) => ({
++  enabled: Boolean(config.motionEnabled),
++  startPosition: config.motionStartPosition || "top-left",
++  endPosition: config.motionEndPosition || "bottom-right",
++  startX: Number(config.motionStartX ?? 0),
++  startY: Number(config.motionStartY ?? 0),
++  endX: Number(config.motionEndX ?? 100),
++  endY: Number(config.motionEndY ?? 100),
++  startZoom: Number(config.motionStartZoom) || 1.15,
++  endZoom: Number(config.motionEndZoom) || 1.35,
++  interpolation: config.motionInterpolation || "linear",
++  bezierY1: Number(config.motionBezierY1 ?? 0.25),
++  bezierY2: Number(config.motionBezierY2 ?? 0.75),
++});
++const LabeledTextArea = reactExports.memo(
++  ({ label, value, placeholder, onChange }) =>
++    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++      className: "x-cfg-field",
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++          className: "x-cfg-label x-cfg-label-block",
++          children: label,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(Textarea, {
++          value,
++          rows: 3,
++          placeholder,
++          onChange: (event) => onChange(event.target.value),
++          style: { resize: "vertical", minHeight: 72 },
++        }),
++      ],
++    }),
++);
++const OutputTextEffectsControls = reactExports.memo(
++  ({ config, update, t: t2 }) => {
++    const effect = outputTextEffectFor(config);
++    const previewText = String(config.outputText || "").trim() || "Beyond Media Suite";
++    const updateGradientPreset = (value) => {
++      const preset = OUTPUT_TEXT_GRADIENT_PRESETS.find(
++        (item) => item.value === value,
++      );
++      update({
++        outputTextGradientPreset: value,
++        ...(preset
++          ? {
++              outputTextColorA: preset.colors[0],
++              outputTextColorB: preset.colors[1],
++            }
++          : {}),
++      });
++    };
++    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
++      jsxRuntimeExports.Fragment,
++      {
++        children: [
++          /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++            label: t2("flow.outputTextEffects"),
++            desc: t2("flow.outputTextEffectsDesc"),
++            checked: Boolean(config.outputTextEnabled),
++            onChange: (outputTextEnabled) => update({ outputTextEnabled }),
++          }),
++          config.outputTextEnabled
++            ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                jsxRuntimeExports.Fragment,
++                {
++                  children: [
++                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                      style: {
++                        border: "1px solid var(--border)",
++                        borderRadius: 12,
++                        padding: "18px 12px",
++                        background:
++                          "linear-gradient(135deg, #09090D 0%, #191520 100%)",
++                        textAlign: effect.alignment,
++                        overflow: "hidden",
++                      },
++                      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                        style: {
++                          whiteSpace: "pre-wrap",
++                          overflowWrap: "anywhere",
++                          fontFamily: effect.fontFamily,
++                          fontWeight: effect.fontWeight,
++                          fontSize: 22,
++                          lineHeight: effect.lineHeight,
++                          background: `linear-gradient(${effect.gradientAngle}deg, ${effect.colorA}, ${effect.colorB})`,
++                          WebkitBackgroundClip: "text",
++                          backgroundClip: "text",
++                          color: "transparent",
++                          filter: effect.shadow
++                            ? "drop-shadow(0 3px 5px rgba(0,0,0,.65))"
++                            : "none",
++                        },
++                        children: previewText,
++                      }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledTextArea, {
++                      label: t2("flow.outputText"),
++                      value: config.outputText || "",
++                      placeholder: t2("flow.outputTextPlaceholder"),
++                      onChange: (outputText) => update({ outputText }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(SystemFontField, {
++                      label: t2("flow.outputTextFont"),
++                      value:
++                        config.outputTextFontFamily || "Helvetica Neue",
++                      onChange: (outputTextFontFamily) =>
++                        update({ outputTextFontFamily }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                      label: t2("flow.outputTextWeight"),
++                      value: String(config.outputTextFontWeight || 800),
++                      options: [
++                        { label: "Semibold · 600", value: "600" },
++                        { label: "Bold · 700", value: "700" },
++                        { label: "Extra Bold · 800", value: "800" },
++                        { label: "Black · 900", value: "900" },
++                      ],
++                      onChange: (value) =>
++                        update({ outputTextFontWeight: Number(value) }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                      label: t2("flow.outputTextGradient"),
++                      value: config.outputTextGradientPreset || "beyond",
++                      options: [
++                        ...OUTPUT_TEXT_GRADIENT_PRESETS.map(
++                          ({ label, value }) => ({ label, value }),
++                        ),
++                        { label: "Custom", value: "custom" },
++                      ],
++                      onChange: updateGradientPreset,
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                      label: t2("flow.outputTextColorA"),
++                      value: effect.colorA,
++                      fallback: "#FF8A1F",
++                      onChange: (outputTextColorA) =>
++                        update({
++                          outputTextColorA,
++                          outputTextGradientPreset: "custom",
++                        }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(ColorField, {
++                      label: t2("flow.outputTextColorB"),
++                      value: effect.colorB,
++                      fallback: "#D61CFF",
++                      onChange: (outputTextColorB) =>
++                        update({
++                          outputTextColorB,
++                          outputTextGradientPreset: "custom",
++                        }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                      label: t2("flow.outputTextGradientAngle"),
++                      value: effect.gradientAngle,
++                      min: 0,
++                      max: 360,
++                      onChange: (outputTextGradientAngle) =>
++                        update({ outputTextGradientAngle }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                      label: t2("flow.outputTextSize"),
++                      value: effect.fontSize,
++                      min: 1,
++                      max: 40,
++                      step: 0.25,
++                      onChange: (outputTextFontSize) =>
++                        update({ outputTextFontSize }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                      label: t2("flow.outputTextLineHeight"),
++                      value: effect.lineHeight,
++                      min: 0.8,
++                      max: 2,
++                      step: 0.05,
++                      onChange: (outputTextLineHeight) =>
++                        update({ outputTextLineHeight }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(SegmentedField, {
++                      label: t2("flow.outputTextAlignment"),
++                      value: effect.alignment,
++                      options: [
++                        { label: t2("flow.outputTextLeft"), value: "left" },
++                        {
++                          label: t2("flow.outputTextCenter"),
++                          value: "center",
++                        },
++                        { label: t2("flow.outputTextRight"), value: "right" },
++                      ],
++                      onChange: (outputTextAlignment) =>
++                        update({ outputTextAlignment }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                      label: t2("flow.outputTextPositionX"),
++                      value: effect.positionX,
++                      min: -25,
++                      max: 125,
++                      onChange: (outputTextPositionX) =>
++                        update({ outputTextPositionX }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                      label: t2("flow.outputTextPositionY"),
++                      value: effect.positionY,
++                      min: -25,
++                      max: 125,
++                      onChange: (outputTextPositionY) =>
++                        update({ outputTextPositionY }),
++                    }),
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++                      label: t2("flow.outputTextShadow"),
++                      checked: effect.shadow,
++                      onChange: (outputTextShadow) =>
++                        update({ outputTextShadow }),
++                    }),
++                    effect.shadow
++                      ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                          jsxRuntimeExports.Fragment,
++                          {
++                            children: [
++                              /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                ColorField,
++                                {
++                                  label: t2("flow.collageShadowColor"),
++                                  value: effect.shadowColor,
++                                  fallback: "#000000",
++                                  onChange: (outputTextShadowColor) =>
++                                    update({ outputTextShadowColor }),
++                                },
++                              ),
++                              /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                LabeledNumber,
++                                {
++                                  label: t2("flow.collageShadowOpacity"),
++                                  value: effect.shadowOpacity,
++                                  min: 0,
++                                  max: 100,
++                                  onChange: (outputTextShadowOpacity) =>
++                                    update({ outputTextShadowOpacity }),
++                                },
++                              ),
++                              /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                LabeledNumber,
++                                {
++                                  label: t2("flow.collageShadowBlur"),
++                                  value: effect.shadowBlur,
++                                  min: 0,
++                                  max: 10,
++                                  step: 0.1,
++                                  onChange: (outputTextShadowBlur) =>
++                                    update({ outputTextShadowBlur }),
++                                },
++                              ),
++                            ],
++                          },
++                        )
++                      : null,
++                    /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++                      label: t2("flow.outputTextOutline"),
++                      checked: effect.outline,
++                      onChange: (outputTextOutline) =>
++                        update({ outputTextOutline }),
++                    }),
++                    effect.outline
++                      ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                          jsxRuntimeExports.Fragment,
++                          {
++                            children: [
++                              /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                ColorField,
++                                {
++                                  label: t2("flow.outputTextOutlineColor"),
++                                  value: effect.outlineColor,
++                                  fallback: "#000000",
++                                  onChange: (outputTextOutlineColor) =>
++                                    update({ outputTextOutlineColor }),
++                                },
++                              ),
++                              /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                LabeledNumber,
++                                {
++                                  label: t2("flow.outputTextOutlineWidth"),
++                                  value: effect.outlineWidth,
++                                  min: 0.02,
++                                  max: 2,
++                                  step: 0.02,
++                                  onChange: (outputTextOutlineWidth) =>
++                                    update({ outputTextOutlineWidth }),
++                                },
++                              ),
++                            ],
++                          },
++                        )
++                      : null,
++                  ],
++                },
++              )
++            : null,
++        ],
++      },
++    );
++  },
++);
++const MOTION_POSITION_OPTIONS = [
++  { label: "Top left", value: "top-left" },
++  { label: "Top", value: "top" },
++  { label: "Top right", value: "top-right" },
++  { label: "Left", value: "left" },
++  { label: "Center", value: "center" },
++  { label: "Right", value: "right" },
++  { label: "Bottom left", value: "bottom-left" },
++  { label: "Bottom", value: "bottom" },
++  { label: "Bottom right", value: "bottom-right" },
++  { label: "Custom", value: "custom" },
++];
++const MotionEffectsControls = reactExports.memo(({ config, update, t: t2 }) => {
++  const motion = motionEffectFor(config);
++  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++    children: [
++      /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSwitch, {
++        label: t2("flow.motionEffect"),
++        desc: t2("flow.motionEffectDesc"),
++        checked: motion.enabled,
++        onChange: (motionEnabled) => update({ motionEnabled }),
++      }),
++      motion.enabled
++        ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, {
++            children: [
++              /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                label: t2("flow.motionStart"),
++                value: motion.startPosition,
++                options: MOTION_POSITION_OPTIONS,
++                onChange: (motionStartPosition) =>
++                  update({ motionStartPosition }),
++              }),
++              motion.startPosition === "custom"
++                ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                    jsxRuntimeExports.Fragment,
++                    {
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: `${t2("flow.motionStart")} X (%)`,
++                          value: motion.startX,
++                          min: 0,
++                          max: 100,
++                          onChange: (motionStartX) => update({ motionStartX }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: `${t2("flow.motionStart")} Y (%)`,
++                          value: motion.startY,
++                          min: 0,
++                          max: 100,
++                          onChange: (motionStartY) => update({ motionStartY }),
++                        }),
++                      ],
++                    },
++                  )
++                : null,
++              /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                label: t2("flow.motionEnd"),
++                value: motion.endPosition,
++                options: MOTION_POSITION_OPTIONS,
++                onChange: (motionEndPosition) => update({ motionEndPosition }),
++              }),
++              motion.endPosition === "custom"
++                ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                    jsxRuntimeExports.Fragment,
++                    {
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: `${t2("flow.motionEnd")} X (%)`,
++                          value: motion.endX,
++                          min: 0,
++                          max: 100,
++                          onChange: (motionEndX) => update({ motionEndX }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: `${t2("flow.motionEnd")} Y (%)`,
++                          value: motion.endY,
++                          min: 0,
++                          max: 100,
++                          onChange: (motionEndY) => update({ motionEndY }),
++                        }),
++                      ],
++                    },
++                  )
++                : null,
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                label: t2("flow.motionStartZoom"),
++                value: motion.startZoom,
++                min: 1,
++                max: 4,
++                step: 0.05,
++                onChange: (motionStartZoom) => update({ motionStartZoom }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                label: t2("flow.motionEndZoom"),
++                value: motion.endZoom,
++                min: 1,
++                max: 4,
++                step: 0.05,
++                onChange: (motionEndZoom) => update({ motionEndZoom }),
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
++                label: t2("flow.motionInterpolation"),
++                value: motion.interpolation,
++                options: [
++                  { label: "Linear", value: "linear" },
++                  { label: "Smooth Bézier", value: "bezier" },
++                  { label: "Ease in", value: "ease-in" },
++                  { label: "Ease out", value: "ease-out" },
++                  { label: "Custom Bézier", value: "bezier-custom" },
++                ],
++                onChange: (motionInterpolation) =>
++                  update({ motionInterpolation }),
++              }),
++              motion.interpolation === "bezier-custom"
++                ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                    jsxRuntimeExports.Fragment,
++                    {
++                      children: [
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: t2("flow.motionBezierY1"),
++                          value: motion.bezierY1,
++                          min: 0,
++                          max: 1,
++                          step: 0.01,
++                          onChange: (motionBezierY1) =>
++                            update({ motionBezierY1 }),
++                        }),
++                        /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
++                          label: t2("flow.motionBezierY2"),
++                          value: motion.bezierY2,
++                          min: 0,
++                          max: 1,
++                          step: 0.01,
++                          onChange: (motionBezierY2) =>
++                            update({ motionBezierY2 }),
++                        }),
++                      ],
++                    },
++                  )
++                : null,
++              /* @__PURE__ */ jsxRuntimeExports.jsx("p", {
++                className: "x-cfg-note",
++                children: t2("flow.motionNeedsZoom"),
++              }),
++            ],
++          })
++        : null,
++    ],
++  });
++});
+ async function writeBufferOut(buffer, item, outPath, pureName, outFormat) {
+   let destination = outPath;
+   if (outPath === item.path) {
+@@ -40275,6 +40892,16 @@
+           update,
+           t: t2,
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
+         sessionHasGif(session)
+           ? /* @__PURE__ */ jsxRuntimeExports.jsx(GifColorReductionSwitch, {
+               config,
+@@ -40318,6 +40945,9 @@
+     }
+     const resize = aspectCropResize(config, item);
+     if (recipe !== "flag" && resize) recipe = { ...recipe, resize };
++    if (recipe !== "flag") {
++      recipe = { ...recipe, outputTextEffect: outputTextEffectFor(config) };
++    }
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+     const { pureName, outPath } = await resolveOut(
+       item,
+@@ -40327,6 +40957,28 @@
+       globalConfig,
+     );
+     const outName = `${pureName}.${fmt}`;
++    const isAnimated =
++      (fmt === "webp" || fmt === "gif") && item.meta.loop >= 0;
++    if (isAnimated && config.motionEnabled) {
++      const targetKb = sourceTargetSizeFor(config);
++      await window.x("vConvert", {
++        quality: config.quality,
++        inputPath: item.path,
++        outPath,
++        toFormat: fmt,
++        fps: Number(item.meta.fps) || 10,
++        matchFps: true,
++        loop: item.meta.loop,
++        longestEdge: longestEdgeFor(config),
++        ...(targetKb > 0 ? { targetFileSizeKb: targetKb } : {}),
++        ...aspectCropRequest(config),
++        outputTextEffect: outputTextEffectFor(config),
++        motionEffect: motionEffectFor(config),
++        allowGifColorReduction: config.gifColorReduction,
++      });
++      const info = await window.x("getFileInfo", outPath);
++      return { outName, outPath, outSize: info.size };
++    }
+     if (recipe === "flag") {
+       const r22 = await window.x("convert", {
+         quality: config.quality,
+@@ -40334,6 +40986,7 @@
+         outPath,
+         longestEdge: longestEdgeFor(config),
+         ...aspectCropRequest(config),
++        outputTextEffect: outputTextEffectFor(config),
+       });
+       return { outName, outPath, outSize: r22.size };
+     }
+@@ -40420,6 +41073,16 @@
+           update,
+           t: t2,
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledSlider, {
+           label: t2("flow.quality"),
+           value: config.quality,
+@@ -40524,6 +41187,9 @@
+     }
+     const resize = aspectCropResize(config, item);
+     if (recipe !== "flag" && resize) recipe = { ...recipe, resize };
++    if (recipe !== "flag") {
++      recipe = { ...recipe, outputTextEffect: outputTextEffectFor(config) };
++    }
+     const ext = (await window.x("getFileExt", item.path))?.toLowerCase();
+     const { pureName, outPath } = await resolveOut(
+       item,
+@@ -40533,6 +41199,29 @@
+       globalConfig,
+     );
+     const outName = `${pureName}.${toFormat}`;
++    const isAnimated =
++      (fmt === "gif" || fmt === "webp" || item.meta.loop >= 0) &&
++      ["gif", "webp", "apng"].includes(toFormat);
++    if (isAnimated && config.motionEnabled) {
++      const targetKb = targetSizeFor(config, toFormat);
++      await window.x("vConvert", {
++        quality: config.quality,
++        inputPath: item.path,
++        outPath,
++        toFormat,
++        fps: Number(item.meta.fps) || 10,
++        matchFps: true,
++        loop: item.meta.loop,
++        longestEdge: longestEdgeFor(config),
++        ...(targetKb > 0 ? { targetFileSizeKb: targetKb } : {}),
++        ...aspectCropRequest(config),
++        outputTextEffect: outputTextEffectFor(config),
++        motionEffect: motionEffectFor(config),
++        allowGifColorReduction: config.gifColorReduction,
++      });
++      const info = await window.x("getFileInfo", outPath);
++      return { outName, outPath, outSize: info.size };
++    }
+     if (recipe === "flag") {
+       const r22 = await window.x("convert", {
+         quality: config.quality,
+@@ -40542,6 +41231,7 @@
+         fromFormat: fmt,
+         longestEdge: longestEdgeFor(config),
+         ...aspectCropRequest(config),
++        outputTextEffect: outputTextEffectFor(config),
+       });
+       return { outName, outPath, outSize: r22.size };
+     }
+@@ -40624,6 +41314,16 @@
+           t: t2,
+         }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
+           config,
+           update,
+           t: t2,
+@@ -40654,6 +41354,8 @@
+       fps: config.fps,
+       matchFps: config.matchFps !== false,
+       ...aspectCropRequest(config),
++      outputTextEffect: outputTextEffectFor(config),
++      motionEffect: motionEffectFor(config),
+       allowGifColorReduction: config.gifColorReduction,
+       jobId,
+     });
+@@ -40713,6 +41415,16 @@
+           update,
+           t: t2,
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
+       ],
+     }),
+   panelSub: (config, n2, t2) =>
+@@ -40739,6 +41451,8 @@
+       fps: config.fps,
+       matchFps: config.matchFps !== false,
+       ...aspectCropRequest(config),
++      outputTextEffect: outputTextEffectFor(config),
++      motionEffect: motionEffectFor(config),
+       jobId,
+     });
+     const info = await window.x("getFileInfo", outPath);
+@@ -40805,6 +41519,16 @@
+           update,
+           t: t2,
+         }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(SpeedSlider, {
+           value: config.speed,
+           onChange: (speed) => update({ speed }),
+@@ -40848,6 +41572,8 @@
+       fps: config.fps,
+       matchFps: config.matchFps !== false,
+       ...aspectCropRequest(config),
++      outputTextEffect: outputTextEffectFor(config),
++      motionEffect: motionEffectFor(config),
+       longestEdge: longestEdgeFor(config),
+       ...(toFormat === "webp" ? { loseless: config.loseless } : {}),
+       loop: config.loop,
+@@ -40879,6 +41605,7 @@
+   ...vWriteOptions,
+ ];
+ const COLLAGE_GRADIENT_PRESETS = [
++  { label: "Beyond", value: "beyond", colors: ["#FF8A1F", "#D61CFF"] },
+   { label: "Sunset", value: "sunset", colors: ["#FE2C2B", "#FF9B60"] },
+   {
+     label: "Electric Violet",
+@@ -40935,8 +41662,8 @@
+ const collageGradientColors = (config, text = false) => {
+   if (text && !config.textMatchBackground) {
+     return [
+-      normalizeHexColor(config.textColorA, "#FFFFFF"),
+-      normalizeHexColor(config.textColorB, "#FFD6F6"),
++      normalizeHexColor(config.textColorA, "#FF8A1F"),
++      normalizeHexColor(config.textColorB, "#D61CFF"),
+     ];
+   }
+   return [
+@@ -40944,11 +41671,18 @@
+     normalizeHexColor(config.backgroundColorB, "#FF9B60"),
+   ];
+ };
+-const collageGradientAngle = (config) =>
+-  Math.max(0, Math.min(360, Number(config.gradientAngle) || 0));
++const collageGradientAngle = (config, text = false) =>
++  Math.max(
++    0,
++    Math.min(
++      360,
++      Number(text ? config.textGradientAngle : config.gradientAngle) ||
++        (text ? 90 : 0),
++    ),
++  );
+ const collageCssGradient = (config, text = false) => {
+   const [colorA, colorB] = collageGradientColors(config, text);
+-  return `linear-gradient(${collageGradientAngle(config)}deg, ${colorA}, ${colorB})`;
++  return `linear-gradient(${collageGradientAngle(config, text)}deg, ${colorA}, ${colorB})`;
+ };
+ const collageGradientVector = (angle) => {
+   const radians = (Number(angle) * Math.PI) / 180;
+@@ -40984,7 +41718,7 @@
+ };
+ const collageTextSvg = (config, width, height) => {
+   const [colorA, colorB] = collageGradientColors(config, true);
+-  const vector = collageGradientVector(collageGradientAngle(config));
++  const vector = collageGradientVector(collageGradientAngle(config, true));
+   const x =
+     width *
+     (0.5 +
+@@ -40994,7 +41728,18 @@
+     (0.5 +
+       Math.max(-125, Math.min(125, Number(config.textOffsetY) || 0)) / 100);
+   const scale = Math.max(1, Math.min(300, Number(config.textScale) || 100));
+-  const fontSize = Math.max(0.5, (height * 0.12 * scale) / 100);
++  const rows = String(config.textOverlay || "")
++    .replaceAll("\r", "")
++    .split("\n")
++    .slice(0, 8);
++  const requestedFontSize = Math.max(0.5, (height * 0.12 * scale) / 100);
++  const maxCharacters = Math.max(1, ...rows.map((row) => row.length));
++  const fontSize = Math.max(
++    0.5,
++    Math.min(requestedFontSize, (width * 0.9) / (maxCharacters * 0.56)),
++  );
++  const lineHeight = fontSize * 1.12;
++  const firstY = y - ((rows.length - 1) * lineHeight) / 2;
+   const shadowColor = normalizeHexColor(config.textShadowColor, "#000000");
+   const shadowOpacity =
+     Math.max(0, Math.min(100, Number(config.textShadowOpacity) || 0)) / 100;
+@@ -41021,9 +41766,18 @@
+   );
+   const patternOpacity =
+     Math.max(0, Math.min(100, Number(config.textPatternOpacity) || 0)) / 100;
+-  const textAttributes = `x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="${escapeSvgValue(config.textFontFamily || "Helvetica Neue")}" font-size="${fontSize}" font-weight="800"`;
+-  const escapedText = escapeSvgValue(config.textOverlay);
+-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="textGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${shadow}${pattern}${pattern ? `<clipPath id="textClip"><text ${textAttributes}>${escapedText}</text></clipPath>` : ""}</defs><text ${textAttributes} fill="url(#textGradient)"${config.textShadow ? ' filter="url(#shadow)"' : ""}>${escapedText}</text>${pattern ? `<rect width="100%" height="100%" fill="url(#textPattern)" opacity="${patternOpacity}" clip-path="url(#textClip)"/>` : ""}</svg>`;
++  const outlineColor = normalizeHexColor(config.textOutlineColor, "#000000");
++  const outlineWidth = config.textOutline
++    ? Math.max(0.25, (height * (Number(config.textOutlineWidth) || 0.18)) / 100)
++    : 0;
++  const textAttributes = `text-anchor="middle" dominant-baseline="central" font-family="${escapeSvgValue(config.textFontFamily || "Helvetica Neue")}" font-size="${fontSize}" font-weight="${Math.max(100, Math.min(900, Number(config.textFontWeight) || 800))}"${outlineWidth ? ` stroke="${outlineColor}" stroke-width="${outlineWidth}" paint-order="stroke fill" stroke-linejoin="round"` : ""}`;
++  const tspans = rows
++    .map(
++      (row, index) =>
++        `<tspan x="${x}" y="${firstY + index * lineHeight}">${escapeSvgValue(row || " ")}</tspan>`,
++    )
++    .join("");
++  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="textGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${colorA}"/><stop offset="1" stop-color="${colorB}"/></linearGradient>${shadow}${pattern}${pattern ? `<clipPath id="textClip"><text ${textAttributes}>${tspans}</text></clipPath>` : ""}</defs><text ${textAttributes} fill="url(#textGradient)"${config.textShadow ? ' filter="url(#shadow)"' : ""}>${tspans}</text>${pattern ? `<rect width="100%" height="100%" fill="url(#textPattern)" opacity="${patternOpacity}" clip-path="url(#textClip)"/>` : ""}</svg>`;
+ };
+ const collageSvgDataUrl = (svg) =>
+   `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+@@ -41579,6 +42333,21 @@
+                               onChange: (value) =>
+                                 update({ textFontFamily: value }),
+                             },
++                          ),
++                          control(
++                            t2("flow.outputTextWeight"),
++                            Math.max(
++                              100,
++                              Math.min(
++                                900,
++                                Number(config.textFontWeight) || 800,
++                              ),
++                            ),
++                            100,
++                            900,
++                            (value) => update({ textFontWeight: value }),
++                            "",
++                            100,
+                           ),
+                           /* @__PURE__ */ jsxRuntimeExports.jsx(
+                             LabeledSwitch,
+@@ -41669,6 +42438,20 @@
+                                 },
+                               )
+                             : null,
++                          control(
++                            t2("flow.outputTextGradientAngle"),
++                            Math.max(
++                              0,
++                              Math.min(
++                                360,
++                                Number(config.textGradientAngle) || 90,
++                              ),
++                            ),
++                            0,
++                            360,
++                            (value) => update({ textGradientAngle: value }),
++                            "°",
++                          ),
+                           /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
+                             label: t2("flow.collagePattern"),
+                             value: config.textPattern || "none",
+@@ -41796,6 +42579,52 @@
+                                       100,
+                                       (value) =>
+                                         update({ textShadowY: value }),
++                                    ),
++                                  ],
++                                },
++                              )
++                            : null,
++                          /* @__PURE__ */ jsxRuntimeExports.jsx(
++                            LabeledSwitch,
++                            {
++                              label: t2("flow.outputTextOutline"),
++                              checked: Boolean(config.textOutline),
++                              onChange: (value) =>
++                                update({ textOutline: value }),
++                            },
++                          ),
++                          config.textOutline
++                            ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                                jsxRuntimeExports.Fragment,
++                                {
++                                  children: [
++                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
++                                      ColorField,
++                                      {
++                                        label: t2(
++                                          "flow.outputTextOutlineColor",
++                                        ),
++                                        value:
++                                          config.textOutlineColor ||
++                                          "#000000",
++                                        fallback: "#000000",
++                                        onChange: (value) =>
++                                          update({ textOutlineColor: value }),
++                                      },
++                                    ),
++                                    control(
++                                      t2("flow.outputTextOutlineWidth"),
++                                      Math.max(
++                                        0.05,
++                                        Number(config.textOutlineWidth) ||
++                                          0.18,
++                                      ),
++                                      0.05,
++                                      2,
++                                      (value) =>
++                                        update({ textOutlineWidth: value }),
++                                      "%",
++                                      0.05,
+                                     ),
+                                   ],
+                                 },
+@@ -42595,6 +43424,10 @@
+                   onChange: (speed) => update({ speed }),
+                   t: t2,
+                 }),
++                /* @__PURE__ */ jsxRuntimeExports.jsx(
++                  MotionEffectsControls,
++                  { config, update, t: t2 },
++                ),
+                 /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledNumber, {
+                   label: t2("flow.collageDuration"),
+                   value: config.duration || 0,
+@@ -42776,6 +43609,7 @@
+           quality: config.animationQuality,
+           loop: config.loop || 0,
+           targetFileSizeKb: targetKb,
++          motionEffect: motionEffectFor(config),
+           allowGifColorReduction: config.gifColorReduction,
+           jobId,
+         });
+@@ -42988,6 +43822,16 @@
+             update({ zl: v2, d: Math.max(1, Math.round(1e3 / (v2 || 1))) }),
+         }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx(AspectCropControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
+           config,
+           update,
+           t: t2,
+@@ -43050,7 +43894,7 @@
+     const targetKb = targetSizeFor(config, ext);
+     let info;
+     try {
+-      if (ext === "webm" || targetKb > 0) {
++      if (ext === "webm" || targetKb > 0 || config.motionEnabled) {
+         setProgress2(20);
+         await window.x("mergeFramesIntermediate", {
+           files: files.map((item) => item.path),
+@@ -43070,6 +43914,8 @@
+           preparedInput: true,
+           speed,
+           ...aspectCropRequest(config),
++          outputTextEffect: outputTextEffectFor(config),
++          motionEffect: motionEffectFor(config),
+           loop,
+           targetFileSizeKb: targetKb,
+           allowGifColorReduction: config.gifColorReduction,
+@@ -43098,6 +43944,7 @@
+           ...(aspectCropResize(config, files[0])
+             ? { resize: aspectCropResize(config, files[0]) }
+             : {}),
++          outputTextEffect: outputTextEffectFor(config),
+           toFormat: ext,
+           formatOptions:
+             ext === "gif"
+@@ -43277,6 +44124,16 @@
+               t: t2,
+             })
+           : null,
++        /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
++          config,
++          update,
++          t: t2,
++        }),
+       ],
+     }),
+   panelSub: (config, n2, t2) =>
+@@ -43363,10 +44220,17 @@
+     } else {
+       const targetBytes = Math.max(1, targetKb) * 1e3;
+       const format = item.meta.format;
+-      if (format === "gif") {
++      if (isAnimated && config.motionEnabled) {
+         recipe = {
+           inputPath: item.path,
+           inputOptions: sharpOpt,
++          toFormat: "webp",
++          formatOptions: { lossless: true, quality: 100, effort: 4 },
++        };
++      } else if (format === "gif") {
++        recipe = {
++          inputPath: item.path,
++          inputOptions: sharpOpt,
+           toFormat: "gif",
+           formatOptions: {
+             colors: config.gifColorReduction ? 64 : 256,
+@@ -43393,6 +44257,7 @@
+             inputPath: item.path,
+             inputOptions: sharpOpt,
+             ...(finalResize ? { resize: finalResize } : {}),
++            outputTextEffect: outputTextEffectFor(config),
+             toFormat: format,
+             formatOptions: { quality: mid },
+           });
+@@ -43432,6 +44297,39 @@
+       }
+     }
+     if (finalResize) recipe = { ...recipe, resize: finalResize };
++    if (isAnimated && config.motionEnabled) {
++      const cache = await window.x("getCachePath");
++      const intermediatePath = window.pj(
++        cache,
++        `xpic_crop_motion_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.webp`,
++      );
++      try {
++        await window.x("sharpToFile", {
++          ...recipe,
++          outputTextEffect: null,
++          toFormat: "webp",
++          formatOptions: { lossless: true, quality: 100, effort: 4 },
++          outPath: intermediatePath,
++        });
++        await window.x("vConvert", {
++          inputPath: intermediatePath,
++          outPath,
++          toFormat: item.meta.format,
++          fps: Number(item.meta.fps) || 10,
++          matchFps: true,
++          loop: item.meta.loop,
++          ...(targetKb > 0 ? { targetFileSizeKb: targetKb } : {}),
++          outputTextEffect: outputTextEffectFor(config),
++          motionEffect: motionEffectFor(config),
++          allowGifColorReduction: config.gifColorReduction,
++        });
++      } finally {
++        await window.x("removeFile", intermediatePath);
++      }
++      const info = await window.x("getFileInfo", outPath);
++      return { outName, outPath, outSize: info.size };
++    }
++    recipe = { ...recipe, outputTextEffect: outputTextEffectFor(config) };
+     if (targetKb > 0 && (mode !== "filesize" || item.meta.format === "gif")) {
+       const outSize = await writeSharpToTarget({
+         recipe,
+@@ -43777,6 +44675,8 @@
+         fps: config.fps,
+         matchFps: config.matchFps !== false,
+         ...aspectCropRequest(config),
++        outputTextEffect: outputTextEffectFor(config),
++        motionEffect: motionEffectFor(config),
+         loop: config.loop,
+         speed: normalizedPlaybackSpeed(config.speed),
+         targetFileSizeKb: targetSizeFor(config, format),
+@@ -44416,6 +45316,15 @@
+                 update,
+                 t: t2,
+               }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(
++                OutputTextEffectsControls,
++                { config, update, t: t2 },
++              ),
++              /* @__PURE__ */ jsxRuntimeExports.jsx(MotionEffectsControls, {
++                config,
++                update,
++                t: t2,
++              }),
+               /* @__PURE__ */ jsxRuntimeExports.jsx(SelectField, {
+                 label: t2("flow.outFormat"),
+                 value: config.toFormat,
+

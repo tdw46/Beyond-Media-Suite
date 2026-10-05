@@ -53,6 +53,18 @@ video-to-animation, and every video output format exposed by xPic:
   uses transparent padding in alpha-capable formats, while **Cover** fills the
   canvas with a centered aspect-preserving crop; common presets and custom
   width/height ratios are included;
+- every creation tab can add a high-resolution **Professional text overlay**
+  with multiline copy, any installed macOS system font, heavy editorial
+  typography, font weight, size, line spacing, alignment, whole-canvas
+  positioning, drop shadow, and optional outline. Text defaults to the Beyond
+  orange-to-purple gradient (`#FF8A1F` → `#D61CFF`) and includes curated
+  Sunset, Electric Violet, Ocean, Aurora, Golden Hour, Ice, and Monochrome
+  presets plus fully custom colors and angles;
+- animated-image and video creators add an opt-in **Smooth pan & zoom** camera
+  treatment with nine anchor presets or custom coordinates, independent start
+  and end zoom from 1×–4×, and Linear, Smooth Bézier, Ease In, Ease Out, or
+  custom Bézier interpolation. Still outputs retain the same typography
+  controls without exposing meaningless temporal motion;
 - Video Convert, Video Compress, Video → To Animation, and YouTube Clip match
   the source frame timing by default, including variable-frame-rate media. The
   toggle can be disabled to enter a fixed FPS instead;
