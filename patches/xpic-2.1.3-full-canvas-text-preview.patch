@@ -1,0 +1,702 @@
+--- a/out/renderer/assets/index-CRHVtslq.js
++++ b/out/renderer/assets/index-CRHVtslq.js
+@@ -23631,6 +23631,15 @@
+   "flow.overwriteSourceUnavailable": "覆盖源媒体要求输出格式与每个输入一致。",
+   "flow.outputTextEffects": "专业文字叠加",
+   "flow.outputTextEffectsDesc": "为批次中的每个输出应用相同的高分辨率文字样式。",
++  "flow.outputTextPreview": "完整画布预览",
++  "flow.outputTextSinglePreview": "实时输出画布",
++  "flow.outputTextBatchPreview": "批量预览 · 第 1 个，共 {n} 个",
++  "flow.outputTextBatchCount": "{n} 个输出",
++  "flow.outputTextBatchHint":
++    "以第一个媒体作为批量合成参考；更改会应用到全部 {n} 个输出。",
++  "flow.remove": "移除",
++  "flow.outputTextPreviewSource": "使用批次中的第一个媒体；所有文字调整都会立即更新。",
++  "flow.outputTextPreviewEmpty": "添加媒体后可在完整输出画布上预览；文字调整会立即更新。",
+   "flow.outputText": "叠加文字",
+   "flow.outputTextPlaceholder": "输入标题；可使用多行",
+   "flow.outputTextFont": "系统字体",
+@@ -24197,6 +24206,17 @@
+   "flow.outputTextEffects": "Professional text overlay",
+   "flow.outputTextEffectsDesc":
+     "Applies the same high-resolution typography treatment to every output in the batch.",
++  "flow.outputTextPreview": "Full-canvas preview",
++  "flow.outputTextSinglePreview": "Live output canvas",
++  "flow.outputTextBatchPreview": "Batch preview · first of {n}",
++  "flow.outputTextBatchCount": "{n} outputs",
++  "flow.outputTextBatchHint":
++    "Showing the first item as the batch composition reference; changes apply to all {n} outputs.",
++  "flow.remove": "Remove",
++  "flow.outputTextPreviewSource":
++    "Uses the first item in the batch; every typography adjustment updates immediately.",
++  "flow.outputTextPreviewEmpty":
++    "Add media to preview the complete output canvas; typography updates immediately.",
+   "flow.outputText": "Overlay text",
+   "flow.outputTextPlaceholder": "Enter a headline; multiple lines are supported",
+   "flow.outputTextFont": "System font",
+@@ -40293,10 +40313,428 @@
+       ],
+     }),
+ );
++const escapeOutputTextPreviewSvg = (value) =>
++  String(value || "")
++    .replaceAll("&", "&amp;")
++    .replaceAll("<", "&lt;")
++    .replaceAll(">", "&gt;")
++    .replaceAll('"', "&quot;")
++    .replaceAll("'", "&apos;");
++const outputTextPreviewGradientVector = (angle) => {
++  const radians =
++    (Math.max(0, Math.min(360, Number(angle) || 0)) * Math.PI) / 180;
++  const dx = Math.sin(radians);
++  const dy = -Math.cos(radians);
++  return {
++    x1: `${(50 - dx * 50).toFixed(3)}%`,
++    y1: `${(50 - dy * 50).toFixed(3)}%`,
++    x2: `${(50 + dx * 50).toFixed(3)}%`,
++    y2: `${(50 + dy * 50).toFixed(3)}%`,
++  };
++};
++const outputTextPreviewCanvas = (config, previewItem) => {
++  const crop = aspectCropFor(config);
++  const sourceWidth = Math.max(
++    1,
++    Number(previewItem?.meta?.width || previewItem?.meta?.pixelWidth) ||
++      Number(config.width) ||
++      16,
++  );
++  const sourceHeight = Math.max(
++    1,
++    Number(previewItem?.meta?.height || previewItem?.meta?.pixelHeight) ||
++      Number(config.height) ||
++      9,
++  );
++  const edge = longestEdgeFor(config);
++  let width;
++  let height;
++  if (crop.enabled) {
++    const targetEdge = edge || Math.max(sourceWidth, sourceHeight);
++    width = Math.max(
++      1,
++      Math.round(crop.ratio >= 1 ? targetEdge : targetEdge * crop.ratio),
++    );
++    height = Math.max(
++      1,
++      Math.round(crop.ratio >= 1 ? targetEdge / crop.ratio : targetEdge),
++    );
++  } else if (edge > 0) {
++    const scale = edge / Math.max(sourceWidth, sourceHeight);
++    width = Math.max(1, Math.round(sourceWidth * scale));
++    height = Math.max(1, Math.round(sourceHeight * scale));
++  } else {
++    width = Math.max(1, Math.round(sourceWidth));
++    height = Math.max(1, Math.round(sourceHeight));
++  }
++  const ratio = Math.max(0.1, Math.min(10, width / height));
++  return { ratio, width, height, crop };
++};
++const outputTextPreviewSvg = (effect, width, height, previewText) => {
++  const rows = String(previewText || "")
++    .replaceAll("\r", "")
++    .split("\n")
++    .slice(0, 8);
++  const maxCharacters = Math.max(1, ...rows.map((row) => row.length));
++  const requestedSize =
++    (height * Math.max(1, Math.min(40, Number(effect.fontSize) || 8.5))) /
++    100;
++  const fittedSize = (width * 0.9) / Math.max(1, maxCharacters * 0.56);
++  const fontSize = Math.max(1, Math.min(requestedSize, fittedSize));
++  const lineHeight =
++    fontSize * Math.max(0.8, Math.min(2, Number(effect.lineHeight) || 1.12));
++  const alignment = ["left", "center", "right"].includes(effect.alignment)
++    ? effect.alignment
++    : "center";
++  const anchor = { left: "start", center: "middle", right: "end" }[alignment];
++  const x =
++    (width * Math.max(-25, Math.min(125, Number(effect.positionX) || 0))) /
++    100;
++  const centerY =
++    (height * Math.max(-25, Math.min(125, Number(effect.positionY) || 0))) /
++    100;
++  const firstY = centerY - ((rows.length - 1) * lineHeight) / 2;
++  const vector = outputTextPreviewGradientVector(effect.gradientAngle);
++  const shadowOpacity =
++    Math.max(0, Math.min(100, Number(effect.shadowOpacity) || 0)) / 100;
++  const shadowBlur =
++    (height * Math.max(0, Math.min(10, Number(effect.shadowBlur) || 0))) /
++    100;
++  const shadowX =
++    (width * Math.max(-10, Math.min(10, Number(effect.shadowX) || 0))) / 100;
++  const shadowY =
++    (height * Math.max(-10, Math.min(10, Number(effect.shadowY) || 0))) / 100;
++  const shadow = effect.shadow
++    ? `<filter id="previewShadow" x="-100%" y="-100%" width="300%" height="300%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="${shadowBlur.toFixed(3)}" result="blur"/><feOffset in="blur" dx="${shadowX.toFixed(3)}" dy="${shadowY.toFixed(3)}" result="offset"/><feFlood flood-color="${effect.shadowColor}" flood-opacity="${shadowOpacity.toFixed(3)}" result="color"/><feComposite in="color" in2="offset" operator="in" result="shadowColor"/><feMerge><feMergeNode in="shadowColor"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`
++    : "";
++  const outlineWidth = effect.outline
++    ? Math.max(
++        0.25,
++        (height * Math.max(0.02, Number(effect.outlineWidth) || 0.18)) / 100,
++      )
++    : 0;
++  const textAttributes = `text-anchor="${anchor}" dominant-baseline="central" font-family="${escapeOutputTextPreviewSvg(effect.fontFamily)}" font-size="${fontSize.toFixed(3)}" font-weight="${Math.max(100, Math.min(900, Number(effect.fontWeight) || 800))}" fill="url(#previewGradient)"${outlineWidth ? ` stroke="${effect.outlineColor}" stroke-width="${outlineWidth.toFixed(3)}" paint-order="stroke fill" stroke-linejoin="round"` : ""}${effect.shadow ? ' filter="url(#previewShadow)"' : ""}`;
++  const tspans = rows
++    .map(
++      (row, index) =>
++        `<tspan x="${x.toFixed(3)}" y="${(firstY + index * lineHeight).toFixed(3)}">${escapeOutputTextPreviewSvg(row || " ")}</tspan>`,
++    )
++    .join("");
++  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="previewGradient" x1="${vector.x1}" y1="${vector.y1}" x2="${vector.x2}" y2="${vector.y2}"><stop offset="0" stop-color="${effect.colorA}"/><stop offset="1" stop-color="${effect.colorB}"/></linearGradient>${shadow}</defs><text ${textAttributes}>${tspans}</text></svg>`;
++};
++const outputTextYouTubeId = (value) => {
++  const raw = String(value || "").trim();
++  const match = raw.match(
++    /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/))([A-Za-z0-9_-]{6,})/i,
++  );
++  return match?.[1] || "";
++};
++const outputTextPreviewIsVideo = (item) => {
++  if (item?.mediaKind === "video") return true;
++  const value = String(item?.ext || item?.name || item?.path || "")
++    .toLowerCase()
++    .split(/[?#]/)[0];
++  return /\.(?:mp4|mov|m4v|webm|mkv|avi|flv|wmv|3gp|mpeg|mpg|ts)$/.test(
++    value,
++  );
++};
++const OutputTextCanvasPreview = reactExports.memo(
++  ({
++    config,
++    effect,
++    previewItem,
++    previewText,
++    t: t2,
++    workspace = false,
++    files = [],
++    onRemove,
++  }) => {
++    const canvas = outputTextPreviewCanvas(config, previewItem);
++    const youtubeId = outputTextYouTubeId(config.url);
++    const isVideo = outputTextPreviewIsVideo(previewItem);
++    const fullResolutionSource = previewItem?.url || "";
++    const posterSource = previewItem?.poster || previewItem?.thumb || "";
++    const source = isVideo
++      ? fullResolutionSource || posterSource
++      : fullResolutionSource ||
++        posterSource ||
++        (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg` : "");
++    const backdropSource =
++      posterSource || (!isVideo ? fullResolutionSource : "") || source;
++    const svg = outputTextPreviewSvg(
++      effect,
++      canvas.width,
++      canvas.height,
++      previewText,
++    );
++    const previewWidth = Math.min(
++      100,
++      Math.max(44, canvas.ratio * 85),
++    );
++    const fileCount = Math.max(files.length, previewItem ? 1 : 0);
++    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++      style: {
++        display: "grid",
++        gridTemplateRows: workspace ? "auto minmax(0, 1fr) auto" : void 0,
++        gap: workspace ? 14 : 8,
++        padding: workspace ? "18px 22px 20px" : 10,
++        height: workspace ? "100%" : void 0,
++        minHeight: workspace ? 0 : void 0,
++        border: workspace ? "none" : "1px solid var(--border)",
++        borderRadius: workspace ? 0 : 12,
++        background: workspace ? "transparent" : "var(--bg-elevated)",
++      },
++      children: [
++        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++          style: {
++            display: "flex",
++            alignItems: "center",
++            justifyContent: "space-between",
++            gap: 8,
++          },
++          children: [
++            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++              style: { display: "grid", gap: 3, minWidth: 0 },
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                  className: workspace ? "x-flow-bar-title" : "x-cfg-label",
++                  children: t2("flow.outputTextPreview"),
++                }),
++                workspace
++                  ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                      className: "x-config-sub",
++                      children:
++                        fileCount > 1
++                          ? t2("flow.outputTextBatchPreview", { n: fileCount })
++                          : t2("flow.outputTextSinglePreview"),
++                    })
++                  : null,
++              ],
++            }),
++            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++              style: { display: "flex", alignItems: "center", gap: 8 },
++              children: [
++                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", {
++                  className: "x-config-sub",
++                  children: [canvas.width, "×", canvas.height],
++                }),
++                workspace && fileCount === 1 && previewItem && onRemove
++                  ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                      type: "button",
++                      className: "x-flow-clear",
++                      onClick: () => onRemove(previewItem.id),
++                      children: t2("flow.remove"),
++                    })
++                  : null,
++              ],
++            }),
++          ],
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++          style: {
++            position: "relative",
++            minHeight: workspace ? 340 : 120,
++            maxHeight: workspace ? "none" : 380,
++            display: "grid",
++            placeItems: "center",
++            padding: workspace ? 24 : 8,
++            borderRadius: workspace ? 16 : 9,
++            overflow: "hidden",
++            background: "#111116",
++          },
++          children: [
++            workspace && backdropSource
++              ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                  src: backdropSource,
++                  alt: "",
++                  draggable: false,
++                  style: {
++                    position: "absolute",
++                    inset: -36,
++                    width: "calc(100% + 72px)",
++                    height: "calc(100% + 72px)",
++                    objectFit: "cover",
++                    filter: "blur(34px) saturate(.8)",
++                    opacity: 0.28,
++                    transform: "scale(1.04)",
++                  },
++                })
++              : null,
++            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++              style: {
++                position: "relative",
++                width: workspace
++                  ? canvas.ratio >= 1
++                    ? "min(92%, 1200px)"
++                    : "min(58%, 720px)"
++                  : `${previewWidth}%`,
++                aspectRatio: String(canvas.ratio),
++                overflow: "hidden",
++                borderRadius: workspace ? 10 : 6,
++                boxShadow: workspace
++                  ? "0 24px 70px rgba(0,0,0,.58),0 0 0 1px rgba(255,255,255,.08)"
++                  : "0 10px 26px rgba(0,0,0,.38)",
++                backgroundColor: "#17171B",
++                backgroundImage:
++                  "linear-gradient(45deg,#26262C 25%,transparent 25%),linear-gradient(-45deg,#26262C 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#26262C 75%),linear-gradient(-45deg,transparent 75%,#26262C 75%)",
++                backgroundSize: "20px 20px",
++                backgroundPosition: "0 0,0 10px,10px -10px,-10px 0px",
++              },
++              children: [
++              source
++                ? isVideo && fullResolutionSource
++                  ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", {
++                      src: fullResolutionSource,
++                      poster: posterSource || void 0,
++                      preload: "auto",
++                      autoPlay: true,
++                      muted: true,
++                      loop: true,
++                      playsInline: true,
++                      style: {
++                        position: "absolute",
++                        inset: 0,
++                        width: "100%",
++                        height: "100%",
++                        objectFit:
++                          canvas.crop.enabled && canvas.crop.mode === "cover"
++                            ? "cover"
++                            : "contain",
++                      },
++                    })
++                  : /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                      src: source,
++                      alt: "",
++                      draggable: false,
++                      loading: "eager",
++                      decoding: "auto",
++                      style: {
++                        position: "absolute",
++                        inset: 0,
++                        width: "100%",
++                        height: "100%",
++                        objectFit:
++                          canvas.crop.enabled && canvas.crop.mode === "cover"
++                            ? "cover"
++                            : "contain",
++                      },
++                    })
++                : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                    style: {
++                      position: "absolute",
++                      inset: 0,
++                      background:
++                        "radial-gradient(circle at 18% 20%,rgba(255,138,31,.24),transparent 42%),radial-gradient(circle at 82% 78%,rgba(214,28,255,.26),transparent 44%),linear-gradient(145deg,#111117,#21172B)",
++                    },
++                  }),
++              /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
++                alt: previewText,
++                draggable: false,
++                style: {
++                  position: "absolute",
++                  inset: 0,
++                  width: "100%",
++                  height: "100%",
++                  pointerEvents: "none",
++                },
++              }),
++              ],
++            }),
++            workspace && fileCount > 1
++              ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                  style: {
++                    position: "absolute",
++                    right: 38,
++                    top: 32,
++                    padding: "7px 11px",
++                    borderRadius: 999,
++                    color: "#fff",
++                    background: "rgba(12,12,16,.72)",
++                    border: "1px solid rgba(255,255,255,.14)",
++                    backdropFilter: "blur(16px)",
++                    fontSize: 12,
++                    fontWeight: 700,
++                  },
++                  children: t2("flow.outputTextBatchCount", { n: fileCount }),
++                })
++              : null,
++          ],
++        }),
++        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++          style: { display: "grid", gap: 9 },
++          children: [
++            /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++              className: "x-cfg-note",
++              style: { margin: 0, textAlign: workspace ? "center" : void 0 },
++              children:
++                workspace && fileCount > 1
++                  ? t2("flow.outputTextBatchHint", { n: fileCount })
++                  : source
++                    ? t2("flow.outputTextPreviewSource")
++                    : t2("flow.outputTextPreviewEmpty"),
++            }),
++            workspace && fileCount > 1
++              ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                  style: {
++                    display: "flex",
++                    gap: 7,
++                    overflowX: "auto",
++                    paddingBottom: 2,
++                  },
++                  children: files.map((item, index) =>
++                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
++                      "div",
++                      {
++                        style: {
++                          display: "flex",
++                          alignItems: "center",
++                          gap: 7,
++                          flex: "0 0 auto",
++                          maxWidth: 220,
++                          padding: "6px 8px 6px 10px",
++                          borderRadius: 999,
++                          border:
++                            index === 0
++                              ? "1px solid color-mix(in srgb,var(--primary) 65%,var(--border))"
++                              : "1px solid var(--border)",
++                          background: "var(--bg-elevated)",
++                        },
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", {
++                            style: {
++                              overflow: "hidden",
++                              textOverflow: "ellipsis",
++                              whiteSpace: "nowrap",
++                              fontSize: 12,
++                            },
++                            title: item.name,
++                            children: item.name,
++                          }),
++                          onRemove
++                            ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                                type: "button",
++                                className: "x-crop-chip-x",
++                                onClick: () => onRemove(item.id),
++                                children: "×",
++                              })
++                            : null,
++                        ],
++                      },
++                      item.id,
++                    ),
++                  ),
++                })
++              : null,
++          ],
++        }),
++      ],
++    });
++  },
++);
+ const OutputTextEffectsControls = reactExports.memo(
+   ({ config, update, t: t2 }) => {
+     const effect = outputTextEffectFor(config);
+-    const previewText = String(config.outputText || "").trim() || "Beyond Media Suite";
+     const updateGradientPreset = (value) => {
+       const preset = OUTPUT_TEXT_GRADIENT_PRESETS.find(
+         (item) => item.value === value,
+@@ -40326,35 +40764,6 @@
+                 jsxRuntimeExports.Fragment,
+                 {
+                   children: [
+-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                      style: {
+-                        border: "1px solid var(--border)",
+-                        borderRadius: 12,
+-                        padding: "18px 12px",
+-                        background:
+-                          "linear-gradient(135deg, #09090D 0%, #191520 100%)",
+-                        textAlign: effect.alignment,
+-                        overflow: "hidden",
+-                      },
+-                      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                        style: {
+-                          whiteSpace: "pre-wrap",
+-                          overflowWrap: "anywhere",
+-                          fontFamily: effect.fontFamily,
+-                          fontWeight: effect.fontWeight,
+-                          fontSize: 22,
+-                          lineHeight: effect.lineHeight,
+-                          background: `linear-gradient(${effect.gradientAngle}deg, ${effect.colorA}, ${effect.colorB})`,
+-                          WebkitBackgroundClip: "text",
+-                          backgroundClip: "text",
+-                          color: "transparent",
+-                          filter: effect.shadow
+-                            ? "drop-shadow(0 3px 5px rgba(0,0,0,.65))"
+-                            : "none",
+-                        },
+-                        children: previewText,
+-                      }),
+-                    }),
+                     /* @__PURE__ */ jsxRuntimeExports.jsx(LabeledTextArea, {
+                       label: t2("flow.outputText"),
+                       value: config.outputText || "",
+@@ -44900,6 +45309,21 @@
+     const length = Math.max(1, Math.round(Number(config.clipLengthMs) || 5e3));
+     setTimelineEnd(Math.min(videoDurationMs, selectedStartMs + length));
+   };
++  const youtubePreviewEffect = outputTextEffectFor(config);
++  const youtubePreviewText =
++    String(config.outputText || "").trim() || "Beyond Media Suite";
++  const youtubePreviewCanvas = outputTextPreviewCanvas(config, {
++    meta: {
++      width: metadata?.width || config.width,
++      height: metadata?.height || config.height,
++    },
++  });
++  const youtubePreviewTextSvg = outputTextPreviewSvg(
++    youtubePreviewEffect,
++    youtubePreviewCanvas.width,
++    youtubePreviewCanvas.height,
++    youtubePreviewText,
++  );
+   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+     style: {
+       width: "100%",
+@@ -44955,8 +45379,9 @@
+                 },
+                 children: [
+                   previewVideoId
+-                    ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                    ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+                         style: {
++                          position: "relative",
+                           width: "100%",
+                           maxHeight: 390,
+                           aspectRatio: "16 / 9",
+@@ -44964,11 +45389,28 @@
+                           borderRadius: 10,
+                           overflow: "hidden",
+                         },
+-                        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                          key: previewVideoId,
+-                          ref: youtubeHostRef,
+-                          style: { width: "100%", height: "100%" },
+-                        }),
++                        children: [
++                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                            key: previewVideoId,
++                            ref: youtubeHostRef,
++                            style: { width: "100%", height: "100%" },
++                          }),
++                          youtubePreviewEffect.enabled
++                            ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", {
++                                src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(youtubePreviewTextSvg)}`,
++                                alt: youtubePreviewText,
++                                draggable: false,
++                                style: {
++                                  position: "absolute",
++                                  inset: 0,
++                                  width: "100%",
++                                  height: "100%",
++                                  pointerEvents: "none",
++                                  zIndex: 3,
++                                },
++                              })
++                            : null,
++                        ],
+                       })
+                     : /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+                         style: {
+@@ -45972,6 +46414,70 @@
+       ],
+     }),
+   }),
++);
++const StandardStagingContents = reactExports.memo(
++  ({ mod: mod2, files, t: t2, handlers: handlers2 }) => {
++    const config = useSelector((state) => state[mod2.configKey]?.config);
++    if (config?.outputTextEnabled) {
++      return /* @__PURE__ */ jsxRuntimeExports.jsx(OutputTextCanvasPreview, {
++        config,
++        effect: outputTextEffectFor(config),
++        previewItem: files[0],
++        previewText:
++          String(config.outputText || "").trim() || "Beyond Media Suite",
++        t: t2,
++        workspace: true,
++        files,
++        onRemove: handlers2.removeFile,
++      });
++    }
++    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++      className: "x-flow-grid",
++      children: files.map((f2) =>
++        /* @__PURE__ */ jsxRuntimeExports.jsxs(
++          "div",
++          {
++            className: "x-flow-card",
++            children: [
++              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                className: "x-flow-card-thumb",
++                children: [
++                  /* @__PURE__ */ jsxRuntimeExports.jsx(Thumb, {
++                    f: f2,
++                    className: "x-flow-img",
++                  }),
++                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
++                    type: "button",
++                    className: "x-flow-remove",
++                    onClick: () => handlers2.removeFile(f2.id),
++                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, {
++                      size: 13,
++                      strokeWidth: 2.4,
++                    }),
++                  }),
++                ],
++              }),
++              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                className: "x-flow-card-meta",
++                children: [
++                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
++                    className: "x-flow-card-name",
++                    title: f2.name,
++                    children: f2.name,
++                  }),
++                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
++                    className: "x-flow-card-sub",
++                    children: [dimOf(f2), " · ", filesize(f2.size)],
++                  }),
++                ],
++              }),
++            ],
++          },
++          f2.id,
++        ),
++      ),
++    });
++  },
+ );
+ const Staging = reactExports.memo(
+   ({ mod: mod2, files, t: t2, handlers: handlers2, onPick }) =>
+@@ -46009,52 +46515,15 @@
+         }),
+         /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+           className: "x-flow-scroll",
+-          children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-            className: "x-flow-grid",
+-            children: files.map((f2) =>
+-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+-                "div",
+-                {
+-                  className: "x-flow-card",
+-                  children: [
+-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                      className: "x-flow-card-thumb",
+-                      children: [
+-                        /* @__PURE__ */ jsxRuntimeExports.jsx(Thumb, {
+-                          f: f2,
+-                          className: "x-flow-img",
+-                        }),
+-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", {
+-                          type: "button",
+-                          className: "x-flow-remove",
+-                          onClick: () => handlers2.removeFile(f2.id),
+-                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, {
+-                            size: 13,
+-                            strokeWidth: 2.4,
+-                          }),
+-                        }),
+-                      ],
+-                    }),
+-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                      className: "x-flow-card-meta",
+-                      children: [
+-                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", {
+-                          className: "x-flow-card-name",
+-                          title: f2.name,
+-                          children: f2.name,
+-                        }),
+-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", {
+-                          className: "x-flow-card-sub",
+-                          children: [dimOf(f2), " · ", filesize(f2.size)],
+-                        }),
+-                      ],
+-                    }),
+-                  ],
+-                },
+-                f2.id,
+-              ),
+-            ),
+-          }),
++          children: /* @__PURE__ */ jsxRuntimeExports.jsx(
++            StandardStagingContents,
++            {
++              mod: mod2,
++              files,
++              t: t2,
++              handlers: handlers2,
++            },
++          ),
+         }),
+       ],
+     }),

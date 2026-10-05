@@ -624,8 +624,8 @@ test("Collage outputs stills, animations, and every xPic video container with un
   assert.match(patch, /window\.x\("vConvert"/);
   assert.match(patch, /"-pix_fmt",\s*\n\+\s*"bgra"/);
   assert.match(build, /xpic-2\.1\.3-collage\.patch/);
-  assert.match(build, /2\.1\.3-fork\.35/);
-  assert.match(build, /2\.1\.3\.35/);
+  assert.match(build, /2\.1\.3-fork\.37/);
+  assert.match(build, /2\.1\.3\.37/);
 });
 
 test("Beyond Media Suite exposes local millisecond-precise YouTube clip creation", async () => {
@@ -1003,8 +1003,8 @@ test("Playback speed spans 1/16x through 16x across native, video, and animation
   assert.match(helper, /atempoFilter\(speed\)/);
   assert.match(helper, /effectiveDuration = media\.duration \/ max/);
   assert.match(build, /xpic-2\.1\.3-playback-speed\.patch/);
-  assert.match(build, /2\.1\.3-fork\.35/);
-  assert.match(build, /2\.1\.3\.35/);
+  assert.match(build, /2\.1\.3-fork\.37/);
+  assert.match(build, /2\.1\.3\.37/);
 });
 
 test("To Animation matches source frame timing by default and allows an FPS override", async () => {
@@ -1089,6 +1089,48 @@ test("Every creation surface exposes professional gradient text and animated pan
   assert.match(build, /xpic-2\.1\.3-professional-text-motion-effects\.patch/);
   assert.match(build, /universal-professional-gradient-text-overlays/);
   assert.match(build, /keyframed-pan-zoom-interpolation/);
+});
+
+test("Professional text controls render an aspect-accurate live canvas in the workspace", async () => {
+  const [patch, build] = await Promise.all([
+    readFile(
+      new URL(
+        "../patches/xpic-2.1.3-full-canvas-text-preview.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/build-fork.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(patch, /const OutputTextCanvasPreview/);
+  assert.match(patch, /const StandardStagingContents/);
+  assert.match(patch, /const outputTextPreviewCanvas/);
+  assert.match(patch, /const outputTextPreviewSvg/);
+  assert.match(patch, /const outputTextPreviewIsVideo/);
+  assert.match(patch, /fullResolutionSource = previewItem\?\.url/);
+  assert.match(patch, /autoPlay: true/);
+  assert.match(patch, /preload: "auto"/);
+  assert.match(patch, /targetEdge = edge \|\| Math\.max\(sourceWidth, sourceHeight\)/);
+  assert.match(patch, /width = Math\.max\(1, Math\.round\(sourceWidth\)\)/);
+  assert.match(patch, /workspace: true/);
+  assert.match(patch, /gridTemplateRows: workspace/);
+  assert.match(patch, /flow\.outputTextBatchPreview/);
+  assert.match(patch, /flow\.outputTextBatchHint/);
+  assert.match(patch, /filter: "blur\(34px\) saturate\(\.8\)"/);
+  assert.match(patch, /files\.map\(\(item, index\) =>/);
+  assert.match(patch, /previewItem\?\.poster/);
+  assert.match(patch, /maxresdefault\.jpg/);
+  assert.match(patch, /objectFit:/);
+  assert.match(patch, /canvas\.crop\.mode === "cover"/);
+  assert.match(patch, /youtubePreviewTextSvg/);
+  assert.match(patch, /pointerEvents: "none"/);
+  assert.doesNotMatch(
+    patch,
+    /OutputTextEffectsControls[\s\S]{0,1200}OutputTextCanvasPreview/,
+  );
+  assert.match(patch, /flow\.outputTextPreview/);
+  assert.match(build, /xpic-2\.1\.3-full-canvas-text-preview\.patch/);
+  assert.match(build, /full-canvas-live-text-preview/);
 });
 
 test("New screen recordings run through a safe 25-percent MP4 Shortcut workflow", async () => {

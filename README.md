@@ -60,6 +60,17 @@ video-to-animation, and every video output format exposed by xPic:
   orange-to-purple gradient (`#FF8A1F` → `#D61CFF`) and includes curated
   Sunset, Electric Violet, Ocean, Aurora, Golden Hour, Ice, and Monochrome
   presets plus fully custom colors and angles;
+- the professional text editor replaces the staging thumbnail with an
+  aspect-accurate **full-canvas live preview in the main workspace**. Single
+  items use the full editing area; batches show the first output over a soft
+  media backdrop with an output count and removable file strip. YouTube text
+  is drawn over its main player, while the settings rail remains controls-only.
+  The canvas uses original-resolution image/GIF sources or the real video
+  stream—not a scaled thumbnail—and builds its SVG at the actual output pixel
+  dimensions. Every preview follows Letterbox/Cover framing and updates
+  immediately for multiline text, system font, weight, gradient, size, line
+  spacing, alignment, X/Y position, shadow, and outline using the same SVG
+  sizing math as export;
 - animated-image and video creators add an opt-in **Smooth pan & zoom** camera
   treatment with nine anchor presets or custom coordinates, independent start
   and end zoom from 1×–4×, and Linear, Smooth Bézier, Ease In, Ease Out, or
